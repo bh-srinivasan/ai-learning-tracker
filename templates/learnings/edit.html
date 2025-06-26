@@ -1,0 +1,73 @@
+{% extends "base.html" %} {% block title %}Edit Learning - AI Learning Tracker{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <h4 class="mb-0"><i class="fas fa-edit"></i> Edit Learning Entry</h4>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label for="title" class="form-label">Title *</label>
+            <input
+              type="text"
+              class="form-control"
+              id="title"
+              name="title"
+              required
+              value="{{ entry.title }}"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea
+              class="form-control"
+              id="description"
+              name="description"
+              rows="5"
+            >
+{{ entry.description or '' }}</textarea
+            >
+          </div>
+
+          <div class="mb-3">
+            <label for="tags" class="form-label">Tags</label>
+            <input
+              type="text"
+              class="form-control"
+              id="tags"
+              name="tags"
+              value="{{ entry.tags or '' }}"
+              placeholder="e.g., machine learning, python, neural networks (comma-separated)"
+            />
+            <div class="form-text">
+              Use comma-separated tags to categorize your learning
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <small class="text-muted">
+              <i class="fas fa-calendar"></i> Originally added: {{
+              entry.date_added }}
+            </small>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save"></i> Update Learning Entry
+            </button>
+            <a
+              href="{{ url_for('learnings.index') }}"
+              class="btn btn-secondary"
+            >
+              <i class="fas fa-times"></i> Cancel
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

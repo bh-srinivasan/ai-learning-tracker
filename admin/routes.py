@@ -1,0 +1,781 @@
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from werkzeug.security import generate_password_hash
+import sqlite3
+
+admin_bp = Blueprint('admin', __name__)
+
+def get_db_connection():
+    conn = sqlite3.connect('ai_learning.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def is_admin():
+    """Check if current user is admin"""
+    return session.get('username') == 'admin'
+
+@admin_bp.route('/admin')
+def index():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    
+    # Get stats
+    total_users = conn.execute('SELECT COUNT(*) as count FROM users WHERE username != "admin"').fetchone()['count']
+    total_courses = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count']
+    total_global_learnings = conn.execute('SELECT COUNT(*) as count FROM learning_entries WHERE is_global = 1').fetchone()['count']
+    
+    # Get recent users
+    recent_users = conn.execute('''
+        SELECT username, level, points, created_at 
+        FROM users 
+        WHERE username != "admin"
+        ORDER BY created_at DESC 
+        LIMIT 5
+    ''').fetchall()
+    
+    conn.close()
+    
+    return render_template('admin/index.html',
+                         total_users=total_users,
+                         total_courses=total_courses,
+                         total_global_learnings=total_global_learnings,
+                         recent_users=recent_users)
+
+@admin_bp.route('/admin/users')
+def users():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    users = conn.execute('''
+        SELECT id, username, level, points, status, user_selected_level, created_at 
+        FROM users 
+        WHERE username != "admin"
+        ORDER BY created_at DESC
+    ''').fetchall()
+    conn.close()
+    
+    return render_template('admin/users.html', users=users)
+
+@admin_bp.route('/admin/add_user', methods=['GET', 'POST'])
+def add_user():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        if username and password:
+            conn = get_db_connection()
+            try:
+                # Check for duplicates
+                existing = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
+                if existing:
+                    flash('Username already exists', 'error')
+                else:
+                    password_hash = generate_password_hash(password)
+                    conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', 
+                               (username, password_hash))
+                    conn.commit()
+                    flash(f'User {username} created successfully!', 'success')
+                    return redirect(url_for('admin.users'))
+            except Exception as e:
+                flash(f'Error creating user: {str(e)}', 'error')
+            finally:
+                conn.close()
+        else:
+            flash('Username and password are required', 'error')
+    
+    return render_template('admin/add_user.html')
+
+@admin_bp.route('/admin/courses')
+def courses():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    courses = conn.execute('''
+        SELECT id, title, source, level, link, points, description, created_at,
+               CASE 
+                   WHEN level = 'Expert' THEN 4
+                   WHEN level = 'Intermediate' THEN 3
+                   WHEN level = 'Learner' THEN 2
+                   WHEN level = 'Beginner' THEN 1
+                   ELSE 0
+               END as level_sort_order
+        FROM courses 
+        ORDER BY level_sort_order DESC, points DESC, title ASC
+    ''').fetchall()
+    conn.close()
+    
+    return render_template('admin/courses.html', courses=courses)
+
+@admin_bp.route('/admin/add_course', methods=['GET', 'POST'])
+def add_course():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    if request.method == 'POST':
+        title = request.form['title']
+        source = request.form['source']
+        level = request.form['level']
+        link = request.form['link']
+        points = int(request.form['points']) if request.form['points'] else 0
+        description = request.form['description']
+        
+        if title and source and level and link:
+            conn = get_db_connection()
+            try:
+                # Check for duplicates by title or link
+                existing_title = conn.execute('SELECT id, title FROM courses WHERE LOWER(title) = LOWER(?)', (title,)).fetchone()
+                existing_link = conn.execute('SELECT id, title FROM courses WHERE link = ?', (link,)).fetchone()
+                
+                if existing_title:
+                    flash(f'A course with the title "{existing_title["title"]}" already exists.', 'error')
+                elif existing_link:
+                    flash(f'A course with this link already exists: "{existing_link["title"]}"', 'error')
+                else:
+                    conn.execute('''
+                        INSERT INTO courses (title, source, level, link, points, description)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (title, source, level, link, points, description))
+                    conn.commit()
+                    flash(f'Course "{title}" added successfully!', 'success')
+                    return redirect(url_for('admin.courses'))
+            except Exception as e:
+                flash(f'Error adding course: {str(e)}', 'error')
+            finally:
+                conn.close()
+        else:
+            flash('All required fields must be filled', 'error')
+    
+    return render_template('admin/add_course.html')
+
+@admin_bp.route('/admin/populate_linkedin_courses', methods=['POST'])
+def populate_linkedin_courses():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    # LinkedIn Learning AI Courses
+    linkedin_courses = [
+        {
+            'title': 'Artificial Intelligence Foundations: Machine Learning',
+            'level': 'Beginner',
+            'points': 50,
+            'description': 'Learn the fundamentals of machine learning and AI concepts',
+            'link': 'https://www.linkedin.com/learning/artificial-intelligence-foundations-machine-learning'
+        },
+        {
+            'title': 'Python for Data Science Essential Training',
+            'level': 'Beginner',
+            'points': 60,
+            'description': 'Master Python programming for data science and AI applications',
+            'link': 'https://www.linkedin.com/learning/python-for-data-science-essential-training-part-1'
+        },
+        {
+            'title': 'Deep Learning: Getting Started',
+            'level': 'Learner',
+            'points': 70,
+            'description': 'Introduction to neural networks and deep learning concepts',
+            'link': 'https://www.linkedin.com/learning/deep-learning-getting-started'
+        },
+        {
+            'title': 'Natural Language Processing with Python',
+            'level': 'Intermediate',
+            'points': 80,
+            'description': 'Build NLP applications using Python and modern libraries',
+            'link': 'https://www.linkedin.com/learning/nlp-with-python-for-machine-learning-essential-training'
+        },
+        {
+            'title': 'Computer Vision: Essential Training',
+            'level': 'Intermediate',
+            'points': 85,
+            'description': 'Learn computer vision techniques and image processing',
+            'link': 'https://www.linkedin.com/learning/computer-vision-essential-training'
+        },
+        {
+            'title': 'Machine Learning with Python: Foundations',
+            'level': 'Learner',
+            'points': 65,
+            'description': 'Build your first machine learning models with Python',
+            'link': 'https://www.linkedin.com/learning/machine-learning-with-python-foundations'
+        },
+        {
+            'title': 'TensorFlow: Getting Started',
+            'level': 'Intermediate',
+            'points': 75,
+            'description': 'Learn TensorFlow for building neural networks',
+            'link': 'https://www.linkedin.com/learning/tensorflow-getting-started'
+        },
+        {
+            'title': 'Advanced TensorFlow: Eager Execution',
+            'level': 'Expert',
+            'points': 100,
+            'description': 'Master advanced TensorFlow techniques and eager execution',
+            'link': 'https://www.linkedin.com/learning/advanced-tensorflow-eager-execution'
+        },
+        {
+            'title': 'AI Ethics: Technology and Society',
+            'level': 'Beginner',
+            'points': 40,
+            'description': 'Understand ethical implications of AI in society',
+            'link': 'https://www.linkedin.com/learning/artificial-intelligence-and-ethics'
+        },
+        {
+            'title': 'Data Science for Business Decisions',
+            'level': 'Learner',
+            'points': 55,
+            'description': 'Apply data science techniques to business problems',
+            'link': 'https://www.linkedin.com/learning/data-science-for-business-decisions'
+        },
+        {
+            'title': 'Reinforcement Learning Foundations',
+            'level': 'Expert',
+            'points': 120,
+            'description': 'Master reinforcement learning algorithms and applications',
+            'link': 'https://www.linkedin.com/learning/reinforcement-learning-foundations'
+        },
+        {
+            'title': 'Applied AI for Business Professionals',
+            'level': 'Beginner',
+            'points': 45,
+            'description': 'Understand how AI can transform business processes',
+            'link': 'https://www.linkedin.com/learning/applied-ai-for-business-professionals'
+        }
+    ]
+    
+    conn = get_db_connection()
+    added_count = 0
+    duplicate_count = 0
+    error_count = 0
+    
+    # Get all existing course titles for efficient duplicate checking
+    existing_titles = set()
+    existing_courses = conn.execute('SELECT title FROM courses').fetchall()
+    for course in existing_courses:
+        existing_titles.add(course['title'].lower().strip())
+    
+    for course in linkedin_courses:
+        try:
+            # Check for duplicates (case-insensitive)
+            if course['title'].lower().strip() in existing_titles:
+                duplicate_count += 1
+                continue
+            
+            # Add the course
+            conn.execute('''
+                INSERT INTO courses (title, source, level, link, points, description)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (course['title'], 'LinkedIn Learning', course['level'], 
+                  course['link'], course['points'], course['description']))
+            
+            # Add to our local set to prevent duplicates within this batch
+            existing_titles.add(course['title'].lower().strip())
+            added_count += 1
+            
+        except Exception as e:
+            error_count += 1
+            print(f"Error adding course {course['title']}: {str(e)}")
+    
+    conn.commit()
+    conn.close()
+    
+    # Provide detailed feedback
+    if added_count > 0:
+        flash(f'Successfully added {added_count} LinkedIn Learning AI courses!', 'success')
+    if duplicate_count > 0:
+        flash(f'{duplicate_count} courses were skipped (already exist)', 'info')
+    if error_count > 0:
+        flash(f'{error_count} courses had errors and were not added', 'warning')
+    
+    if added_count == 0 and duplicate_count > 0:
+        flash('All LinkedIn Learning courses already exist in the database', 'info')
+    
+    return redirect(url_for('admin.courses'))
+
+@admin_bp.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+def delete_user(user_id):
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    try:
+        # Get username for confirmation
+        user = conn.execute('SELECT username FROM users WHERE id = ? AND username != "admin"', (user_id,)).fetchone()
+        if not user:
+            flash('User not found or cannot delete admin user.', 'error')
+            return redirect(url_for('admin.users'))
+        
+        # Delete user's learning entries and course enrollments first
+        conn.execute('DELETE FROM learning_entries WHERE user_id = ?', (user_id,))
+        conn.execute('DELETE FROM user_courses WHERE user_id = ?', (user_id,))
+        
+        # Delete the user
+        conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        
+        flash(f'User {user["username"]} deleted successfully!', 'success')
+    except Exception as e:
+        flash(f'Error deleting user: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin.users'))
+
+@admin_bp.route('/admin/toggle_user_status/<int:user_id>', methods=['POST'])
+def toggle_user_status(user_id):
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    try:
+        # Get current status
+        user = conn.execute('SELECT username, status FROM users WHERE id = ? AND username != "admin"', (user_id,)).fetchone()
+        if not user:
+            flash('User not found or cannot modify admin user.', 'error')
+            return redirect(url_for('admin.users'))
+        
+        # Toggle status
+        new_status = 'inactive' if user['status'] == 'active' else 'active'
+        conn.execute('UPDATE users SET status = ? WHERE id = ?', (new_status, user_id))
+        conn.commit()
+        
+        action = 'paused' if new_status == 'inactive' else 'activated'
+        flash(f'User {user["username"]} {action} successfully!', 'success')
+    except Exception as e:
+        flash(f'Error updating user status: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin.users'))
+
+@admin_bp.route('/admin/delete_course/<int:course_id>', methods=['POST'])
+def delete_course(course_id):
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    try:
+        # Get course title for confirmation
+        course = conn.execute('SELECT title FROM courses WHERE id = ?', (course_id,)).fetchone()
+        if not course:
+            flash('Course not found.', 'error')
+            return redirect(url_for('admin.courses'))
+        
+        # Delete course enrollments first
+        conn.execute('DELETE FROM user_courses WHERE course_id = ?', (course_id,))
+        
+        # Delete the course
+        conn.execute('DELETE FROM courses WHERE id = ?', (course_id,))
+        conn.commit()
+        
+        flash(f'Course "{course["title"]}" deleted successfully!', 'success')
+    except Exception as e:
+        flash(f'Error deleting course: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin.courses'))
+
+@admin_bp.route('/admin/edit_course/<int:course_id>', methods=['GET', 'POST'])
+def edit_course(course_id):
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        title = request.form['title']
+        source = request.form['source']
+        level = request.form['level']
+        link = request.form['link']
+        points = int(request.form['points']) if request.form['points'] else 0
+        description = request.form['description']
+        
+        if title and source and level and link:
+            try:
+                # Check for duplicates (excluding current course)
+                existing = conn.execute('''
+                    SELECT id FROM courses 
+                    WHERE title = ? AND id != ?
+                ''', (title, course_id)).fetchone()
+                
+                if existing:
+                    flash('A course with this title already exists.', 'error')
+                else:
+                    conn.execute('''
+                        UPDATE courses 
+                        SET title = ?, source = ?, level = ?, link = ?, points = ?, description = ?
+                        WHERE id = ?
+                    ''', (title, source, level, link, points, description, course_id))
+                    conn.commit()
+                    flash('Course updated successfully!', 'success')
+                    return redirect(url_for('admin.courses'))
+            except Exception as e:
+                flash(f'Error updating course: {str(e)}', 'error')
+        else:
+            flash('All required fields must be filled', 'error')
+    
+    # Get course data for editing
+    course = conn.execute('SELECT * FROM courses WHERE id = ?', (course_id,)).fetchone()
+    conn.close()
+    
+    if not course:
+        flash('Course not found.', 'error')
+        return redirect(url_for('admin.courses'))
+    
+    return render_template('admin/edit_course.html', course=course)
+
+@admin_bp.route('/admin/settings', methods=['GET', 'POST'])
+def settings():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            # Update level settings
+            for level in ['Beginner', 'Learner', 'Intermediate', 'Expert']:
+                points = int(request.form[f'{level.lower()}_points'])
+                conn.execute('''
+                    UPDATE level_settings 
+                    SET points_required = ? 
+                    WHERE level_name = ?
+                ''', (points, level))
+            
+            conn.commit()
+            flash('Level settings updated successfully!', 'success')
+        except Exception as e:
+            flash(f'Error updating settings: {str(e)}', 'error')
+    
+    # Get current level settings
+    level_settings = conn.execute('''
+        SELECT level_name, points_required 
+        FROM level_settings 
+        ORDER BY points_required
+    ''').fetchall()
+    
+    conn.close()
+    
+    return render_template('admin/settings.html', level_settings=level_settings)
+
+@admin_bp.route('/admin/course_search_configs', methods=['GET', 'POST'])
+def course_search_configs():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add':
+            topic_name = request.form['topic_name']
+            search_keywords = request.form['search_keywords']
+            source = request.form['source']
+            
+            if topic_name and search_keywords and source:
+                try:
+                    conn.execute('''
+                        INSERT INTO course_search_configs (topic_name, search_keywords, source)
+                        VALUES (?, ?, ?)
+                    ''', (topic_name, search_keywords, source))
+                    conn.commit()
+                    flash(f'Search configuration for "{topic_name}" added successfully!', 'success')
+                except sqlite3.IntegrityError:
+                    flash('A configuration with this topic name already exists.', 'error')
+            else:
+                flash('All fields are required.', 'error')
+        
+        elif action == 'toggle':
+            config_id = request.form['config_id']
+            current_status = request.form['current_status'] == '1'
+            new_status = 0 if current_status else 1
+            
+            conn.execute('''
+                UPDATE course_search_configs 
+                SET is_active = ? 
+                WHERE id = ?
+            ''', (new_status, config_id))
+            conn.commit()
+            flash('Configuration status updated!', 'success')
+        
+        elif action == 'delete':
+            config_id = request.form['config_id']
+            conn.execute('DELETE FROM course_search_configs WHERE id = ?', (config_id,))
+            conn.commit()
+            flash('Configuration deleted!', 'success')
+    
+    # Get all configurations
+    configs = conn.execute('''
+        SELECT * FROM course_search_configs 
+        ORDER BY topic_name
+    ''').fetchall()
+    
+    conn.close()
+    return render_template('admin/course_search_configs.html', configs=configs)
+
+@admin_bp.route('/admin/search_and_import_courses', methods=['POST'])
+def search_and_import_courses():
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    selected_topics = request.form.getlist('selected_topics')
+    
+    if not selected_topics:
+        flash('Please select at least one topic to search for courses.', 'error')
+        return redirect(url_for('admin.course_search_configs'))
+    
+    conn = get_db_connection()
+    
+    # Get existing course titles for duplicate checking
+    existing_titles = set()
+    existing_courses = conn.execute('SELECT title FROM courses').fetchall()
+    for course in existing_courses:
+        existing_titles.add(course['title'].lower().strip())
+    
+    total_added = 0
+    total_duplicates = 0
+    
+    for topic_id in selected_topics:
+        # Get the search configuration
+        config = conn.execute('''
+            SELECT * FROM course_search_configs 
+            WHERE id = ? AND is_active = 1
+        ''', (topic_id,)).fetchone()
+        
+        if not config:
+            continue
+        
+        # Get courses based on the topic
+        courses = get_courses_for_topic(config['topic_name'], config['search_keywords'])
+        
+        for course in courses:
+            try:
+                # Check for duplicates (case-insensitive)
+                if course['title'].lower().strip() in existing_titles:
+                    total_duplicates += 1
+                    continue
+                
+                # Add the course
+                conn.execute('''
+                    INSERT INTO courses (title, source, level, link, points, description)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (course['title'], course['source'], course['level'], 
+                      course['link'], course['points'], course['description']))
+                
+                # Add to our local set to prevent duplicates within this batch
+                existing_titles.add(course['title'].lower().strip())
+                total_added += 1
+                
+            except Exception as e:
+                print(f"Error adding course {course['title']}: {str(e)}")
+    
+    conn.commit()
+    conn.close()
+    
+    # Provide feedback
+    if total_added > 0:
+        flash(f'Successfully added {total_added} courses!', 'success')
+    if total_duplicates > 0:
+        flash(f'{total_duplicates} courses were skipped (already exist)', 'info')
+    if total_added == 0 and total_duplicates > 0:
+        flash('All found courses already exist in the database', 'info')
+    elif total_added == 0:
+        flash('No courses found for the selected topics', 'warning')
+    
+    return redirect(url_for('admin.courses'))
+
+def get_courses_for_topic(topic_name, search_keywords):
+    """Get courses for a specific topic based on search keywords"""
+    
+    # Course database organized by topics
+    course_database = {
+        'Artificial Intelligence': [
+            {
+                'title': 'Artificial Intelligence Foundations: Machine Learning',
+                'source': 'LinkedIn Learning',
+                'level': 'Beginner',
+                'points': 50,
+                'description': 'Learn the fundamentals of machine learning and AI concepts',
+                'link': 'https://www.linkedin.com/learning/artificial-intelligence-foundations-machine-learning'
+            },
+            {
+                'title': 'AI Ethics: Technology and Society',
+                'source': 'LinkedIn Learning',
+                'level': 'Beginner',
+                'points': 40,
+                'description': 'Understand ethical implications of AI in society',
+                'link': 'https://www.linkedin.com/learning/artificial-intelligence-and-ethics'
+            },
+            {
+                'title': 'Applied AI for Business Professionals',
+                'source': 'LinkedIn Learning',
+                'level': 'Beginner',
+                'points': 45,
+                'description': 'Understand how AI can transform business processes',
+                'link': 'https://www.linkedin.com/learning/applied-ai-for-business-professionals'
+            }
+        ],
+        'Machine Learning': [
+            {
+                'title': 'Machine Learning with Python: Foundations',
+                'source': 'LinkedIn Learning',
+                'level': 'Learner',
+                'points': 65,
+                'description': 'Build your first machine learning models with Python',
+                'link': 'https://www.linkedin.com/learning/machine-learning-with-python-foundations'
+            },
+            {
+                'title': 'Deep Learning: Getting Started',
+                'source': 'LinkedIn Learning',
+                'level': 'Learner',
+                'points': 70,
+                'description': 'Introduction to neural networks and deep learning concepts',
+                'link': 'https://www.linkedin.com/learning/deep-learning-getting-started'
+            },
+            {
+                'title': 'Reinforcement Learning Foundations',
+                'source': 'LinkedIn Learning',
+                'level': 'Expert',
+                'points': 120,
+                'description': 'Master reinforcement learning algorithms and applications',
+                'link': 'https://www.linkedin.com/learning/reinforcement-learning-foundations'
+            }
+        ],
+        'Microsoft Copilot': [
+            {
+                'title': 'Microsoft Copilot: AI-Powered Productivity',
+                'source': 'LinkedIn Learning',
+                'level': 'Beginner',
+                'points': 55,
+                'description': 'Learn to use Microsoft Copilot for enhanced productivity',
+                'link': 'https://www.linkedin.com/learning/microsoft-copilot-productivity'
+            },
+            {
+                'title': 'GitHub Copilot: Code Faster with AI',
+                'source': 'LinkedIn Learning',
+                'level': 'Learner',
+                'points': 60,
+                'description': 'Master GitHub Copilot for AI-assisted coding',
+                'link': 'https://www.linkedin.com/learning/github-copilot-code-faster'
+            },
+            {
+                'title': 'Advanced Copilot Integration Techniques',
+                'source': 'LinkedIn Learning',
+                'level': 'Intermediate',
+                'points': 75,
+                'description': 'Advanced techniques for integrating Copilot in workflows',
+                'link': 'https://www.linkedin.com/learning/advanced-copilot-integration'
+            }
+        ],
+        'Microsoft 365 Copilot': [
+            {
+                'title': 'Microsoft 365 Copilot: Getting Started',
+                'source': 'LinkedIn Learning',
+                'level': 'Beginner',
+                'points': 50,
+                'description': 'Introduction to M365 Copilot features and capabilities',
+                'link': 'https://www.linkedin.com/learning/m365-copilot-getting-started'
+            },
+            {
+                'title': 'Excel Copilot: Data Analysis Made Easy',
+                'source': 'LinkedIn Learning',
+                'level': 'Learner',
+                'points': 65,
+                'description': 'Use Copilot to enhance Excel data analysis workflows',
+                'link': 'https://www.linkedin.com/learning/excel-copilot-data-analysis'
+            },
+            {
+                'title': 'PowerPoint Copilot: Creating Presentations',
+                'source': 'LinkedIn Learning',
+                'level': 'Learner',
+                'points': 55,
+                'description': 'Leverage Copilot for creating compelling presentations',
+                'link': 'https://www.linkedin.com/learning/powerpoint-copilot-presentations'
+            },
+            {
+                'title': 'Teams Copilot: Collaboration Enhancement',
+                'source': 'LinkedIn Learning',
+                'level': 'Intermediate',
+                'points': 70,
+                'description': 'Enhance team collaboration using Teams Copilot features',
+                'link': 'https://www.linkedin.com/learning/teams-copilot-collaboration'
+            }
+        ],
+        'Data Science': [
+            {
+                'title': 'Python for Data Science Essential Training',
+                'source': 'LinkedIn Learning',
+                'level': 'Beginner',
+                'points': 60,
+                'description': 'Master Python programming for data science and AI applications',
+                'link': 'https://www.linkedin.com/learning/python-for-data-science-essential-training-part-1'
+            },
+            {
+                'title': 'Data Science for Business Decisions',
+                'source': 'LinkedIn Learning',
+                'level': 'Learner',
+                'points': 55,
+                'description': 'Apply data science techniques to business problems',
+                'link': 'https://www.linkedin.com/learning/data-science-for-business-decisions'
+            }
+        ],
+        'Computer Vision': [
+            {
+                'title': 'Computer Vision: Essential Training',
+                'source': 'LinkedIn Learning',
+                'level': 'Intermediate',
+                'points': 85,
+                'description': 'Learn computer vision techniques and image processing',
+                'link': 'https://www.linkedin.com/learning/computer-vision-essential-training'
+            }
+        ],
+        'Natural Language Processing': [
+            {
+                'title': 'Natural Language Processing with Python',
+                'source': 'LinkedIn Learning',
+                'level': 'Intermediate',
+                'points': 80,
+                'description': 'Build NLP applications using Python and modern libraries',
+                'link': 'https://www.linkedin.com/learning/nlp-with-python-for-machine-learning-essential-training'
+            }
+        ],
+        'Cloud AI': [
+            {
+                'title': 'Azure AI Fundamentals',
+                'source': 'LinkedIn Learning',
+                'level': 'Beginner',
+                'points': 70,
+                'description': 'Learn Microsoft Azure AI services and capabilities',
+                'link': 'https://www.linkedin.com/learning/azure-ai-fundamentals'
+            },
+            {
+                'title': 'AWS Machine Learning Services',
+                'source': 'LinkedIn Learning',
+                'level': 'Intermediate',
+                'points': 90,
+                'description': 'Master AWS machine learning services and tools',
+                'link': 'https://www.linkedin.com/learning/aws-machine-learning-services'
+            }
+        ]
+    }
+    
+    # Return courses for the specific topic
+    return course_database.get(topic_name, [])

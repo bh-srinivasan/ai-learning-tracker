@@ -1,0 +1,108 @@
+{% extends "base.html" %} {% block title %}Add Learning - AI Learning Tracker{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <h4 class="mb-0"><i class="fas fa-plus"></i> Add New Learning Entry</h4>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label for="title" class="form-label">Title *</label>
+            <input
+              type="text"
+              class="form-control"
+              id="title"
+              name="title"
+              required
+              placeholder="e.g., Completed Machine Learning Fundamentals Course"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea
+              class="form-control"
+              id="description"
+              name="description"
+              rows="5"
+              placeholder="Describe what you learned, key takeaways, or any notes..."
+            ></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="custom_date" class="form-label">Learning Date</label>
+            <input
+              type="date"
+              class="form-control"
+              id="custom_date"
+              name="custom_date"
+            />
+            <div class="form-text">Leave blank to use current date</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="tags" class="form-label">Tags</label>
+            <input
+              type="text"
+              class="form-control"
+              id="tags"
+              name="tags"
+              placeholder="e.g., machine learning, python, neural networks (comma-separated)"
+            />
+            <div class="form-text">
+              Use comma-separated tags to categorize your learning
+            </div>
+          </div>
+
+          {% if session.username == 'admin' %}
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> <strong>Admin Note:</strong> Your
+            learning entries will be visible to all users as global knowledge
+            resources.
+          </div>
+          {% endif %}
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save"></i>
+              {% if session.username == 'admin' %}Save Global Learning Entry{%
+              else %}Save Learning Entry{% endif %}
+            </button>
+            <a
+              href="{{ url_for('dashboard.index') }}"
+              class="btn btn-secondary"
+            >
+              <i class="fas fa-times"></i> Cancel
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-4">
+      <div class="card-header">
+        <h6 class="mb-0">
+          <i class="fas fa-lightbulb"></i> Tips for Better Tracking
+        </h6>
+      </div>
+      <div class="card-body">
+        <ul class="mb-0">
+          <li>
+            Be specific in your titles (include course names, topics, or
+            technologies)
+          </li>
+          <li>Add descriptions with key takeaways and insights</li>
+          <li>Use consistent tags to make searching easier later</li>
+          <li>
+            Track both formal courses and informal learning (articles, videos,
+            experiments)
+          </li>
+          <li>Regular entries help improve your knowledge level assessment</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

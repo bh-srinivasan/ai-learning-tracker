@@ -1,0 +1,852 @@
+{% extends "base.html" %} {% block title %}Manage Courses - Admin Panel{%
+endblock %} {% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="fas fa-graduation-cap"></i> Manage Courses</h2>
+  <div>
+    <a
+      href="{{ url_for('admin.course_search_configs') }}"
+      class="btn btn-success me-2"
+    >
+      <i class="fas fa-search"></i> Search & Import
+    </a>
+    <a href="{{ url_for('admin.add_course') }}" class="btn btn-primary me-2">
+      <i class="fas fa-plus"></i> Add Course
+    </a>
+    <form
+      method="POST"
+      action="{{ url_for('admin.populate_linkedin_courses') }}"
+      class="d-inline"
+    >
+      <button
+        type="submit"
+        class="btn btn-info"
+        onclick="return confirm('Add LinkedIn Learning AI courses?')"
+      >
+        <i class="fab fa-linkedin"></i> Add LinkedIn Courses
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Quick Stats and Filters -->
+<div class="row mb-4">
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-4">
+            <div class="stat-card text-center">
+              <h5 class="text-primary">{{ courses|length }}</h5>
+              <small class="text-muted">Total Courses</small>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="stat-card text-center">
+              <h5 class="text-success">
+                {{ courses|selectattr('source', 'equalto', 'LinkedIn
+                Learning')|list|length }}
+              </h5>
+              <small class="text-muted">LinkedIn Learning</small>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="stat-card text-center">
+              <h5 class="text-warning">
+                {{ courses|selectattr('level', 'equalto', 'Expert')|list|length
+                }}
+              </h5>
+              <small class="text-muted">Expert Level</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="row align-items-center">
+      <div class="col-md-6">
+        <h5 class="mb-0"><i class="fas fa-list"></i> Course Catalog</h5>
+      </div>
+      <div class="col-md-6 text-end">
+        <div class="btn-group" role="group">
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            onclick="exportData('csv')"
+            title="Export filtered data to CSV"
+          >
+            <i class="fas fa-download"></i> Export CSV
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            onclick="printTable()"
+            title="Print current table view"
+          >
+            <i class="fas fa-print"></i> Print
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-info btn-sm"
+            onclick="showTableStats()"
+            title="Show detailed statistics"
+          >
+            <i class="fas fa-chart-bar"></i> Stats
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            onclick="showHelp()"
+            title="Show keyboard shortcuts and help"
+          >
+            <i class="fas fa-question-circle"></i> Help
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    {% if courses %}
+    <!-- Advanced Filters -->
+    <div class="row mb-3">
+      <div class="col-md-3">
+        <label for="sourceFilter" class="form-label">Filter by Source:</label>
+        <select id="sourceFilter" class="form-select form-select-sm">
+          <option value="">All Sources</option>
+          {% set sources = courses|map(attribute='source')|unique|list %} {% for
+          source in sources %}
+          <option value="{{ source }}">{{ source }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="levelFilter" class="form-label">Filter by Level:</label>
+        <select id="levelFilter" class="form-select form-select-sm">
+          <option value="">All Levels</option>
+          <option value="Beginner">Beginner</option>
+          <option value="Learner">Learner</option>
+          <option value="Intermediate">Intermediate</option>
+          <option value="Expert">Expert</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="pointsFilter" class="form-label">Filter by Points:</label>
+        <select id="pointsFilter" class="form-select form-select-sm">
+          <option value="">All Points</option>
+          <option value="0-50">0-50 Points</option>
+          <option value="51-100">51-100 Points</option>
+          <option value="101+">101+ Points</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button
+          type="button"
+          class="btn btn-outline-danger btn-sm"
+          onclick="clearFilters()"
+        >
+          <i class="fas fa-times"></i> Clear Filters
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <div id="tableLoading" class="text-center py-4" style="display: none">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2 text-muted">Loading courses...</p>
+      </div>
+      <table id="coursesTable" class="table table-hover table-striped">
+        <thead class="table-dark">
+          <tr>
+            <th>Title</th>
+            <th>Source</th>
+            <th>Level</th>
+            <th>Points</th>
+            <th>Description</th>
+            <th>Created</th>
+            <th class="no-sort">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for course in courses %}
+          <tr>
+            <td>
+              <div>
+                <strong>{{ course.title }}</strong>
+                <br />
+                <small class="text-muted">
+                  <a
+                    href="{{ course.link }}"
+                    target="_blank"
+                    class="text-decoration-none"
+                  >
+                    <i class="fas fa-external-link-alt"></i> View Course
+                  </a>
+                </small>
+              </div>
+            </td>
+            <td>
+              <span
+                class="badge bg-{% if course.source == 'LinkedIn Learning' %}primary{% elif course.source == 'Coursera' %}success{% elif course.source == 'Udemy' %}warning{% else %}secondary{% endif %}"
+              >
+                {{ course.source }}
+              </span>
+            </td>
+            <td>
+              <span
+                class="badge bg-{% if course.level == 'Expert' %}danger{% elif course.level == 'Intermediate' %}warning{% elif course.level == 'Learner' %}info{% else %}secondary{% endif %}"
+              >
+                {{ course.level }}
+              </span>
+            </td>
+            <td>
+              <span class="badge bg-light text-dark"
+                >{{ course.points }} pts</span
+              >
+            </td>
+            <td>
+              <div class="course-description" title="{{ course.description }}">
+                {{ course.description[:80] if course.description else 'No
+                description' }} {% if course.description and
+                course.description|length > 80 %}...{% endif %}
+              </div>
+            </td>
+            <td>
+              <small class="text-muted"
+                >{{ course.created_at[:10] if course.created_at else 'N/A'
+                }}</small
+              >
+            </td>
+            <td>
+              <div class="btn-group" role="group">
+                <a
+                  href="{{ url_for('admin.edit_course', course_id=course.id) }}"
+                  class="btn btn-sm btn-outline-warning"
+                  title="Edit Course"
+                >
+                  <i class="fas fa-edit"></i>
+                </a>
+                <form
+                  method="POST"
+                  action="{{ url_for('admin.delete_course', course_id=course.id) }}"
+                  style="display: inline"
+                >
+                  <button
+                    type="submit"
+                    class="btn btn-sm btn-outline-danger"
+                    title="Delete Course"
+                    onclick="return confirm('Are you sure you want to delete this course? This action cannot be undone.')"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="fas fa-graduation-cap fa-4x text-muted mb-4"></i>
+      <h4 class="text-muted">No courses found</h4>
+      <p class="text-muted mb-4">
+        Start by adding your first course or importing LinkedIn courses.
+      </p>
+      <div>
+        <a
+          href="{{ url_for('admin.add_course') }}"
+          class="btn btn-primary btn-lg me-2"
+        >
+          <i class="fas fa-plus"></i> Add First Course
+        </a>
+        <form
+          method="POST"
+          action="{{ url_for('admin.populate_linkedin_courses') }}"
+          class="d-inline"
+        >
+          <button type="submit" class="btn btn-info btn-lg">
+            <i class="fab fa-linkedin"></i> Import LinkedIn Courses
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %} {% block scripts %}
+<!-- Include DataTables CSS and JS -->
+<link
+  rel="stylesheet"
+  href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css"
+/>
+<link
+  rel="stylesheet"
+  href="https://cdn.datatables.net/buttons/2.2.3/css/buttons.bootstrap5.min.css"
+/>
+<script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+
+<style>
+  .stat-card {
+    padding: 15px;
+    border-left: 4px solid #dee2e6;
+  }
+
+  .course-description {
+    max-width: 200px;
+    word-wrap: break-word;
+  }
+
+  .table thead th {
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+  }
+
+  .badge {
+    font-size: 0.75em;
+  }
+
+  #coursesTable_length,
+  #coursesTable_filter {
+    margin-bottom: 1rem;
+  }
+
+  .dataTables_info {
+    margin-top: 1rem;
+  }
+
+  .dataTables_paginate {
+    margin-top: 1rem;
+  }
+
+  .btn-group .btn {
+    border-radius: 0.25rem !important;
+    margin-right: 2px;
+  }
+
+  .table td {
+    vertical-align: middle;
+  }
+
+  .badge {
+    font-size: 0.75em;
+    padding: 0.5em 0.75em;
+  }
+
+  /* Enhanced hover effects */
+  .table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+  }
+
+  /* Loading animation */
+  .spinner-border {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  /* Modal enhancements */
+  .modal-body ul li {
+    margin-bottom: 0.5rem;
+  }
+
+  .modal-body kbd {
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  /* Filter section styling */
+  .form-label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Stats cards enhancement */
+  .stat-card:hover {
+    transform: translateY(-2px);
+    transition: transform 0.2s ease-in-out;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+      console.log('DOM loaded');
+      console.log('jQuery available:', typeof $ !== 'undefined');
+      console.log('DataTables available:', typeof $.fn.DataTable !== 'undefined');
+
+      // Check if courses table exists and has data
+      if ($('#coursesTable tbody tr').length > 0) {
+          console.log('Courses data available, initializing table...');
+
+      // Show loading indicator
+      $('#tableLoading').show();
+      $('#coursesTable').hide();
+
+      // Custom sorting functions
+      // Level sorting (Beginner, Learner, Intermediate, Expert)
+      $.fn.dataTable.ext.type.order['level-pre'] = function (data) {
+          var level = $(data).text().trim();
+          switch(level) {
+              case 'Beginner': return 1;
+              case 'Learner': return 2;
+              case 'Intermediate': return 3;
+              case 'Expert': return 4;
+              default: return 5;
+          }
+      };
+
+      // Points sorting (numeric)
+      $.fn.dataTable.ext.type.order['points-pre'] = function (data) {
+          var points = $(data).text().replace(/[^\d]/g, '');
+          return parseInt(points) || 0;
+      };
+
+      // Initialize DataTable
+      try {
+          var table = $('#coursesTable').DataTable({
+              "pageLength": 10,
+              "lengthMenu": [5, 10, 25, 50, 100],
+              "order": [[0, "asc"]],
+              "columnDefs": [
+                  {
+                      "targets": "no-sort",
+                      "orderable": false
+                  },
+                  {
+                      "targets": 2, // Level column
+                      "type": "level"
+                  },
+                  {
+                      "targets": 3, // Points column
+                      "type": "points"
+                  }
+              ],
+              "language": {
+                  "search": "Search courses:",
+                  "lengthMenu": "Show _MENU_ courses per page",
+                  "info": "Showing _START_ to _END_ of _TOTAL_ courses",
+                  "infoEmpty": "No courses to display",
+                  "infoFiltered": "(filtered from _MAX_ total courses)",
+                  "paginate": {
+                      "first": "First",
+                      "last": "Last",
+                      "next": "Next",
+                      "previous": "Previous"
+                  },
+                  "emptyTable": "No courses available in table",
+                  "zeroRecords": "No matching courses found"
+              },
+              "dom": "<'row'<'col-sm-6'l><'col-sm-6'f>>" +
+                     "<'row'<'col-sm-12'tr>>" +
+                     "<'row'<'col-sm-5'i><'col-sm-7'p>>",
+              "responsive": true,
+              "processing": true,
+              "initComplete": function() {
+                  console.log('DataTable initialized successfully');
+                  // Hide loading indicator and show table
+                  $('#tableLoading').hide();
+                  $('#coursesTable').show();
+              }
+          });
+
+          console.log('DataTable object created:', table);
+      } catch (error) {
+          console.error('Error initializing DataTable:', error);
+          $('#tableLoading').hide();
+          $('#coursesTable').show();
+          alert('Error initializing table. Some features may not work properly.');
+      }
+
+      // Custom filter functions
+      $('#sourceFilter').on('change', function() {
+          try {
+              var value = this.value;
+              table.column(1).search(value).draw();
+              console.log('Source filter applied:', value);
+          } catch (error) {
+              console.error('Error applying source filter:', error);
+          }
+      });
+
+      $('#levelFilter').on('change', function() {
+          try {
+              var value = this.value;
+              table.column(2).search(value).draw();
+              console.log('Level filter applied:', value);
+          } catch (error) {
+              console.error('Error applying level filter:', error);
+          }
+      });
+
+      $('#pointsFilter').on('change', function() {
+          try {
+              var value = this.value;
+
+              // Remove existing custom search if any
+              $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function(fn) {
+                  return fn.toString().indexOf('pointsFilter') === -1;
+              });
+
+              if (value) {
+                  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+                      // Extract points from the badge text
+                      var pointsText = $(data[3]).text() || data[3];
+                      var points = parseInt(pointsText.match(/\d+/)) || 0;
+
+                      switch(value) {
+                          case '0-50':
+                              return points >= 0 && points <= 50;
+                          case '51-100':
+                              return points >= 51 && points <= 100;
+                          case '101+':
+                              return points >= 101;
+                          default:
+                              return true;
+                      }
+                  });
+              }
+              table.draw();
+              console.log('Points filter applied:', value);
+          } catch (error) {
+              console.error('Error applying points filter:', error);
+          }
+      });
+
+      // Clear all filters
+      window.clearFilters = function() {
+          $('#sourceFilter').val('');
+          $('#levelFilter').val('');
+          $('#pointsFilter').val('');
+
+          // Clear all column searches
+          table.columns().search('').draw();
+
+          // Remove custom search functions
+          $.fn.dataTable.ext.search = [];
+          table.draw();
+      };
+
+      // Export functions
+      window.exportData = function(format) {
+          if (format === 'csv') {
+              var data = table.rows({search: 'applied'}).data().toArray();
+              var headers = ['Title', 'Source', 'Level', 'Points', 'Description', 'Course Link', 'Created'];
+
+              var csv = headers.join(',') + '\n';
+
+              data.forEach(function(row) {
+                  var cleanRow = [];
+
+                  // Clean title (remove HTML tags)
+                  var title = $(row[0]).find('strong').text() || $(row[0]).text();
+                  cleanRow.push('"' + title.replace(/"/g, '""') + '"');
+
+                  // Clean source (extract text from badge)
+                  var source = $(row[1]).text().trim();
+                  cleanRow.push('"' + source.replace(/"/g, '""') + '"');
+
+                  // Clean level (extract text from badge)
+                  var level = $(row[2]).text().trim();
+                  cleanRow.push('"' + level.replace(/"/g, '""') + '"');
+
+                  // Clean points (extract number)
+                  var points = $(row[3]).text().replace(/[^\d]/g, '');
+                  cleanRow.push('"' + points + '"');
+
+                  // Clean description
+                  var description = $(row[4]).text() || $(row[4]).attr('title') || 'No description';
+                  cleanRow.push('"' + description.replace(/"/g, '""') + '"');
+
+                  // Extract course link
+                  var courseLink = $(row[0]).find('a').attr('href') || '';
+                  cleanRow.push('"' + courseLink.replace(/"/g, '""') + '"');
+
+                  // Clean date
+                  var date = $(row[5]).text().trim();
+                  cleanRow.push('"' + date.replace(/"/g, '""') + '"');
+
+                  csv += cleanRow.join(',') + '\n';
+              });
+
+              var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+              var link = document.createElement('a');
+              var url = URL.createObjectURL(blob);
+              link.setAttribute('href', url);
+              link.setAttribute('download', 'courses_' + new Date().toISOString().split('T')[0] + '.csv');
+              link.style.visibility = 'hidden';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+          }
+      };
+
+      // Print function
+      window.printTable = function() {
+          var printWindow = window.open('', '_blank');
+          if (!printWindow) {
+              alert('Please allow popups for this site to use the print function.');
+              return;
+          }
+
+          // Get filtered data
+          var data = table.rows({search: 'applied'}).data().toArray();
+          var tableHtml = '<table class="table table-striped table-bordered">';
+          tableHtml += '<thead><tr><th>Title</th><th>Source</th><th>Level</th><th>Points</th><th>Description</th><th>Created</th></tr></thead>';
+          tableHtml += '<tbody>';
+
+          data.forEach(function(row) {
+              tableHtml += '<tr>';
+              tableHtml += '<td>' + ($(row[0]).find('strong').text() || $(row[0]).text()) + '</td>';
+              tableHtml += '<td>' + $(row[1]).text().trim() + '</td>';
+              tableHtml += '<td>' + $(row[2]).text().trim() + '</td>';
+              tableHtml += '<td>' + $(row[3]).text().replace(/[^\d]/g, '') + ' pts</td>';
+              tableHtml += '<td>' + ($(row[4]).text() || 'No description') + '</td>';
+              tableHtml += '<td>' + $(row[5]).text().trim() + '</td>';
+              tableHtml += '</tr>';
+          });
+
+          tableHtml += '</tbody></table>';
+
+          printWindow.document.write(`
+              <html>
+              <head>
+                  <title>Courses Report</title>
+                  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+                  <style>
+                      body { font-family: Arial, sans-serif; margin: 20px; }
+                      h1 { color: #333; margin-bottom: 20px; }
+                      .table { font-size: 12px; }
+                      @media print {
+                          body { margin: 0; }
+                          h1 { margin-bottom: 10px; }
+                      }
+                  </style>
+              </head>
+              <body>
+                  <h1>Course Catalog Report</h1>
+                  <p>Generated on: ${new Date().toLocaleDateString()}</p>
+                  <p>Total courses: ${data.length}</p>
+                  ${tableHtml}
+              </body>
+              </html>
+          `);
+
+          printWindow.document.close();
+
+          // Wait for content to load before printing
+          setTimeout(function() {
+              printWindow.focus();
+              printWindow.print();
+          }, 500);
+      };
+
+      // Show detailed statistics
+      window.showTableStats = function() {
+          var info = table.page.info();
+          var currentData = table.rows({search: 'applied'}).data().toArray();
+
+          // Calculate statistics
+          var totalPoints = 0;
+          var levelCounts = {};
+          var sourceCounts = {};
+
+          currentData.forEach(function(row) {
+              var points = parseInt($(row[3]).text().match(/\d+/)) || 0;
+              totalPoints += points;
+
+              var level = $(row[2]).text().trim();
+              var source = $(row[1]).text().trim();
+
+              levelCounts[level] = (levelCounts[level] || 0) + 1;
+              sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+          });
+
+          var avgPoints = currentData.length > 0 ? (totalPoints / currentData.length).toFixed(1) : 0;
+
+          var statsHtml = `
+              <div class="row">
+                  <div class="col-md-6">
+                      <h6>General Statistics</h6>
+                      <ul class="list-unstyled">
+                          <li><strong>Filtered Courses:</strong> ${info.recordsDisplay}</li>
+                          <li><strong>Total Points:</strong> ${totalPoints}</li>
+                          <li><strong>Average Points:</strong> ${avgPoints}</li>
+                      </ul>
+                  </div>
+                  <div class="col-md-6">
+                      <h6>Level Distribution</h6>
+                      <ul class="list-unstyled">
+                          ${Object.entries(levelCounts).map(([level, count]) =>
+                              `<li><strong>${level}:</strong> ${count}</li>`
+                          ).join('')}
+                      </ul>
+                  </div>
+              </div>
+              <div class="row mt-3">
+                  <div class="col-md-12">
+                      <h6>Source Distribution</h6>
+                      <ul class="list-unstyled">
+                          ${Object.entries(sourceCounts).map(([source, count]) =>
+                              `<li><strong>${source}:</strong> ${count}</li>`
+                          ).join('')}
+                      </ul>
+                  </div>
+              </div>
+          `;
+
+          // Create modal or alert with stats
+          var modal = document.createElement('div');
+          modal.innerHTML = `
+              <div class="modal fade" id="statsModal" tabindex="-1">
+                  <div class="modal-dialog">
+                      <div class="modal-content">
+                          <div class="modal-header">
+                              <h5 class="modal-title">Course Statistics</h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                          </div>
+                          <div class="modal-body">
+                              ${statsHtml}
+                          </div>
+                          <div class="modal-footer">
+                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          `;
+          document.body.appendChild(modal);
+
+          var bootstrapModal = new bootstrap.Modal(document.getElementById('statsModal'));
+          bootstrapModal.show();
+
+          // Clean up modal after hiding
+          document.getElementById('statsModal').addEventListener('hidden.bs.modal', function() {
+              document.body.removeChild(modal);
+          });
+      };
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', function(e) {
+          // Ctrl+E for Export
+          if (e.ctrlKey && e.key === 'e') {
+              e.preventDefault();
+              exportData('csv');
+          }
+          // Ctrl+P for Print
+          if (e.ctrlKey && e.key === 'p') {
+              e.preventDefault();
+              printTable();
+          }
+          // Ctrl+R for Clear Filters
+          if (e.ctrlKey && e.key === 'r') {
+              e.preventDefault();
+              clearFilters();
+          }
+          // Ctrl+S for Stats
+          if (e.ctrlKey && e.key === 's') {
+              e.preventDefault();
+              showTableStats();
+          }
+      });
+
+      // Show help modal
+      window.showHelp = function() {
+          var helpHtml = `
+              <div class="row">
+                  <div class="col-md-12">
+                      <h6>Keyboard Shortcuts</h6>
+                      <ul class="list-unstyled">
+                          <li><kbd>Ctrl + E</kbd> - Export to CSV</li>
+                          <li><kbd>Ctrl + P</kbd> - Print table</li>
+                          <li><kbd>Ctrl + R</kbd> - Clear all filters</li>
+                          <li><kbd>Ctrl + S</kbd> - Show statistics</li>
+                      </ul>
+                      <hr>
+                      <h6>Table Features</h6>
+                      <ul class="list-unstyled">
+                          <li><strong>Sorting:</strong> Click column headers to sort</li>
+                          <li><strong>Filtering:</strong> Use the search box or dropdown filters</li>
+                          <li><strong>Pagination:</strong> Navigate through pages at the bottom</li>
+                          <li><strong>Export:</strong> Download filtered results as CSV</li>
+                          <li><strong>Print:</strong> Print current view with clean formatting</li>
+                      </ul>
+                      <hr>
+                      <h6>Tips</h6>
+                      <ul class="list-unstyled">
+                          <li>• Use multiple filters for precise results</li>
+                          <li>• Click "Clear Filters" to reset all filters</li>
+                          <li>• Export includes only filtered data</li>
+                          <li>• Statistics update based on current filters</li>
+                      </ul>
+                  </div>
+              </div>
+          `;
+
+          var modal = document.createElement('div');
+          modal.innerHTML = `
+              <div class="modal fade" id="helpModal" tabindex="-1">
+                  <div class="modal-dialog modal-lg">
+                      <div class="modal-content">
+                          <div class="modal-header">
+                              <h5 class="modal-title"><i class="fas fa-question-circle"></i> Course Management Help</h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                          </div>
+                          <div class="modal-body">
+                              ${helpHtml}
+                          </div>
+                          <div class="modal-footer">
+                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          `;
+          document.body.appendChild(modal);
+
+          var bootstrapModal = new bootstrap.Modal(document.getElementById('helpModal'));
+          bootstrapModal.show();
+
+          // Clean up modal after hiding
+          document.getElementById('helpModal').addEventListener('hidden.bs.modal', function() {
+              document.body.removeChild(modal);
+          });
+      };
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', function(e) {
+          if (e.ctrlKey) {
+              switch(e.key) {
+                  case 'e':
+                      e.preventDefault();
+                      exportData('csv');
+                      break;
+                  case 'p':
+                      e.preventDefault();
+                      printTable();
+                      break;
+                  case 'r':
+                      e.preventDefault();
+                      clearFilters();
+                      break;
+                  case 's':
+                      e.preventDefault();
+                      showTableStats();
+                      break;
+              }
+          }
+      });
+      } // End of courses table check
+  });
+</script>
+{% endblock %}

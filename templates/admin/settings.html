@@ -1,0 +1,61 @@
+{% extends "base.html" %} {% block title %}Admin Settings{% endblock %} {% block
+content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card">
+      <div
+        class="card-header d-flex justify-content-between align-items-center"
+      >
+        <h4><i class="fas fa-cog"></i> Admin Settings</h4>
+        <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+      </div>
+      <div class="card-body">
+        <h5 class="mb-4">Level Point Requirements</h5>
+        <form method="POST">
+          {% for level in level_settings %}
+          <div class="mb-3">
+            <label
+              for="{{ level.level_name.lower() }}_points"
+              class="form-label"
+            >
+              <span
+                class="badge bg-{% if level.level_name == 'Expert' %}danger{% elif level.level_name == 'Intermediate' %}warning{% elif level.level_name == 'Learner' %}info{% else %}secondary{% endif %} me-2"
+              >
+                {{ level.level_name }}
+              </span>
+              Points Required
+            </label>
+            <input
+              type="number"
+              class="form-control"
+              id="{{ level.level_name.lower() }}_points"
+              name="{{ level.level_name.lower() }}_points"
+              value="{{ level.points_required }}"
+              min="0"
+              required
+            />
+            <div class="form-text">
+              Current requirement: {{ level.points_required }} points
+            </div>
+          </div>
+          {% endfor %}
+
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            <strong>Note:</strong> Changes to level requirements will affect how
+            user levels are calculated based on their current points.
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save"></i> Update Settings
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
