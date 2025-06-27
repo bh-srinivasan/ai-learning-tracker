@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, g
 from werkzeug.security import generate_password_hash
 import sqlite3
 
@@ -9,9 +9,14 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def get_current_user():
+    """Get current user from g object (set by before_request handler)"""
+    return getattr(g, 'user', None)
+
 def is_admin():
     """Check if current user is admin"""
-    return session.get('username') == 'admin'
+    user = get_current_user()
+    return user and user['username'] == 'admin'
 
 @admin_bp.route('/admin')
 def index():
@@ -67,8 +72,26 @@ def add_user():
         return redirect(url_for('dashboard.index'))
     
     if request.method == 'POST':
-        username = request.form['username']
+        # Import security functions
+        from app import sanitize_input, validate_password_strength, log_security_event
+        
+        username = sanitize_input(request.form['username'])
         password = request.form['password']
+        
+        # Validate input
+        if not username or not password:
+            flash('Username and password are required', 'error')
+            return render_template('admin/add_user.html')
+        
+        if len(username) < 3 or len(username) > 50:
+            flash('Username must be between 3 and 50 characters', 'error')
+            return render_template('admin/add_user.html')
+        
+        # Validate password strength
+        is_valid, message = validate_password_strength(password)
+        if not is_valid:
+            flash(message, 'error')
+            return render_template('admin/add_user.html')
         
         if username and password:
             conn = get_db_connection()
@@ -82,6 +105,12 @@ def add_user():
                     conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', 
                                (username, password_hash))
                     conn.commit()
+                    
+                    # Log user creation
+                    new_user = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
+                    log_security_event('user_created', f'User {username} created by admin', 
+                                     request.remote_addr, new_user['id'])
+                    
                     flash(f'User {username} created successfully!', 'success')
                     return redirect(url_for('admin.users'))
             except Exception as e:
@@ -601,6 +630,217 @@ def search_and_import_courses():
         flash('No courses found for the selected topics', 'warning')
     
     return redirect(url_for('admin.courses'))
+
+@admin_bp.route('/admin/sessions')
+def sessions():
+    """Admin route to view and manage user sessions"""
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    
+    # Get active sessions with user information
+    active_sessions = conn.execute('''
+        SELECT us.*, u.username, u.level, u.status,
+               CASE WHEN us.expires_at > datetime('now') THEN 'Active' ELSE 'Expired' END as session_status
+        FROM user_sessions us
+        JOIN users u ON us.user_id = u.id
+        WHERE us.is_active = 1
+        ORDER BY us.created_at DESC
+    ''').fetchall()
+    
+    # Get session activity statistics
+    activity_stats = conn.execute('''
+        SELECT activity_type, COUNT(*) as count
+        FROM session_activity
+        WHERE timestamp >= datetime('now', '-7 days')
+        GROUP BY activity_type
+        ORDER BY count DESC
+    ''').fetchall()
+    
+    # Get login statistics for the last 7 days
+    login_stats = conn.execute('''
+        SELECT DATE(timestamp) as login_date, COUNT(*) as login_count
+        FROM session_activity
+        WHERE activity_type = 'session_created' 
+        AND timestamp >= datetime('now', '-7 days')
+        GROUP BY DATE(timestamp)
+        ORDER BY login_date DESC
+    ''').fetchall()
+    
+    conn.close()
+    
+    return render_template('admin/sessions.html', 
+                         active_sessions=active_sessions,
+                         activity_stats=activity_stats,
+                         login_stats=login_stats)
+
+@admin_bp.route('/admin/invalidate_session/<session_token>', methods=['POST'])
+def invalidate_user_session(session_token):
+    """Admin route to invalidate a specific user session"""
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    from app import invalidate_session, log_session_activity
+    
+    # Get session info before invalidating
+    conn = get_db_connection()
+    session_info = conn.execute('''
+        SELECT us.*, u.username 
+        FROM user_sessions us
+        JOIN users u ON us.user_id = u.id
+        WHERE us.session_token = ?
+    ''', (session_token,)).fetchone()
+    conn.close()
+    
+    if session_info:
+        invalidate_session(session_token)
+        log_session_activity(session_token, 'admin_session_invalidated', 
+                           f'Session invalidated by admin for user: {session_info["username"]}')
+        flash(f'Session for user {session_info["username"]} has been invalidated.', 'success')
+    else:
+        flash('Session not found.', 'error')
+    
+    return redirect(url_for('admin.sessions'))
+
+@admin_bp.route('/admin/invalidate_all_sessions/<int:user_id>', methods=['POST'])
+def invalidate_all_sessions_for_user(user_id):
+    """Admin route to invalidate all sessions for a specific user"""
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    from app import invalidate_all_user_sessions, log_session_activity
+    
+    # Get user info
+    conn = get_db_connection()
+    user_info = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
+    conn.close()
+    
+    if user_info:
+        invalidate_all_user_sessions(user_id)
+        log_session_activity(None, 'admin_all_sessions_invalidated', 
+                           f'All sessions invalidated by admin for user: {user_info["username"]}')
+        flash(f'All sessions for user {user_info["username"]} have been invalidated.', 'success')
+    else:
+        flash('User not found.', 'error')
+    
+    return redirect(url_for('admin.sessions'))
+
+@admin_bp.route('/admin/security')
+def security_dashboard():
+    """Admin security monitoring dashboard"""
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    conn = get_db_connection()
+    
+    # Get recent security events
+    security_events = conn.execute('''
+        SELECT se.*, u.username
+        FROM security_events se
+        LEFT JOIN users u ON se.user_id = u.id
+        ORDER BY se.timestamp DESC
+        LIMIT 50
+    ''').fetchall()
+    
+    # Get security statistics
+    event_stats = conn.execute('''
+        SELECT event_type, COUNT(*) as count
+        FROM security_events
+        WHERE timestamp >= datetime('now', '-24 hours')
+        GROUP BY event_type
+        ORDER BY count DESC
+    ''').fetchall()
+    
+    # Get most active IPs
+    active_ips = conn.execute('''
+        SELECT ip_address, COUNT(*) as count
+        FROM security_events
+        WHERE timestamp >= datetime('now', '-24 hours')
+        AND ip_address IS NOT NULL
+        GROUP BY ip_address
+        ORDER BY count DESC
+        LIMIT 10
+    ''').fetchall()
+    
+    # Get failed login attempts by hour
+    failed_logins = conn.execute('''
+        SELECT strftime('%H', timestamp) as hour, COUNT(*) as count
+        FROM security_events
+        WHERE event_type = 'failed_login'
+        AND timestamp >= datetime('now', '-24 hours')
+        GROUP BY hour
+        ORDER BY hour
+    ''').fetchall()
+    
+    # Get suspicious activity alerts
+    suspicious_alerts = conn.execute('''
+        SELECT * FROM security_events
+        WHERE event_type IN ('suspicious_activity', 'unauthorized_admin_access', 'ip_blocked')
+        AND timestamp >= datetime('now', '-7 days')
+        ORDER BY timestamp DESC
+        LIMIT 20
+    ''').fetchall()
+    
+    conn.close()
+    
+    return render_template('admin/security.html',
+                         security_events=security_events,
+                         event_stats=event_stats,
+                         active_ips=active_ips,
+                         failed_logins=failed_logins,
+                         suspicious_alerts=suspicious_alerts)
+
+@admin_bp.route('/admin/block_ip', methods=['POST'])
+def block_ip_address():
+    """Admin route to manually block an IP address"""
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    ip_address = request.form.get('ip_address')
+    duration = int(request.form.get('duration', 60))  # minutes
+    reason = request.form.get('reason', 'Manual admin block')
+    
+    if ip_address:
+        from app import block_ip, log_security_event
+        block_ip(ip_address, duration)
+        log_security_event('admin_ip_block', 
+                         f'IP {ip_address} blocked by admin for {duration} minutes. Reason: {reason}',
+                         ip_address)
+        flash(f'IP address {ip_address} has been blocked for {duration} minutes.', 'success')
+    else:
+        flash('Invalid IP address.', 'error')
+    
+    return redirect(url_for('admin.security_dashboard'))
+
+@admin_bp.route('/admin/unblock_ip', methods=['POST'])
+def unblock_ip_address():
+    """Admin route to manually unblock an IP address"""
+    if not is_admin():
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard.index'))
+    
+    ip_address = request.form.get('ip_address')
+    
+    if ip_address:
+        from app import blocked_ips, log_security_event
+        if ip_address in blocked_ips:
+            del blocked_ips[ip_address]
+            log_security_event('admin_ip_unblock', f'IP {ip_address} unblocked by admin', ip_address)
+            flash(f'IP address {ip_address} has been unblocked.', 'success')
+        else:
+            flash(f'IP address {ip_address} was not blocked.', 'info')
+    else:
+        flash('Invalid IP address.', 'error')
+    
+    return redirect(url_for('admin.security_dashboard'))
+
+# ...existing admin routes...
 
 def get_courses_for_topic(topic_name, search_keywords):
     """Get courses for a specific topic based on search keywords"""

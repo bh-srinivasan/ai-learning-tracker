@@ -34,6 +34,14 @@
                                 <td><strong>Member Since:</strong></td>
                                 <td>{{ user.created_at }}</td>
                             </tr>
+                            <tr>
+                                <td><strong>Last Login:</strong></td>
+                                <td>{{ user.last_login or 'Never' }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Logins:</strong></td>
+                                <td>{{ user.login_count or 0 }}</td>
+                            </tr>
                         </table>
                     </div>
                     
@@ -92,6 +100,59 @@
                         </button>
                     </div>
                 </form>
+                
+                <hr>
+                
+                <!-- Session Information -->
+                <h5><i class="fas fa-shield-alt"></i> Session Information</h5>
+                <div class="row">
+                    <div class="col-md-12">
+                        {% if active_sessions %}
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Session Started</th>
+                                            <th>Expires</th>
+                                            <th>IP Address</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for session_info in active_sessions %}
+                                        <tr>
+                                            <td><small>{{ session_info.created_at }}</small></td>
+                                            <td><small>{{ session_info.expires_at }}</small></td>
+                                            <td><small class="text-muted">{{ session_info.ip_address or 'Unknown' }}</small></td>
+                                            <td>
+                                                {% if session_info.status == 'Active' %}
+                                                    <span class="badge bg-success">{{ session_info.status }}</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning">{{ session_info.status }}</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i> 
+                                <strong>Session Security:</strong> Sessions automatically expire after 24 hours of inactivity. 
+                                You'll receive a warning 5 minutes before expiration.
+                                <button type="button" class="btn btn-sm btn-outline-primary ms-2 extend-session-btn">
+                                    <i class="fas fa-clock"></i> Extend Current Session
+                                </button>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i> No active sessions found.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <hr>
             </div>
         </div>
     </div>

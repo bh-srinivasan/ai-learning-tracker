@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}Security Dashboard - AI Learning Tracker{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-shield-alt"></i> Security Dashboard</h1>
+    <div class="btn-group">
+        <button class="btn btn-outline-primary" onclick="refreshData()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Security Statistics -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center bg-danger text-white">
+            <div class="card-body">
+                <h5 class="card-title">Security Events (24h)</h5>
+                <h2>{{ event_stats|sum(attribute='count') }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-warning text-white">
+            <div class="card-body">
+                <h5 class="card-title">Failed Logins (24h)</h5>
+                <h2>
+                    {% for stat in event_stats %}
+                        {% if stat.event_type == 'failed_login' %}
+                            {{ stat.count }}
+                        {% endif %}
+                    {% else %}
+                        0
+                    {% endfor %}
+                </h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-info text-white">
+            <div class="card-body">
+                <h5 class="card-title">Suspicious Activities</h5>
+                <h2>{{ suspicious_alerts|length }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-success text-white">
+            <div class="card-body">
+                <h5 class="card-title">Active Monitoring</h5>
+                <h2><i class="fas fa-check-circle"></i></h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Security Alerts -->
+{% if suspicious_alerts %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5><i class="fas fa-exclamation-triangle"></i> Recent Security Alerts</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Event Type</th>
+                                <th>Details</th>
+                                <th>IP Address</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for alert in suspicious_alerts %}
+                            <tr class="{% if alert.event_type == 'ip_blocked' %}table-danger{% elif alert.event_type == 'suspicious_activity' %}table-warning{% else %}table-info{% endif %}">
+                                <td><small>{{ alert.timestamp }}</small></td>
+                                <td>
+                                    {% if alert.event_type == 'suspicious_activity' %}
+                                        <span class="badge bg-warning">Suspicious Activity</span>
+                                    {% elif alert.event_type == 'unauthorized_admin_access' %}
+                                        <span class="badge bg-danger">Unauthorized Access</span>
+                                    {% elif alert.event_type == 'ip_blocked' %}
+                                        <span class="badge bg-danger">IP Blocked</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ alert.event_type|title }}</span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ alert.details }}</small></td>
+                                <td>
+                                    <code>{{ alert.ip_address or 'N/A' }}</code>
+                                </td>
+                                <td>
+                                    {% if alert.ip_address %}
+                                    <button class="btn btn-sm btn-outline-danger" onclick="blockIP('{{ alert.ip_address }}')">
+                                        <i class="fas fa-ban"></i> Block
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Security Statistics Charts -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> Event Types (24h)</h5>
+            </div>
+            <div class="card-body">
+                {% if event_stats %}
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Event Type</th>
+                                <th>Count</th>
+                                <th>Severity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in event_stats %}
+                            <tr>
+                                <td>
+                                    {% if stat.event_type == 'failed_login' %}
+                                        <i class="fas fa-sign-in-alt text-warning"></i> Failed Login
+                                    {% elif stat.event_type == 'suspicious_activity' %}
+                                        <i class="fas fa-exclamation-triangle text-danger"></i> Suspicious Activity
+                                    {% elif stat.event_type == 'ip_blocked' %}
+                                        <i class="fas fa-ban text-danger"></i> IP Blocked
+                                    {% elif stat.event_type == 'successful_login' %}
+                                        <i class="fas fa-sign-in-alt text-success"></i> Login Success
+                                    {% else %}
+                                        <i class="fas fa-info-circle"></i> {{ stat.event_type|title }}
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge bg-secondary">{{ stat.count }}</span></td>
+                                <td>
+                                    {% if stat.event_type in ['failed_login', 'suspicious_activity', 'ip_blocked'] %}
+                                        <span class="badge bg-danger">High</span>
+                                    {% elif stat.event_type == 'successful_login' %}
+                                        <span class="badge bg-success">Normal</span>
+                                    {% else %}
+                                        <span class="badge bg-info">Medium</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted">No security events in the last 24 hours.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-network-wired"></i> Most Active IPs (24h)</h5>
+            </div>
+            <div class="card-body">
+                {% if active_ips %}
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>Events</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ip in active_ips %}
+                            <tr>
+                                <td><code>{{ ip.ip_address }}</code></td>
+                                <td>
+                                    <span class="badge {% if ip.count > 50 %}bg-danger{% elif ip.count > 20 %}bg-warning{% else %}bg-info{% endif %}">
+                                        {{ ip.count }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-danger" onclick="blockIP('{{ ip.ip_address }}')">
+                                            <i class="fas fa-ban"></i> Block
+                                        </button>
+                                        <button class="btn btn-outline-info" onclick="viewIPDetails('{{ ip.ip_address }}')">
+                                            <i class="fas fa-eye"></i> Details
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted">No IP activity recorded.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Security Events -->
+<div class="card">
+    <div class="card-header">
+        <h5><i class="fas fa-list"></i> Recent Security Events</h5>
+    </div>
+    <div class="card-body">
+        {% if security_events %}
+            <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Event Type</th>
+                            <th>User</th>
+                            <th>IP Address</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in security_events %}
+                        <tr>
+                            <td><small>{{ event.timestamp }}</small></td>
+                            <td>
+                                {% if event.event_type == 'failed_login' %}
+                                    <span class="badge bg-warning">Failed Login</span>
+                                {% elif event.event_type == 'successful_login' %}
+                                    <span class="badge bg-success">Login Success</span>
+                                {% elif event.event_type == 'suspicious_activity' %}
+                                    <span class="badge bg-danger">Suspicious</span>
+                                {% elif event.event_type == 'ip_blocked' %}
+                                    <span class="badge bg-danger">IP Blocked</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ event.event_type|title }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ event.username or 'N/A' }}</td>
+                            <td><code>{{ event.ip_address or 'N/A' }}</code></td>
+                            <td><small>{{ event.details }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> No security events recorded yet.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- IP Block Modal -->
+<div class="modal fade" id="blockIPModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Block IP Address</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="#">>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="ip_address" class="form-label">IP Address</label>
+                        <input type="text" class="form-control" id="ip_address" name="ip_address" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="duration" class="form-label">Block Duration (minutes)</label>
+                        <select class="form-control" id="duration" name="duration">
+                            <option value="15">15 minutes</option>
+                            <option value="60">1 hour</option>
+                            <option value="360">6 hours</option>
+                            <option value="1440">24 hours</option>
+                            <option value="10080">7 days</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="reason" class="form-label">Reason</label>
+                        <textarea class="form-control" id="reason" name="reason" rows="3">Suspicious activity detected</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Block IP</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function blockIP(ip) {
+    document.getElementById('ip_address').value = ip;
+    new bootstrap.Modal(document.getElementById('blockIPModal')).show();
+}
+
+function viewIPDetails(ip) {
+    alert('IP Details feature coming soon for: ' + ip);
+}
+
+function refreshData() {
+    window.location.reload();
+}
+
+// Auto-refresh every 30 seconds
+setInterval(function() {
+    // Update stats only, not full page refresh
+    fetch(window.location.href)
+        .then(response => response.text())
+        .then(html => {
+            // Could implement partial updates here
+        });
+}, 30000);
+</script>
+
+{% endblock %}

@@ -86,7 +86,7 @@ endblock %} {% block content %}
         class="card-header d-flex justify-content-between align-items-center"
       >
         <h5 class="mb-0"><i class="fas fa-clock"></i> Recent Learnings</h5>
-        <a href="{{ url_for('learnings.add') }}" class="btn btn-sm btn-primary">
+        <a href="{{ url_for('add_learning') }}" class="btn btn-sm btn-primary">
           <i class="fas fa-plus"></i> Add New
         </a>
       </div>
@@ -113,7 +113,7 @@ endblock %} {% block content %}
         {% endfor %}
         <div class="text-center">
           <a
-            href="{{ url_for('learnings.index') }}"
+            href="{{ url_for('learnings') }}"
             class="btn btn-outline-primary btn-sm"
           >
             View All Learnings
@@ -123,7 +123,7 @@ endblock %} {% block content %}
         <div class="text-center py-4">
           <i class="fas fa-book fa-3x text-muted mb-3"></i>
           <p class="text-muted">No learning entries yet.</p>
-          <a href="{{ url_for('learnings.add') }}" class="btn btn-primary">
+          <a href="{{ url_for('add_learning') }}" class="btn btn-primary">
             Add Your First Learning
           </a>
         </div>
@@ -141,7 +141,7 @@ endblock %} {% block content %}
         </h5>
       </div>
       <div class="card-body">
-        {% if recommended_courses %} {% for course in recommended_courses %}
+        {% if available_courses %} {% for course in available_courses %}
         <div class="course-card card mb-3">
           <div class="card-body py-2">
             <div class="d-flex justify-content-between align-items-start">
@@ -153,9 +153,6 @@ endblock %} {% block content %}
                   <span class="badge bg-warning text-dark"
                     >{{ course.points }} pts</span
                   >
-                  {% if course.completed %}
-                  <span class="badge bg-success">Completed</span>
-                  {% endif %}
                 </div>
                 {% if course.description %}
                 <p class="small text-muted mb-1">
@@ -165,15 +162,6 @@ endblock %} {% block content %}
                 {% endif %}
               </div>
               <div class="ms-2">
-                {% if course.completed %}
-                <a
-                  href="{{ course.link }}"
-                  target="_blank"
-                  class="btn btn-sm btn-outline-success"
-                >
-                  <i class="fas fa-check"></i> Review
-                </a>
-                {% else %}
                 <div class="btn-group-vertical" role="group">
                   <a
                     href="{{ course.link }}"
@@ -184,7 +172,7 @@ endblock %} {% block content %}
                   </a>
                   <form
                     method="POST"
-                    action="{{ url_for('dashboard.complete_course', course_id=course.id) }}"
+                    action="{{ url_for('complete_course', course_id=course.id) }}"
                     class="d-inline"
                   >
                     <button type="submit" class="btn btn-sm btn-success">
@@ -192,7 +180,6 @@ endblock %} {% block content %}
                     </button>
                   </form>
                 </div>
-                {% endif %}
               </div>
             </div>
           </div>
@@ -202,7 +189,7 @@ endblock %} {% block content %}
           <i class="fas fa-graduation-cap fa-3x text-muted mb-3"></i>
           <p class="text-muted">No courses available yet.</p>
           {% if session.username == 'admin' %}
-          <a href="{{ url_for('admin.courses') }}" class="btn btn-primary"
+          <a href="{{ url_for('admin_courses') }}" class="btn btn-primary"
             >Add Courses</a
           >
           {% endif %}
@@ -213,6 +200,57 @@ endblock %} {% block content %}
   </div>
 </div>
 
+<!-- Completed Courses Section -->
+{% if completed_courses %}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-check-circle"></i> Completed Courses
+        </h5>
+      </div>
+      <div class="card-body">
+        {% for course in completed_courses %}
+        <div class="course-card card mb-3">
+          <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="flex-grow-1">
+                <h6 class="card-title mb-1">{{ course.title }}</h6>
+                <div class="mb-1">
+                  <span class="badge bg-primary">{{ course.level }}</span>
+                  <span class="badge bg-info">{{ course.source }}</span>
+                  <span class="badge bg-warning text-dark"
+                    >{{ course.points }} pts</span
+                  >
+                  <span class="badge bg-success">Completed</span>
+                </div>
+                {% if course.description %}
+                <p class="small text-muted mb-1">
+                  {{ course.description[:80] }}{% if course.description|length >
+                  80 %}...{% endif %}
+                </p>
+                {% endif %}
+              </div>
+              <div class="ms-2">
+                <a
+                  href="{{ course.link }}"
+                  target="_blank"
+                  class="btn btn-sm btn-outline-success"
+                >
+                  <i class="fas fa-external-link-alt"></i> Review
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- My Courses Section -->
 {% if session.username != 'admin' %}
 <div class="row">
@@ -221,10 +259,10 @@ endblock %} {% block content %}
       <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="fas fa-user-graduate"></i> My Personal Courses</h5>
         <div>
-          <a href="{{ url_for('dashboard.add_course') }}" class="btn btn-sm btn-primary">
+          <a href="#" class="btn btn-sm btn-primary">
             <i class="fas fa-plus"></i> Add Course
           </a>
-          <a href="{{ url_for('dashboard.my_courses') }}" class="btn btn-sm btn-outline-primary">
+          <a href="{{ url_for('my_courses') }}" class="btn btn-sm btn-outline-primary">
             <i class="fas fa-list"></i> View All
           </a>
         </div>

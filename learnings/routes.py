@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, g
 import sqlite3
 from datetime import datetime
 
@@ -9,17 +9,22 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def get_current_user():
+    """Get current user from g object (set by before_request handler)"""
+    return getattr(g, 'user', None)
+
 @learnings_bp.route('/learnings')
 def index():
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
     # Admin users should not see "My Learnings" - redirect to dashboard
-    if session.get('username') == 'admin':
+    if user['username'] == 'admin':
         flash('Admin users manage global learnings from the admin panel.', 'info')
         return redirect(url_for('dashboard.index'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     # Get user's own entries + global entries
@@ -36,18 +41,35 @@ def index():
 
 @learnings_bp.route('/learnings/add', methods=['GET', 'POST'])
 def add():
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
     if request.method == 'POST':
-        title = request.form['title']
-        description = request.form['description']
-        tags = request.form['tags']
+        # Import sanitization function
+        from app import sanitize_input
+        
+        title = sanitize_input(request.form['title'])
+        description = sanitize_input(request.form['description'])
+        tags = sanitize_input(request.form['tags'])
         custom_date = request.form['custom_date'] if request.form['custom_date'] else None
-        user_id = session['user_id']
+        user_id = user['id']
+        
+        # Validate required fields
+        if not title or len(title.strip()) == 0:
+            flash('Title is required', 'error')
+            return render_template('learnings/add.html')
+        
+        if len(title) > 200:
+            flash('Title must be less than 200 characters', 'error')
+            return render_template('learnings/add.html')
+        
+        if description and len(description) > 1000:
+            flash('Description must be less than 1000 characters', 'error')
+            return render_template('learnings/add.html')
         
         # Check if admin - admin entries are global
-        is_global = 1 if session.get('username') == 'admin' else 0
+        is_global = 1 if user['username'] == 'admin' else 0
         
         if title:
             conn = get_db_connection()
@@ -70,10 +92,11 @@ def add():
 
 @learnings_bp.route('/learnings/edit/<int:entry_id>', methods=['GET', 'POST'])
 def edit(entry_id):
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     # Get the entry and verify ownership
@@ -110,10 +133,11 @@ def edit(entry_id):
 
 @learnings_bp.route('/learnings/delete/<int:entry_id>', methods=['POST'])
 def delete(entry_id):
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     # Verify ownership before deletion

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session, redirect, url_for, flash, request
+from flask import Blueprint, render_template, session, redirect, url_for, flash, request, g
 import sqlite3
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -7,6 +7,10 @@ def get_db_connection():
     conn = sqlite3.connect('ai_learning.db')
     conn.row_factory = sqlite3.Row
     return conn
+
+def get_current_user():
+    """Get current user from g object (set by before_request handler)"""
+    return getattr(g, 'user', None)
 
 def calculate_user_level(user_id):
     """Calculate user level based on points earned and admin settings"""
@@ -51,7 +55,9 @@ def update_user_points_from_courses(user_id):
     conn.commit()
     
     conn.close()
-    session['user_level'] = new_level
+    # Update session level if it exists
+    if 'user_level' in session:
+        session['user_level'] = new_level
     return new_level, total_points
 
 def update_user_level(user_id):
@@ -114,14 +120,15 @@ def get_next_level_info(current_level):
 
 @dashboard_bp.route('/dashboard')
 def index():
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
     # If admin, redirect to admin dashboard
-    if session.get('username') == 'admin':
+    if user['username'] == 'admin':
         return redirect(url_for('admin.index'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     
     # Update user level based on current points from completed courses
     current_level = update_user_level(user_id)
@@ -164,10 +171,11 @@ def index():
 
 @dashboard_bp.route('/enroll_course/<int:course_id>', methods=['POST'])
 def enroll_course(course_id):
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     try:
@@ -196,10 +204,11 @@ def enroll_course(course_id):
 
 @dashboard_bp.route('/complete_course/<int:course_id>', methods=['POST'])
 def complete_course(course_id):
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     try:
@@ -232,10 +241,11 @@ def complete_course(course_id):
 
 @dashboard_bp.route('/profile', methods=['GET', 'POST'])
 def profile():
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     if request.method == 'POST':
@@ -256,12 +266,23 @@ def profile():
         else:
             flash('Invalid expertise level selected', 'error')
     
-    # Get user data
-    user = conn.execute('''
-        SELECT username, level, points, user_selected_level, created_at 
+    # Get user data including session information
+    user_data = conn.execute('''
+        SELECT username, level, points, user_selected_level, created_at, 
+               last_login, last_activity, login_count
         FROM users 
         WHERE id = ?
     ''', (user_id,)).fetchone()
+    
+    # Get user's active sessions
+    active_sessions = conn.execute('''
+        SELECT session_token, created_at, expires_at, ip_address, user_agent,
+               CASE WHEN expires_at > datetime('now') THEN 'Active' ELSE 'Expired' END as status
+        FROM user_sessions 
+        WHERE user_id = ? AND is_active = 1
+        ORDER BY created_at DESC
+        LIMIT 5
+    ''', (user_id,)).fetchall()
     
     # Get user's learning stats
     total_learnings = conn.execute('''
@@ -285,7 +306,8 @@ def profile():
     conn.close()
     
     return render_template('dashboard/profile.html',
-                         user=user,
+                         user=user_data,
+                         active_sessions=active_sessions,
                          total_learnings=total_learnings,
                          completed_courses=completed_courses,
                          enrolled_courses=enrolled_courses)
@@ -306,7 +328,7 @@ def add_course():
         course_url = request.form['course_url']
         description = request.form['description']
         completion_date = request.form['completion_date'] if request.form['completion_date'] else None
-        user_id = session['user_id']
+        user_id = get_current_user()['id']
         
         if title and source and course_url:
             conn = get_db_connection()
@@ -345,14 +367,15 @@ def add_course():
 
 @dashboard_bp.route('/my_courses')
 def my_courses():
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
     # Admin users should use admin panel
-    if session.get('username') == 'admin':
+    if user['username'] == 'admin':
         return redirect(url_for('admin.courses'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     # Get user's personal courses
@@ -368,10 +391,11 @@ def my_courses():
 
 @dashboard_bp.route('/edit_course/<int:course_id>', methods=['GET', 'POST'])
 def edit_course(course_id):
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     # Get the course and verify ownership
@@ -420,10 +444,11 @@ def edit_course(course_id):
 
 @dashboard_bp.route('/delete_course/<int:course_id>', methods=['POST'])
 def delete_course(course_id):
-    if 'user_id' not in session:
+    user = get_current_user()
+    if not user:
         return redirect(url_for('auth.login'))
     
-    user_id = session['user_id']
+    user_id = user['id']
     conn = get_db_connection()
     
     try:
