@@ -43,8 +43,7 @@ endblock %} {% block content %}
           <div class="col-md-4">
             <div class="stat-card text-center">
               <h5 class="text-success">
-                {{ courses|selectattr('source', 'equalto', 'LinkedIn
-                Learning')|list|length }}
+                {{ courses|selectattr('source', 'equalto', 'LinkedIn Learning')|list|length }}
               </h5>
               <small class="text-muted">LinkedIn Learning</small>
             </div>
@@ -52,10 +51,9 @@ endblock %} {% block content %}
           <div class="col-md-4">
             <div class="stat-card text-center">
               <h5 class="text-warning">
-                {{ courses|selectattr('level', 'equalto', 'Expert')|list|length
-                }}
+                {{ courses|selectattr('source', 'equalto', 'Manual')|list|length }}
               </h5>
-              <small class="text-muted">Expert Level</small>
+              <small class="text-muted">Manual Entries</small>
             </div>
           </div>
         </div>
@@ -116,8 +114,8 @@ endblock %} {% block content %}
         <label for="sourceFilter" class="form-label">Filter by Source:</label>
         <select id="sourceFilter" class="form-select form-select-sm">
           <option value="">All Sources</option>
-          {% set sources = courses|map(attribute='source')|unique|list %} {% for
-          source in sources %}
+          {% set sources = courses|map(attribute='source')|unique|list %} 
+          {% for source in sources %}
           <option value="{{ source }}">{{ source }}</option>
           {% endfor %}
         </select>
@@ -140,6 +138,10 @@ endblock %} {% block content %}
           <option value="51-100">51-100 Points</option>
           <option value="101+">101+ Points</option>
         </select>
+      </div>
+      <div class="col-md-3">
+        <label for="searchFilter" class="form-label">Search:</label>
+        <input type="text" id="searchFilter" class="form-control form-control-sm" placeholder="Search title or description...">
       </div>
       <div class="col-md-3 d-flex align-items-end">
         <button
@@ -180,7 +182,7 @@ endblock %} {% block content %}
                 <br />
                 <small class="text-muted">
                   <a
-                    href="{{ course.link }}"
+                    href="{{ course.link or course.url or '#' }}"
                     target="_blank"
                     class="text-decoration-none"
                   >
@@ -193,26 +195,23 @@ endblock %} {% block content %}
               <span
                 class="badge bg-{% if course.source == 'LinkedIn Learning' %}primary{% elif course.source == 'Coursera' %}success{% elif course.source == 'Udemy' %}warning{% else %}secondary{% endif %}"
               >
-                {{ course.source }}
+                {{ course.source or 'Manual' }}
               </span>
             </td>
             <td>
-              <span
-                class="badge bg-{% if course.level == 'Expert' %}danger{% elif course.level == 'Intermediate' %}warning{% elif course.level == 'Learner' %}info{% else %}secondary{% endif %}"
-              >
-                {{ course.level }}
+              <span class="badge bg-secondary">
+                {{ course.level or 'Beginner' }}
               </span>
             </td>
             <td>
-              <span class="badge bg-light text-dark"
-                >{{ course.points }} pts</span
-              >
+              <span class="badge bg-light text-dark">
+                {{ course.points or 0 }} pts
+              </span>
             </td>
             <td>
-              <div class="course-description" title="{{ course.description }}">
-                {{ course.description[:80] if course.description else 'No
-                description' }} {% if course.description and
-                course.description|length > 80 %}...{% endif %}
+              <div class="course-description" title="{{ course.description or 'No description' }}">
+                {{ course.description[:80] if course.description else 'No description' }} 
+                {% if course.description and course.description|length > 80 %}...{% endif %}
               </div>
             </td>
             <td>
@@ -382,6 +381,29 @@ endblock %} {% block content %}
 <script>
   document.addEventListener('DOMContentLoaded', function() {
       console.log('DOM loaded');
+      
+      // Add filter event listeners
+      const sourceFilter = document.getElementById('sourceFilter');
+      const levelFilter = document.getElementById('levelFilter');
+      const pointsFilter = document.getElementById('pointsFilter');
+      const searchFilter = document.getElementById('searchFilter');
+      
+      if (sourceFilter) {
+          sourceFilter.addEventListener('change', filterTable);
+      }
+      
+      if (levelFilter) {
+          levelFilter.addEventListener('change', filterTable);
+      }
+      
+      if (pointsFilter) {
+          pointsFilter.addEventListener('change', filterTable);
+      }
+      
+      if (searchFilter) {
+          searchFilter.addEventListener('input', filterTable);
+      }
+      
       console.log('jQuery available:', typeof $ !== 'undefined');
       console.log('DataTables available:', typeof $.fn.DataTable !== 'undefined');
 
@@ -848,5 +870,119 @@ endblock %} {% block content %}
       });
       } // End of courses table check
   });
+
+  // Export data function
+  function exportData(format) {
+      const table = document.getElementById('coursesTable');
+      if (!table) return;
+      
+      let csv = [];
+      const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim()).filter(h => h !== 'Actions');
+      csv.push(headers.join(','));
+      
+      const rows = table.querySelectorAll('tbody tr:not([style*="none"])');
+      rows.forEach(row => {
+          const cells = Array.from(row.querySelectorAll('td')).slice(0, -1);
+          const rowData = cells.map(cell => {
+              let text = cell.textContent.trim().replace(/\s+/g, ' ');
+              if (text.includes(',')) text = `"${text}"`;
+              return text;
+          });
+          csv.push(rowData.join(','));
+      });
+      
+      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'courses_export.csv';
+      a.click();
+      window.URL.revokeObjectURL(url);
+  }
+
+  // Print table function
+  function printTable() {
+      const table = document.getElementById('coursesTable');
+      if (!table) return;
+      
+      const printContents = table.outerHTML;
+      const originalContents = document.body.innerHTML;
+      
+      document.body.innerHTML = '<html><head><title>Courses</title><style>table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background-color:#f2f2f2;}</style></head><body>' + printContents + '</body></html>';
+      window.print();
+      document.body.innerHTML = originalContents;
+      location.reload();
+  }
+
+  // Show table stats function
+  function showTableStats() {
+      const table = document.getElementById('coursesTable');
+      if (!table) return;
+      
+      const totalRows = table.querySelectorAll('tbody tr').length;
+      const visibleRows = table.querySelectorAll('tbody tr:not([style*="none"])').length;
+      
+      alert(`Table Statistics:\nTotal Courses: ${totalRows}\nVisible Courses: ${visibleRows}\nFiltered Out: ${totalRows - visibleRows}`);
+  }
+
+  // Show help function
+  function showHelp() {
+      alert(`Course Management Help:
+      
+Keyboard Shortcuts:
+• Ctrl+E: Export to CSV
+• Ctrl+P: Print table
+• Ctrl+R: Clear all filters
+• Ctrl+S: Show statistics
+
+Features:
+• Click column headers to sort
+• Use filters to narrow results
+• Export filtered data
+• Print current view`);
+  }
+
+  // Clear filters function
+  function clearFilters() {
+      document.getElementById('sourceFilter').value = '';
+      document.getElementById('levelFilter').value = '';
+      document.getElementById('pointsFilter').value = '';
+      document.getElementById('searchFilter').value = '';
+      filterTable();
+  }
+
+  // Filter table function
+  function filterTable() {
+      const sourceFilter = document.getElementById('sourceFilter').value.toLowerCase();
+      const levelFilter = document.getElementById('levelFilter').value.toLowerCase();
+      const pointsFilter = document.getElementById('pointsFilter').value;
+      const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+      const table = document.getElementById('coursesTable');
+      const rows = table.querySelectorAll('tbody tr');
+      
+      rows.forEach(row => {
+          const cells = row.querySelectorAll('td');
+          const title = cells[0]?.textContent.toLowerCase() || '';
+          const source = cells[1]?.textContent.toLowerCase() || '';
+          const level = cells[2]?.textContent.toLowerCase() || '';
+          const pointsText = cells[3]?.textContent || '';
+          const points = parseInt(pointsText.replace(/[^\d]/g, '')) || 0;
+          const description = cells[4]?.textContent.toLowerCase() || '';
+          
+          const matchesSource = !sourceFilter || source.includes(sourceFilter);
+          const matchesLevel = !levelFilter || level.includes(levelFilter);
+          const matchesPoints = !pointsFilter || 
+              (pointsFilter === '0-50' && points >= 0 && points <= 50) ||
+              (pointsFilter === '51-100' && points >= 51 && points <= 100) ||
+              (pointsFilter === '101+' && points >= 101);
+          const matchesSearch = !searchFilter || title.includes(searchFilter) || description.includes(searchFilter);
+          
+          if (matchesSource && matchesLevel && matchesPoints && matchesSearch) {
+              row.style.display = '';
+          } else {
+              row.style.display = 'none';
+          }
+      });
+  }
 </script>
 {% endblock %}

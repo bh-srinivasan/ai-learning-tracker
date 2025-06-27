@@ -1815,46 +1815,56 @@ def admin_populate_linkedin_courses():
         {
             'title': 'Introduction to Artificial Intelligence',
             'description': 'Learn the fundamentals of AI and machine learning',
-            'provider': 'LinkedIn Learning',
             'source': 'LinkedIn Learning',
             'url': 'https://www.linkedin.com/learning/introduction-to-artificial-intelligence',
             'link': 'https://www.linkedin.com/learning/introduction-to-artificial-intelligence',
             'level': 'Beginner',
-            'category': 'AI Fundamentals',
             'points': 50
         },
         {
             'title': 'Machine Learning with Python',
             'description': 'Master machine learning using Python libraries',
-            'provider': 'LinkedIn Learning',
             'source': 'LinkedIn Learning',
             'url': 'https://www.linkedin.com/learning/machine-learning-with-python',
             'link': 'https://www.linkedin.com/learning/machine-learning-with-python',
             'level': 'Intermediate',
-            'category': 'Machine Learning',
             'points': 100
         },
         {
             'title': 'Deep Learning Foundations',
             'description': 'Understanding deep learning and neural networks',
-            'provider': 'LinkedIn Learning',
             'source': 'LinkedIn Learning',
             'url': 'https://www.linkedin.com/learning/deep-learning-foundations',
             'link': 'https://www.linkedin.com/learning/deep-learning-foundations',
-            'level': 'Advanced',
-            'category': 'Deep Learning',
+            'level': 'Expert',
             'points': 150
         },
         {
             'title': 'Microsoft Copilot for Developers',
             'description': 'Learn to use Microsoft Copilot effectively in development',
-            'provider': 'LinkedIn Learning',
             'source': 'LinkedIn Learning',
             'url': 'https://www.linkedin.com/learning/microsoft-copilot-for-developers',
             'link': 'https://www.linkedin.com/learning/microsoft-copilot-for-developers',
-            'level': 'Intermediate',
-            'category': 'AI Tools',
+            'level': 'Learner',
             'points': 75
+        },
+        {
+            'title': 'Azure AI Fundamentals',
+            'description': 'Introduction to Azure AI services and capabilities',
+            'source': 'LinkedIn Learning',
+            'url': 'https://www.linkedin.com/learning/azure-ai-fundamentals',
+            'link': 'https://www.linkedin.com/learning/azure-ai-fundamentals',
+            'level': 'Beginner',
+            'points': 80
+        },
+        {
+            'title': 'Python for Data Science',
+            'description': 'Using Python for data analysis and machine learning',
+            'source': 'LinkedIn Learning',
+            'url': 'https://www.linkedin.com/learning/python-for-data-science',
+            'link': 'https://www.linkedin.com/learning/python-for-data-science',
+            'level': 'Intermediate',
+            'points': 90
         }
     ]
     
@@ -1864,16 +1874,16 @@ def admin_populate_linkedin_courses():
         for course in linkedin_courses:
             # Check if course already exists
             existing = conn.execute(
-                'SELECT id FROM courses WHERE title = ? AND provider = ?',
-                (course['title'], course['provider'])
+                'SELECT id FROM courses WHERE title = ? AND source = ?',
+                (course['title'], course['source'])
             ).fetchone()
             
             if not existing:
                 conn.execute('''
-                    INSERT INTO courses (title, description, provider, source, url, link, level, category, points, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                ''', (course['title'], course['description'], course['provider'], course['source'],
-                     course['url'], course['link'], course['level'], course['category'], course['points']))
+                    INSERT INTO courses (title, description, source, url, link, level, points, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ''', (course['title'], course['description'], course['source'],
+                     course['url'], course['link'], course['level'], course['points']))
                 added_count += 1
         
         conn.commit()
