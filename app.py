@@ -1457,10 +1457,13 @@ def admin_users():
         flash('Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get all users
+    # Get all users except admin
     conn = get_db_connection()
     try:
-        users = conn.execute('SELECT * FROM users ORDER BY created_at DESC').fetchall()
+        users = conn.execute(
+            'SELECT * FROM users WHERE username != ? ORDER BY created_at DESC',
+            ('admin',)
+        ).fetchall()
         return render_template('admin/users.html', users=users)
     finally:
         conn.close()
@@ -2602,6 +2605,75 @@ def admin_reset_user_password():
         conn.close()
     
     return redirect(url_for('admin_users'))
+
+@app.route('/admin/change-password', methods=['GET', 'POST'])
+@require_admin
+def admin_change_password():
+    """Admin password change - separate from user management"""
+    if request.method == 'POST':
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        change_confirmation = request.form.get('change_confirmation')
+        
+        # Validate required fields
+        if not all([current_password, new_password, confirm_password, change_confirmation]):
+            flash('All fields are required.', 'error')
+            return render_template('admin/change_password.html')
+        
+        # Validate current password
+        user = get_current_user()
+        if not user or not check_password_hash(user['password_hash'], current_password):
+            flash('Current password is incorrect.', 'error')
+            return render_template('admin/change_password.html')
+        
+        # Validate passwords match
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'error')
+            return render_template('admin/change_password.html')
+        
+        # Validate new password is different from current
+        if check_password_hash(user['password_hash'], new_password):
+            flash('New password must be different from your current password.', 'error')
+            return render_template('admin/change_password.html')
+        
+        # Validate password strength
+        is_valid, message = validate_password_strength(new_password)
+        if not is_valid:
+            flash(f'Password does not meet security requirements: {message}', 'error')
+            return render_template('admin/change_password.html')
+        
+        try:
+            conn = get_db_connection()
+            
+            # Hash the new password
+            password_hash = generate_password_hash(new_password)
+            
+            # Update admin password
+            conn.execute(
+                'UPDATE users SET password_hash = ? WHERE username = ?',
+                (password_hash, 'admin')
+            )
+            conn.commit()
+            
+            # Log security event
+            log_security_event(
+                'admin_password_change',
+                'Admin changed their own password',
+                request.remote_addr,
+                session.get('user_id')
+            )
+            
+            flash('Password changed successfully. Please use your new password for future logins.', 'success')
+            
+        except Exception as e:
+            flash(f'Error changing password: {str(e)}', 'error')
+        finally:
+            conn.close()
+        
+        return redirect(url_for('admin'))
+    
+    return render_template('admin/change_password.html')
 
 # Main application entry point
 if __name__ == '__main__':
