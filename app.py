@@ -1094,6 +1094,8 @@ def login():
                 request.headers.get('User-Agent')
             )
             session['session_token'] = session_token
+            session['user_id'] = user['id']  # Store user_id in session
+            session['username'] = username   # Store username in session
             session.permanent = True
             
             flash(f'Welcome back, {username}!', 'success')
@@ -2663,11 +2665,15 @@ def admin_change_password():
             password_hash = generate_password_hash(new_password)
             
             # Update admin password
-            conn.execute(
+            result = conn.execute(
                 'UPDATE users SET password_hash = ? WHERE username = ?',
                 (password_hash, 'admin')
             )
             conn.commit()
+            
+            # Verify the update worked (for robust error handling)
+            if result.rowcount != 1:
+                raise Exception(f"Password update failed: {result.rowcount} rows affected")
             
             # Log security event before session invalidation
             log_security_event(
