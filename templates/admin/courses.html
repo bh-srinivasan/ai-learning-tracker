@@ -43,7 +43,8 @@ endblock %} {% block content %}
           <div class="col-md-4">
             <div class="stat-card text-center">
               <h5 class="text-success">
-                {{ courses|selectattr('source', 'equalto', 'LinkedIn Learning')|list|length }}
+                {{ courses|selectattr('source', 'equalto', 'LinkedIn
+                Learning')|list|length }}
               </h5>
               <small class="text-muted">LinkedIn Learning</small>
             </div>
@@ -51,7 +52,8 @@ endblock %} {% block content %}
           <div class="col-md-4">
             <div class="stat-card text-center">
               <h5 class="text-warning">
-                {{ courses|selectattr('source', 'equalto', 'Manual')|list|length }}
+                {{ courses|selectattr('source', 'equalto', 'Manual')|list|length
+                }}
               </h5>
               <small class="text-muted">Manual Entries</small>
             </div>
@@ -114,8 +116,8 @@ endblock %} {% block content %}
         <label for="sourceFilter" class="form-label">Filter by Source:</label>
         <select id="sourceFilter" class="form-select form-select-sm">
           <option value="">All Sources</option>
-          {% set sources = courses|map(attribute='source')|unique|list %} 
-          {% for source in sources %}
+          {% set sources = courses|map(attribute='source')|unique|list %} {% for
+          source in sources %}
           <option value="{{ source }}">{{ source }}</option>
           {% endfor %}
         </select>
@@ -141,7 +143,12 @@ endblock %} {% block content %}
       </div>
       <div class="col-md-3">
         <label for="searchFilter" class="form-label">Search:</label>
-        <input type="text" id="searchFilter" class="form-control form-control-sm" placeholder="Search title or description...">
+        <input
+          type="text"
+          id="searchFilter"
+          class="form-control form-control-sm"
+          placeholder="Search title or description..."
+        />
       </div>
       <div class="col-md-3 d-flex align-items-end">
         <button
@@ -209,9 +216,13 @@ endblock %} {% block content %}
               </span>
             </td>
             <td>
-              <div class="course-description" title="{{ course.description or 'No description' }}">
-                {{ course.description[:80] if course.description else 'No description' }} 
-                {% if course.description and course.description|length > 80 %}...{% endif %}
+              <div
+                class="course-description"
+                title="{{ course.description or 'No description' }}"
+              >
+                {{ course.description[:80] if course.description else 'No
+                description' }} {% if course.description and
+                course.description|length > 80 %}...{% endif %}
               </div>
             </td>
             <td>
@@ -379,268 +390,298 @@ endblock %} {% block content %}
 </style>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-      console.log('DOM loaded');
-      
-      // Add filter event listeners
-      const sourceFilter = document.getElementById('sourceFilter');
-      const levelFilter = document.getElementById('levelFilter');
-      const pointsFilter = document.getElementById('pointsFilter');
-      const searchFilter = document.getElementById('searchFilter');
-      
-      if (sourceFilter) {
-          sourceFilter.addEventListener('change', filterTable);
-      }
-      
-      if (levelFilter) {
-          levelFilter.addEventListener('change', filterTable);
-      }
-      
-      if (pointsFilter) {
-          pointsFilter.addEventListener('change', filterTable);
-      }
-      
-      if (searchFilter) {
-          searchFilter.addEventListener('input', filterTable);
-      }
-      
-      console.log('jQuery available:', typeof $ !== 'undefined');
-      console.log('DataTables available:', typeof $.fn.DataTable !== 'undefined');
+  document.addEventListener("DOMContentLoaded", function () {
+    console.log("DOM loaded");
 
-      // Check if courses table exists and has data
-      if ($('#coursesTable tbody tr').length > 0) {
-          console.log('Courses data available, initializing table...');
+    // Add filter event listeners
+    const sourceFilter = document.getElementById("sourceFilter");
+    const levelFilter = document.getElementById("levelFilter");
+    const pointsFilter = document.getElementById("pointsFilter");
+    const searchFilter = document.getElementById("searchFilter");
+
+    if (sourceFilter) {
+      sourceFilter.addEventListener("change", filterTable);
+    }
+
+    if (levelFilter) {
+      levelFilter.addEventListener("change", filterTable);
+    }
+
+    if (pointsFilter) {
+      pointsFilter.addEventListener("change", filterTable);
+    }
+
+    if (searchFilter) {
+      searchFilter.addEventListener("input", filterTable);
+    }
+
+    console.log("jQuery available:", typeof $ !== "undefined");
+    console.log("DataTables available:", typeof $.fn.DataTable !== "undefined");
+
+    // Check if courses table exists and has data
+    if ($("#coursesTable tbody tr").length > 0) {
+      console.log("Courses data available, initializing table...");
 
       // Show loading indicator
-      $('#tableLoading').show();
-      $('#coursesTable').hide();
+      $("#tableLoading").show();
+      $("#coursesTable").hide();
 
       // Custom sorting functions
       // Level sorting (Beginner, Learner, Intermediate, Expert)
-      $.fn.dataTable.ext.type.order['level-pre'] = function (data) {
-          var level = $(data).text().trim();
-          switch(level) {
-              case 'Beginner': return 1;
-              case 'Learner': return 2;
-              case 'Intermediate': return 3;
-              case 'Expert': return 4;
-              default: return 5;
-          }
+      $.fn.dataTable.ext.type.order["level-pre"] = function (data) {
+        var level = $(data).text().trim();
+        switch (level) {
+          case "Beginner":
+            return 1;
+          case "Learner":
+            return 2;
+          case "Intermediate":
+            return 3;
+          case "Expert":
+            return 4;
+          default:
+            return 5;
+        }
       };
 
       // Points sorting (numeric)
-      $.fn.dataTable.ext.type.order['points-pre'] = function (data) {
-          var points = $(data).text().replace(/[^\d]/g, '');
-          return parseInt(points) || 0;
+      $.fn.dataTable.ext.type.order["points-pre"] = function (data) {
+        var points = $(data).text().replace(/[^\d]/g, "");
+        return parseInt(points) || 0;
       };
 
       // Initialize DataTable
       try {
-          var table = $('#coursesTable').DataTable({
-              "pageLength": 10,
-              "lengthMenu": [5, 10, 25, 50, 100],
-              "order": [[0, "asc"]],
-              "columnDefs": [
-                  {
-                      "targets": "no-sort",
-                      "orderable": false
-                  },
-                  {
-                      "targets": 2, // Level column
-                      "type": "level"
-                  },
-                  {
-                      "targets": 3, // Points column
-                      "type": "points"
-                  }
-              ],
-              "language": {
-                  "search": "Search courses:",
-                  "lengthMenu": "Show _MENU_ courses per page",
-                  "info": "Showing _START_ to _END_ of _TOTAL_ courses",
-                  "infoEmpty": "No courses to display",
-                  "infoFiltered": "(filtered from _MAX_ total courses)",
-                  "paginate": {
-                      "first": "First",
-                      "last": "Last",
-                      "next": "Next",
-                      "previous": "Previous"
-                  },
-                  "emptyTable": "No courses available in table",
-                  "zeroRecords": "No matching courses found"
-              },
-              "dom": "<'row'<'col-sm-6'l><'col-sm-6'f>>" +
-                     "<'row'<'col-sm-12'tr>>" +
-                     "<'row'<'col-sm-5'i><'col-sm-7'p>>",
-              "responsive": true,
-              "processing": true,
-              "initComplete": function() {
-                  console.log('DataTable initialized successfully');
-                  // Hide loading indicator and show table
-                  $('#tableLoading').hide();
-                  $('#coursesTable').show();
-              }
-          });
+        var table = $("#coursesTable").DataTable({
+          pageLength: 10,
+          lengthMenu: [5, 10, 25, 50, 100],
+          order: [[0, "asc"]],
+          columnDefs: [
+            {
+              targets: "no-sort",
+              orderable: false,
+            },
+            {
+              targets: 2, // Level column
+              type: "level",
+            },
+            {
+              targets: 3, // Points column
+              type: "points",
+            },
+          ],
+          language: {
+            search: "Search courses:",
+            lengthMenu: "Show _MENU_ courses per page",
+            info: "Showing _START_ to _END_ of _TOTAL_ courses",
+            infoEmpty: "No courses to display",
+            infoFiltered: "(filtered from _MAX_ total courses)",
+            paginate: {
+              first: "First",
+              last: "Last",
+              next: "Next",
+              previous: "Previous",
+            },
+            emptyTable: "No courses available in table",
+            zeroRecords: "No matching courses found",
+          },
+          dom:
+            "<'row'<'col-sm-6'l><'col-sm-6'f>>" +
+            "<'row'<'col-sm-12'tr>>" +
+            "<'row'<'col-sm-5'i><'col-sm-7'p>>",
+          responsive: true,
+          processing: true,
+          initComplete: function () {
+            console.log("DataTable initialized successfully");
+            // Hide loading indicator and show table
+            $("#tableLoading").hide();
+            $("#coursesTable").show();
+          },
+        });
 
-          console.log('DataTable object created:', table);
+        console.log("DataTable object created:", table);
       } catch (error) {
-          console.error('Error initializing DataTable:', error);
-          $('#tableLoading').hide();
-          $('#coursesTable').show();
-          alert('Error initializing table. Some features may not work properly.');
+        console.error("Error initializing DataTable:", error);
+        $("#tableLoading").hide();
+        $("#coursesTable").show();
+        alert("Error initializing table. Some features may not work properly.");
       }
 
       // Custom filter functions
-      $('#sourceFilter').on('change', function() {
-          try {
-              var value = this.value;
-              table.column(1).search(value).draw();
-              console.log('Source filter applied:', value);
-          } catch (error) {
-              console.error('Error applying source filter:', error);
-          }
+      $("#sourceFilter").on("change", function () {
+        try {
+          var value = this.value;
+          table.column(1).search(value).draw();
+          console.log("Source filter applied:", value);
+        } catch (error) {
+          console.error("Error applying source filter:", error);
+        }
       });
 
-      $('#levelFilter').on('change', function() {
-          try {
-              var value = this.value;
-              table.column(2).search(value).draw();
-              console.log('Level filter applied:', value);
-          } catch (error) {
-              console.error('Error applying level filter:', error);
-          }
+      $("#levelFilter").on("change", function () {
+        try {
+          var value = this.value;
+          table.column(2).search(value).draw();
+          console.log("Level filter applied:", value);
+        } catch (error) {
+          console.error("Error applying level filter:", error);
+        }
       });
 
-      $('#pointsFilter').on('change', function() {
-          try {
-              var value = this.value;
+      $("#pointsFilter").on("change", function () {
+        try {
+          var value = this.value;
 
-              // Remove existing custom search if any
-              $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function(fn) {
-                  return fn.toString().indexOf('pointsFilter') === -1;
-              });
+          // Remove existing custom search if any
+          $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(
+            function (fn) {
+              return fn.toString().indexOf("pointsFilter") === -1;
+            }
+          );
 
-              if (value) {
-                  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-                      // Extract points from the badge text
-                      var pointsText = $(data[3]).text() || data[3];
-                      var points = parseInt(pointsText.match(/\d+/)) || 0;
+          if (value) {
+            $.fn.dataTable.ext.search.push(function (
+              settings,
+              data,
+              dataIndex
+            ) {
+              // Extract points from the badge text
+              var pointsText = $(data[3]).text() || data[3];
+              var points = parseInt(pointsText.match(/\d+/)) || 0;
 
-                      switch(value) {
-                          case '0-50':
-                              return points >= 0 && points <= 50;
-                          case '51-100':
-                              return points >= 51 && points <= 100;
-                          case '101+':
-                              return points >= 101;
-                          default:
-                              return true;
-                      }
-                  });
+              switch (value) {
+                case "0-50":
+                  return points >= 0 && points <= 50;
+                case "51-100":
+                  return points >= 51 && points <= 100;
+                case "101+":
+                  return points >= 101;
+                default:
+                  return true;
               }
-              table.draw();
-              console.log('Points filter applied:', value);
-          } catch (error) {
-              console.error('Error applying points filter:', error);
+            });
           }
+          table.draw();
+          console.log("Points filter applied:", value);
+        } catch (error) {
+          console.error("Error applying points filter:", error);
+        }
       });
 
       // Clear all filters
-      window.clearFilters = function() {
-          $('#sourceFilter').val('');
-          $('#levelFilter').val('');
-          $('#pointsFilter').val('');
+      window.clearFilters = function () {
+        $("#sourceFilter").val("");
+        $("#levelFilter").val("");
+        $("#pointsFilter").val("");
 
-          // Clear all column searches
-          table.columns().search('').draw();
+        // Clear all column searches
+        table.columns().search("").draw();
 
-          // Remove custom search functions
-          $.fn.dataTable.ext.search = [];
-          table.draw();
+        // Remove custom search functions
+        $.fn.dataTable.ext.search = [];
+        table.draw();
       };
 
       // Export functions
-      window.exportData = function(format) {
-          if (format === 'csv') {
-              var data = table.rows({search: 'applied'}).data().toArray();
-              var headers = ['Title', 'Source', 'Level', 'Points', 'Description', 'Course Link', 'Created'];
+      window.exportData = function (format) {
+        if (format === "csv") {
+          var data = table.rows({ search: "applied" }).data().toArray();
+          var headers = [
+            "Title",
+            "Source",
+            "Level",
+            "Points",
+            "Description",
+            "Course Link",
+            "Created",
+          ];
 
-              var csv = headers.join(',') + '\n';
+          var csv = headers.join(",") + "\n";
 
-              data.forEach(function(row) {
-                  var cleanRow = [];
+          data.forEach(function (row) {
+            var cleanRow = [];
 
-                  // Clean title (remove HTML tags)
-                  var title = $(row[0]).find('strong').text() || $(row[0]).text();
-                  cleanRow.push('"' + title.replace(/"/g, '""') + '"');
+            // Clean title (remove HTML tags)
+            var title = $(row[0]).find("strong").text() || $(row[0]).text();
+            cleanRow.push('"' + title.replace(/"/g, '""') + '"');
 
-                  // Clean source (extract text from badge)
-                  var source = $(row[1]).text().trim();
-                  cleanRow.push('"' + source.replace(/"/g, '""') + '"');
+            // Clean source (extract text from badge)
+            var source = $(row[1]).text().trim();
+            cleanRow.push('"' + source.replace(/"/g, '""') + '"');
 
-                  // Clean level (extract text from badge)
-                  var level = $(row[2]).text().trim();
-                  cleanRow.push('"' + level.replace(/"/g, '""') + '"');
+            // Clean level (extract text from badge)
+            var level = $(row[2]).text().trim();
+            cleanRow.push('"' + level.replace(/"/g, '""') + '"');
 
-                  // Clean points (extract number)
-                  var points = $(row[3]).text().replace(/[^\d]/g, '');
-                  cleanRow.push('"' + points + '"');
+            // Clean points (extract number)
+            var points = $(row[3]).text().replace(/[^\d]/g, "");
+            cleanRow.push('"' + points + '"');
 
-                  // Clean description
-                  var description = $(row[4]).text() || $(row[4]).attr('title') || 'No description';
-                  cleanRow.push('"' + description.replace(/"/g, '""') + '"');
+            // Clean description
+            var description =
+              $(row[4]).text() || $(row[4]).attr("title") || "No description";
+            cleanRow.push('"' + description.replace(/"/g, '""') + '"');
 
-                  // Extract course link
-                  var courseLink = $(row[0]).find('a').attr('href') || '';
-                  cleanRow.push('"' + courseLink.replace(/"/g, '""') + '"');
+            // Extract course link
+            var courseLink = $(row[0]).find("a").attr("href") || "";
+            cleanRow.push('"' + courseLink.replace(/"/g, '""') + '"');
 
-                  // Clean date
-                  var date = $(row[5]).text().trim();
-                  cleanRow.push('"' + date.replace(/"/g, '""') + '"');
+            // Clean date
+            var date = $(row[5]).text().trim();
+            cleanRow.push('"' + date.replace(/"/g, '""') + '"');
 
-                  csv += cleanRow.join(',') + '\n';
-              });
+            csv += cleanRow.join(",") + "\n";
+          });
 
-              var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-              var link = document.createElement('a');
-              var url = URL.createObjectURL(blob);
-              link.setAttribute('href', url);
-              link.setAttribute('download', 'courses_' + new Date().toISOString().split('T')[0] + '.csv');
-              link.style.visibility = 'hidden';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-          }
+          var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+          var link = document.createElement("a");
+          var url = URL.createObjectURL(blob);
+          link.setAttribute("href", url);
+          link.setAttribute(
+            "download",
+            "courses_" + new Date().toISOString().split("T")[0] + ".csv"
+          );
+          link.style.visibility = "hidden";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
       };
 
       // Print function
-      window.printTable = function() {
-          var printWindow = window.open('', '_blank');
-          if (!printWindow) {
-              alert('Please allow popups for this site to use the print function.');
-              return;
-          }
+      window.printTable = function () {
+        var printWindow = window.open("", "_blank");
+        if (!printWindow) {
+          alert("Please allow popups for this site to use the print function.");
+          return;
+        }
 
-          // Get filtered data
-          var data = table.rows({search: 'applied'}).data().toArray();
-          var tableHtml = '<table class="table table-striped table-bordered">';
-          tableHtml += '<thead><tr><th>Title</th><th>Source</th><th>Level</th><th>Points</th><th>Description</th><th>Created</th></tr></thead>';
-          tableHtml += '<tbody>';
+        // Get filtered data
+        var data = table.rows({ search: "applied" }).data().toArray();
+        var tableHtml = '<table class="table table-striped table-bordered">';
+        tableHtml +=
+          "<thead><tr><th>Title</th><th>Source</th><th>Level</th><th>Points</th><th>Description</th><th>Created</th></tr></thead>";
+        tableHtml += "<tbody>";
 
-          data.forEach(function(row) {
-              tableHtml += '<tr>';
-              tableHtml += '<td>' + ($(row[0]).find('strong').text() || $(row[0]).text()) + '</td>';
-              tableHtml += '<td>' + $(row[1]).text().trim() + '</td>';
-              tableHtml += '<td>' + $(row[2]).text().trim() + '</td>';
-              tableHtml += '<td>' + $(row[3]).text().replace(/[^\d]/g, '') + ' pts</td>';
-              tableHtml += '<td>' + ($(row[4]).text() || 'No description') + '</td>';
-              tableHtml += '<td>' + $(row[5]).text().trim() + '</td>';
-              tableHtml += '</tr>';
-          });
+        data.forEach(function (row) {
+          tableHtml += "<tr>";
+          tableHtml +=
+            "<td>" +
+            ($(row[0]).find("strong").text() || $(row[0]).text()) +
+            "</td>";
+          tableHtml += "<td>" + $(row[1]).text().trim() + "</td>";
+          tableHtml += "<td>" + $(row[2]).text().trim() + "</td>";
+          tableHtml +=
+            "<td>" + $(row[3]).text().replace(/[^\d]/g, "") + " pts</td>";
+          tableHtml +=
+            "<td>" + ($(row[4]).text() || "No description") + "</td>";
+          tableHtml += "<td>" + $(row[5]).text().trim() + "</td>";
+          tableHtml += "</tr>";
+        });
 
-          tableHtml += '</tbody></table>';
+        tableHtml += "</tbody></table>";
 
-          printWindow.document.write(`
+        printWindow.document.write(`
               <html>
               <head>
                   <title>Courses Report</title>
@@ -664,44 +705,49 @@ endblock %} {% block content %}
               </html>
           `);
 
-          printWindow.document.close();
+        printWindow.document.close();
 
-          // Wait for content to load before printing
-          setTimeout(function() {
-              printWindow.focus();
-              printWindow.print();
-          }, 500);
+        // Wait for content to load before printing
+        setTimeout(function () {
+          printWindow.focus();
+          printWindow.print();
+        }, 500);
       };
 
       // Show detailed statistics
-      window.showTableStats = function() {
-          var info = table.page.info();
-          var currentData = table.rows({search: 'applied'}).data().toArray();
+      window.showTableStats = function () {
+        var info = table.page.info();
+        var currentData = table.rows({ search: "applied" }).data().toArray();
 
-          // Calculate statistics
-          var totalPoints = 0;
-          var levelCounts = {};
-          var sourceCounts = {};
+        // Calculate statistics
+        var totalPoints = 0;
+        var levelCounts = {};
+        var sourceCounts = {};
 
-          currentData.forEach(function(row) {
-              var points = parseInt($(row[3]).text().match(/\d+/)) || 0;
-              totalPoints += points;
+        currentData.forEach(function (row) {
+          var points = parseInt($(row[3]).text().match(/\d+/)) || 0;
+          totalPoints += points;
 
-              var level = $(row[2]).text().trim();
-              var source = $(row[1]).text().trim();
+          var level = $(row[2]).text().trim();
+          var source = $(row[1]).text().trim();
 
-              levelCounts[level] = (levelCounts[level] || 0) + 1;
-              sourceCounts[source] = (sourceCounts[source] || 0) + 1;
-          });
+          levelCounts[level] = (levelCounts[level] || 0) + 1;
+          sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+        });
 
-          var avgPoints = currentData.length > 0 ? (totalPoints / currentData.length).toFixed(1) : 0;
+        var avgPoints =
+          currentData.length > 0
+            ? (totalPoints / currentData.length).toFixed(1)
+            : 0;
 
-          var statsHtml = `
+        var statsHtml = `
               <div class="row">
                   <div class="col-md-6">
                       <h6>General Statistics</h6>
                       <ul class="list-unstyled">
-                          <li><strong>Filtered Courses:</strong> ${info.recordsDisplay}</li>
+                          <li><strong>Filtered Courses:</strong> ${
+                            info.recordsDisplay
+                          }</li>
                           <li><strong>Total Points:</strong> ${totalPoints}</li>
                           <li><strong>Average Points:</strong> ${avgPoints}</li>
                       </ul>
@@ -709,9 +755,12 @@ endblock %} {% block content %}
                   <div class="col-md-6">
                       <h6>Level Distribution</h6>
                       <ul class="list-unstyled">
-                          ${Object.entries(levelCounts).map(([level, count]) =>
-                              `<li><strong>${level}:</strong> ${count}</li>`
-                          ).join('')}
+                          ${Object.entries(levelCounts)
+                            .map(
+                              ([level, count]) =>
+                                `<li><strong>${level}:</strong> ${count}</li>`
+                            )
+                            .join("")}
                       </ul>
                   </div>
               </div>
@@ -719,17 +768,20 @@ endblock %} {% block content %}
                   <div class="col-md-12">
                       <h6>Source Distribution</h6>
                       <ul class="list-unstyled">
-                          ${Object.entries(sourceCounts).map(([source, count]) =>
-                              `<li><strong>${source}:</strong> ${count}</li>`
-                          ).join('')}
+                          ${Object.entries(sourceCounts)
+                            .map(
+                              ([source, count]) =>
+                                `<li><strong>${source}:</strong> ${count}</li>`
+                            )
+                            .join("")}
                       </ul>
                   </div>
               </div>
           `;
 
-          // Create modal or alert with stats
-          var modal = document.createElement('div');
-          modal.innerHTML = `
+        // Create modal or alert with stats
+        var modal = document.createElement("div");
+        modal.innerHTML = `
               <div class="modal fade" id="statsModal" tabindex="-1">
                   <div class="modal-dialog">
                       <div class="modal-content">
@@ -747,44 +799,48 @@ endblock %} {% block content %}
                   </div>
               </div>
           `;
-          document.body.appendChild(modal);
+        document.body.appendChild(modal);
 
-          var bootstrapModal = new bootstrap.Modal(document.getElementById('statsModal'));
-          bootstrapModal.show();
+        var bootstrapModal = new bootstrap.Modal(
+          document.getElementById("statsModal")
+        );
+        bootstrapModal.show();
 
-          // Clean up modal after hiding
-          document.getElementById('statsModal').addEventListener('hidden.bs.modal', function() {
-              document.body.removeChild(modal);
+        // Clean up modal after hiding
+        document
+          .getElementById("statsModal")
+          .addEventListener("hidden.bs.modal", function () {
+            document.body.removeChild(modal);
           });
       };
 
       // Keyboard shortcuts
-      document.addEventListener('keydown', function(e) {
-          // Ctrl+E for Export
-          if (e.ctrlKey && e.key === 'e') {
-              e.preventDefault();
-              exportData('csv');
-          }
-          // Ctrl+P for Print
-          if (e.ctrlKey && e.key === 'p') {
-              e.preventDefault();
-              printTable();
-          }
-          // Ctrl+R for Clear Filters
-          if (e.ctrlKey && e.key === 'r') {
-              e.preventDefault();
-              clearFilters();
-          }
-          // Ctrl+S for Stats
-          if (e.ctrlKey && e.key === 's') {
-              e.preventDefault();
-              showTableStats();
-          }
+      document.addEventListener("keydown", function (e) {
+        // Ctrl+E for Export
+        if (e.ctrlKey && e.key === "e") {
+          e.preventDefault();
+          exportData("csv");
+        }
+        // Ctrl+P for Print
+        if (e.ctrlKey && e.key === "p") {
+          e.preventDefault();
+          printTable();
+        }
+        // Ctrl+R for Clear Filters
+        if (e.ctrlKey && e.key === "r") {
+          e.preventDefault();
+          clearFilters();
+        }
+        // Ctrl+S for Stats
+        if (e.ctrlKey && e.key === "s") {
+          e.preventDefault();
+          showTableStats();
+        }
       });
 
       // Show help modal
-      window.showHelp = function() {
-          var helpHtml = `
+      window.showHelp = function () {
+        var helpHtml = `
               <div class="row">
                   <div class="col-md-12">
                       <h6>Keyboard Shortcuts</h6>
@@ -815,8 +871,8 @@ endblock %} {% block content %}
               </div>
           `;
 
-          var modal = document.createElement('div');
-          modal.innerHTML = `
+        var modal = document.createElement("div");
+        modal.innerHTML = `
               <div class="modal fade" id="helpModal" tabindex="-1">
                   <div class="modal-dialog modal-lg">
                       <div class="modal-content">
@@ -834,100 +890,115 @@ endblock %} {% block content %}
                   </div>
               </div>
           `;
-          document.body.appendChild(modal);
+        document.body.appendChild(modal);
 
-          var bootstrapModal = new bootstrap.Modal(document.getElementById('helpModal'));
-          bootstrapModal.show();
+        var bootstrapModal = new bootstrap.Modal(
+          document.getElementById("helpModal")
+        );
+        bootstrapModal.show();
 
-          // Clean up modal after hiding
-          document.getElementById('helpModal').addEventListener('hidden.bs.modal', function() {
-              document.body.removeChild(modal);
+        // Clean up modal after hiding
+        document
+          .getElementById("helpModal")
+          .addEventListener("hidden.bs.modal", function () {
+            document.body.removeChild(modal);
           });
       };
 
       // Keyboard shortcuts
-      document.addEventListener('keydown', function(e) {
-          if (e.ctrlKey) {
-              switch(e.key) {
-                  case 'e':
-                      e.preventDefault();
-                      exportData('csv');
-                      break;
-                  case 'p':
-                      e.preventDefault();
-                      printTable();
-                      break;
-                  case 'r':
-                      e.preventDefault();
-                      clearFilters();
-                      break;
-                  case 's':
-                      e.preventDefault();
-                      showTableStats();
-                      break;
-              }
+      document.addEventListener("keydown", function (e) {
+        if (e.ctrlKey) {
+          switch (e.key) {
+            case "e":
+              e.preventDefault();
+              exportData("csv");
+              break;
+            case "p":
+              e.preventDefault();
+              printTable();
+              break;
+            case "r":
+              e.preventDefault();
+              clearFilters();
+              break;
+            case "s":
+              e.preventDefault();
+              showTableStats();
+              break;
           }
+        }
       });
-      } // End of courses table check
+    } // End of courses table check
   });
 
   // Export data function
   function exportData(format) {
-      const table = document.getElementById('coursesTable');
-      if (!table) return;
-      
-      let csv = [];
-      const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim()).filter(h => h !== 'Actions');
-      csv.push(headers.join(','));
-      
-      const rows = table.querySelectorAll('tbody tr:not([style*="none"])');
-      rows.forEach(row => {
-          const cells = Array.from(row.querySelectorAll('td')).slice(0, -1);
-          const rowData = cells.map(cell => {
-              let text = cell.textContent.trim().replace(/\s+/g, ' ');
-              if (text.includes(',')) text = `"${text}"`;
-              return text;
-          });
-          csv.push(rowData.join(','));
+    const table = document.getElementById("coursesTable");
+    if (!table) return;
+
+    let csv = [];
+    const headers = Array.from(table.querySelectorAll("thead th"))
+      .map((th) => th.textContent.trim())
+      .filter((h) => h !== "Actions");
+    csv.push(headers.join(","));
+
+    const rows = table.querySelectorAll('tbody tr:not([style*="none"])');
+    rows.forEach((row) => {
+      const cells = Array.from(row.querySelectorAll("td")).slice(0, -1);
+      const rowData = cells.map((cell) => {
+        let text = cell.textContent.trim().replace(/\s+/g, " ");
+        if (text.includes(",")) text = `"${text}"`;
+        return text;
       });
-      
-      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'courses_export.csv';
-      a.click();
-      window.URL.revokeObjectURL(url);
+      csv.push(rowData.join(","));
+    });
+
+    const blob = new Blob([csv.join("\n")], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "courses_export.csv";
+    a.click();
+    window.URL.revokeObjectURL(url);
   }
 
   // Print table function
   function printTable() {
-      const table = document.getElementById('coursesTable');
-      if (!table) return;
-      
-      const printContents = table.outerHTML;
-      const originalContents = document.body.innerHTML;
-      
-      document.body.innerHTML = '<html><head><title>Courses</title><style>table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background-color:#f2f2f2;}</style></head><body>' + printContents + '</body></html>';
-      window.print();
-      document.body.innerHTML = originalContents;
-      location.reload();
+    const table = document.getElementById("coursesTable");
+    if (!table) return;
+
+    const printContents = table.outerHTML;
+    const originalContents = document.body.innerHTML;
+
+    document.body.innerHTML =
+      "<html><head><title>Courses</title><style>table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background-color:#f2f2f2;}</style></head><body>" +
+      printContents +
+      "</body></html>";
+    window.print();
+    document.body.innerHTML = originalContents;
+    location.reload();
   }
 
   // Show table stats function
   function showTableStats() {
-      const table = document.getElementById('coursesTable');
-      if (!table) return;
-      
-      const totalRows = table.querySelectorAll('tbody tr').length;
-      const visibleRows = table.querySelectorAll('tbody tr:not([style*="none"])').length;
-      
-      alert(`Table Statistics:\nTotal Courses: ${totalRows}\nVisible Courses: ${visibleRows}\nFiltered Out: ${totalRows - visibleRows}`);
+    const table = document.getElementById("coursesTable");
+    if (!table) return;
+
+    const totalRows = table.querySelectorAll("tbody tr").length;
+    const visibleRows = table.querySelectorAll(
+      'tbody tr:not([style*="none"])'
+    ).length;
+
+    alert(
+      `Table Statistics:\nTotal Courses: ${totalRows}\nVisible Courses: ${visibleRows}\nFiltered Out: ${
+        totalRows - visibleRows
+      }`
+    );
   }
 
   // Show help function
   function showHelp() {
-      alert(`Course Management Help:
+    alert(`Course Management Help:
       
 Keyboard Shortcuts:
 • Ctrl+E: Export to CSV
@@ -944,45 +1015,55 @@ Features:
 
   // Clear filters function
   function clearFilters() {
-      document.getElementById('sourceFilter').value = '';
-      document.getElementById('levelFilter').value = '';
-      document.getElementById('pointsFilter').value = '';
-      document.getElementById('searchFilter').value = '';
-      filterTable();
+    document.getElementById("sourceFilter").value = "";
+    document.getElementById("levelFilter").value = "";
+    document.getElementById("pointsFilter").value = "";
+    document.getElementById("searchFilter").value = "";
+    filterTable();
   }
 
   // Filter table function
   function filterTable() {
-      const sourceFilter = document.getElementById('sourceFilter').value.toLowerCase();
-      const levelFilter = document.getElementById('levelFilter').value.toLowerCase();
-      const pointsFilter = document.getElementById('pointsFilter').value;
-      const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
-      const table = document.getElementById('coursesTable');
-      const rows = table.querySelectorAll('tbody tr');
-      
-      rows.forEach(row => {
-          const cells = row.querySelectorAll('td');
-          const title = cells[0]?.textContent.toLowerCase() || '';
-          const source = cells[1]?.textContent.toLowerCase() || '';
-          const level = cells[2]?.textContent.toLowerCase() || '';
-          const pointsText = cells[3]?.textContent || '';
-          const points = parseInt(pointsText.replace(/[^\d]/g, '')) || 0;
-          const description = cells[4]?.textContent.toLowerCase() || '';
-          
-          const matchesSource = !sourceFilter || source.includes(sourceFilter);
-          const matchesLevel = !levelFilter || level.includes(levelFilter);
-          const matchesPoints = !pointsFilter || 
-              (pointsFilter === '0-50' && points >= 0 && points <= 50) ||
-              (pointsFilter === '51-100' && points >= 51 && points <= 100) ||
-              (pointsFilter === '101+' && points >= 101);
-          const matchesSearch = !searchFilter || title.includes(searchFilter) || description.includes(searchFilter);
-          
-          if (matchesSource && matchesLevel && matchesPoints && matchesSearch) {
-              row.style.display = '';
-          } else {
-              row.style.display = 'none';
-          }
-      });
+    const sourceFilter = document
+      .getElementById("sourceFilter")
+      .value.toLowerCase();
+    const levelFilter = document
+      .getElementById("levelFilter")
+      .value.toLowerCase();
+    const pointsFilter = document.getElementById("pointsFilter").value;
+    const searchFilter = document
+      .getElementById("searchFilter")
+      .value.toLowerCase();
+    const table = document.getElementById("coursesTable");
+    const rows = table.querySelectorAll("tbody tr");
+
+    rows.forEach((row) => {
+      const cells = row.querySelectorAll("td");
+      const title = cells[0]?.textContent.toLowerCase() || "";
+      const source = cells[1]?.textContent.toLowerCase() || "";
+      const level = cells[2]?.textContent.toLowerCase() || "";
+      const pointsText = cells[3]?.textContent || "";
+      const points = parseInt(pointsText.replace(/[^\d]/g, "")) || 0;
+      const description = cells[4]?.textContent.toLowerCase() || "";
+
+      const matchesSource = !sourceFilter || source.includes(sourceFilter);
+      const matchesLevel = !levelFilter || level.includes(levelFilter);
+      const matchesPoints =
+        !pointsFilter ||
+        (pointsFilter === "0-50" && points >= 0 && points <= 50) ||
+        (pointsFilter === "51-100" && points >= 51 && points <= 100) ||
+        (pointsFilter === "101+" && points >= 101);
+      const matchesSearch =
+        !searchFilter ||
+        title.includes(searchFilter) ||
+        description.includes(searchFilter);
+
+      if (matchesSource && matchesLevel && matchesPoints && matchesSearch) {
+        row.style.display = "";
+      } else {
+        row.style.display = "none";
+      }
+    });
   }
 </script>
 {% endblock %}

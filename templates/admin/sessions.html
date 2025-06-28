@@ -1,209 +1,225 @@
-{% extends "base.html" %}
-
-{% block title %}Session Management - AI Learning Tracker{% endblock %}
-
-{% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-shield-alt"></i> Session Management</h1>
+{% extends "base.html" %} {% block title %}Session Management - AI Learning
+Tracker{% endblock %} {% block content %}
+<div
+  class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom"
+>
+  <h1 class="h2"><i class="fas fa-shield-alt"></i> Session Management</h1>
 </div>
 
 <!-- Session Statistics -->
 <div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card text-center bg-primary text-white">
-            <div class="card-body">
-                <h5 class="card-title">Active Sessions</h5>
-                <h2>{{ active_sessions|length }}</h2>
-            </div>
-        </div>
+  <div class="col-md-4">
+    <div class="card text-center bg-primary text-white">
+      <div class="card-body">
+        <h5 class="card-title">Active Sessions</h5>
+        <h2>{{ active_sessions|length }}</h2>
+      </div>
     </div>
-    <div class="col-md-4">
-        <div class="card text-center bg-success text-white">
-            <div class="card-body">
-                <h5 class="card-title">Total Activity (7 days)</h5>
-                <h2>{{ activity_stats|sum(attribute='count') }}</h2>
-            </div>
-        </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center bg-success text-white">
+      <div class="card-body">
+        <h5 class="card-title">Total Activity (7 days)</h5>
+        <h2>{{ activity_stats|sum(attribute='count') }}</h2>
+      </div>
     </div>
-    <div class="col-md-4">
-        <div class="card text-center bg-info text-white">
-            <div class="card-body">
-                <h5 class="card-title">Logins Today</h5>
-                <h2>
-                    {% for stat in login_stats %}
-                        {% if stat.login_date == moment().format('YYYY-MM-DD') %}
-                            {{ stat.login_count }}
-                        {% endif %}
-                    {% else %}
-                        0
-                    {% endfor %}
-                </h2>
-            </div>
-        </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center bg-info text-white">
+      <div class="card-body">
+        <h5 class="card-title">Logins Today</h5>
+        <h2>
+          {% for stat in login_stats %} {% if stat.login_date ==
+          moment().format('YYYY-MM-DD') %} {{ stat.login_count }} {% endif %} {%
+          else %} 0 {% endfor %}
+        </h2>
+      </div>
     </div>
+  </div>
 </div>
 
 <!-- Activity Statistics -->
 <div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="fas fa-chart-bar"></i> Activity Types (Last 7 Days)</h5>
-            </div>
-            <div class="card-body">
-                {% if activity_stats %}
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th>Activity Type</th>
-                                <th>Count</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for stat in activity_stats %}
-                            <tr>
-                                <td>
-                                    {% if stat.activity_type == 'session_created' %}
-                                        <i class="fas fa-sign-in-alt text-success"></i> Login
-                                    {% elif stat.activity_type == 'session_invalidated' %}
-                                        <i class="fas fa-sign-out-alt text-danger"></i> Logout
-                                    {% elif stat.activity_type == 'page_access' %}
-                                        <i class="fas fa-eye text-info"></i> Page Access
-                                    {% else %}
-                                        <i class="fas fa-activity"></i> {{ stat.activity_type|title }}
-                                    {% endif %}
-                                </td>
-                                <td><span class="badge badge-secondary">{{ stat.count }}</span></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                {% else %}
-                    <p class="text-muted">No activity data available.</p>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5><i class="fas fa-chart-bar"></i> Activity Types (Last 7 Days)</h5>
+      </div>
+      <div class="card-body">
+        {% if activity_stats %}
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Activity Type</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for stat in activity_stats %}
+            <tr>
+              <td>
+                {% if stat.activity_type == 'session_created' %}
+                <i class="fas fa-sign-in-alt text-success"></i> Login {% elif
+                stat.activity_type == 'session_invalidated' %}
+                <i class="fas fa-sign-out-alt text-danger"></i> Logout {% elif
+                stat.activity_type == 'page_access' %}
+                <i class="fas fa-eye text-info"></i> Page Access {% else %}
+                <i class="fas fa-activity"></i> {{ stat.activity_type|title }}
                 {% endif %}
-            </div>
-        </div>
+              </td>
+              <td>
+                <span class="badge badge-secondary">{{ stat.count }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No activity data available.</p>
+        {% endif %}
+      </div>
     </div>
-    
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="fas fa-calendar"></i> Daily Logins (Last 7 Days)</h5>
-            </div>
-            <div class="card-body">
-                {% if login_stats %}
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Logins</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for stat in login_stats %}
-                            <tr>
-                                <td>{{ stat.login_date }}</td>
-                                <td><span class="badge badge-primary">{{ stat.login_count }}</span></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                {% else %}
-                    <p class="text-muted">No login data available.</p>
-                {% endif %}
-            </div>
-        </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5><i class="fas fa-calendar"></i> Daily Logins (Last 7 Days)</h5>
+      </div>
+      <div class="card-body">
+        {% if login_stats %}
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Logins</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for stat in login_stats %}
+            <tr>
+              <td>{{ stat.login_date }}</td>
+              <td>
+                <span class="badge badge-primary">{{ stat.login_count }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No login data available.</p>
+        {% endif %}
+      </div>
     </div>
+  </div>
 </div>
 
 <!-- Active Sessions -->
 <div class="card">
-    <div class="card-header">
-        <h5><i class="fas fa-users"></i> Active User Sessions</h5>
+  <div class="card-header">
+    <h5><i class="fas fa-users"></i> Active User Sessions</h5>
+  </div>
+  <div class="card-body">
+    {% if active_sessions %}
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Level</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Expires</th>
+            <th>IP Address</th>
+            <th>Session Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for session in active_sessions %}
+          <tr>
+            <td>
+              <strong>{{ session.username }}</strong>
+              {% if session.status == 'inactive' %}
+              <span class="badge badge-secondary">Paused</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge badge-info">{{ session.level }}</span>
+            </td>
+            <td>
+              {% if session.status == 'active' %}
+              <span class="badge badge-success">Active</span>
+              {% else %}
+              <span class="badge badge-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td>
+              <small>{{ session.created_at }}</small>
+            </td>
+            <td>
+              <small>{{ session.expires_at }}</small>
+            </td>
+            <td>
+              <small class="text-muted"
+                >{{ session.ip_address or 'Unknown' }}</small
+              >
+            </td>
+            <td>
+              {% if session.session_status == 'Active' %}
+              <span class="badge badge-success"
+                >{{ session.session_status }}</span
+              >
+              {% else %}
+              <span class="badge badge-warning"
+                >{{ session.session_status }}</span
+              >
+              {% endif %}
+            </td>
+            <td>
+              <div class="btn-group" role="group">
+                <form
+                  method="POST"
+                  action="#"
+                  style="display: inline"
+                  onsubmit="return confirm('Are you sure you want to invalidate this session?')"
+                >
+                  >
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-ban"></i> Invalidate
+                  </button>
+                </form>
+                <form
+                  method="POST"
+                  action="#"
+                  style="display: inline"
+                  onsubmit="return confirm('Are you sure you want to invalidate ALL sessions for this user?')"
+                >
+                  >
+                  <button type="submit" class="btn btn-sm btn-outline-warning">
+                    <i class="fas fa-times-circle"></i> All
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    <div class="card-body">
-        {% if active_sessions %}
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Level</th>
-                            <th>Status</th>
-                            <th>Created</th>
-                            <th>Expires</th>
-                            <th>IP Address</th>
-                            <th>Session Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for session in active_sessions %}
-                        <tr>
-                            <td>
-                                <strong>{{ session.username }}</strong>
-                                {% if session.status == 'inactive' %}
-                                    <span class="badge badge-secondary">Paused</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <span class="badge badge-info">{{ session.level }}</span>
-                            </td>
-                            <td>
-                                {% if session.status == 'active' %}
-                                    <span class="badge badge-success">Active</span>
-                                {% else %}
-                                    <span class="badge badge-secondary">Inactive</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <small>{{ session.created_at }}</small>
-                            </td>
-                            <td>
-                                <small>{{ session.expires_at }}</small>
-                            </td>
-                            <td>
-                                <small class="text-muted">{{ session.ip_address or 'Unknown' }}</small>
-                            </td>
-                            <td>
-                                {% if session.session_status == 'Active' %}
-                                    <span class="badge badge-success">{{ session.session_status }}</span>
-                                {% else %}
-                                    <span class="badge badge-warning">{{ session.session_status }}</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <div class="btn-group" role="group">
-                                    <form method="POST" action="#" style="display:inline;" onsubmit="return confirm('Are you sure you want to invalidate this session?')">>
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="fas fa-ban"></i> Invalidate
-                                        </button>
-                                    </form>
-                                    <form method="POST" action="#" style="display:inline;" onsubmit="return confirm('Are you sure you want to invalidate ALL sessions for this user?')">>
-                                        <button type="submit" class="btn btn-sm btn-outline-warning">
-                                            <i class="fas fa-times-circle"></i> All
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i> No active sessions found.
-            </div>
-        {% endif %}
+    {% else %}
+    <div class="alert alert-info">
+      <i class="fas fa-info-circle"></i> No active sessions found.
     </div>
+    {% endif %}
+  </div>
 </div>
 
 <script>
-// Auto-refresh the page every 30 seconds to show updated session info
-setTimeout(function() {
+  // Auto-refresh the page every 30 seconds to show updated session info
+  setTimeout(function () {
     window.location.reload();
-}, 30000);
+  }, 30000);
 </script>
 
 {% endblock %}

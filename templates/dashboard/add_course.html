@@ -1,8 +1,5 @@
-{% extends "base.html" %}
-
-{% block title %}Add Course - AI Learning Tracker{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Add Course - AI Learning Tracker{%
+endblock %} {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
     <div class="card">
@@ -68,7 +65,9 @@
           </div>
 
           <div class="mb-3">
-            <label for="completion_date" class="form-label">Completion Date</label>
+            <label for="completion_date" class="form-label"
+              >Completion Date</label
+            >
             <input
               type="date"
               class="form-control"
@@ -84,7 +83,10 @@
             <button type="submit" class="btn btn-primary">
               <i class="fas fa-save"></i> Add Course
             </button>
-            <a href="{{ url_for('dashboard_my_courses') }}" class="btn btn-secondary">
+            <a
+              href="{{ url_for('dashboard_my_courses') }}"
+              class="btn btn-secondary"
+            >
               <i class="fas fa-times"></i> Cancel
             </a>
           </div>
@@ -101,16 +103,20 @@
       <div class="card-body">
         <ul class="mb-0">
           <li>
-            <strong>Track Your Learning:</strong> Keep a record of courses you've taken from any platform
+            <strong>Track Your Learning:</strong> Keep a record of courses
+            you've taken from any platform
           </li>
           <li>
-            <strong>Personal Progress:</strong> Your courses are private and only visible to you
+            <strong>Personal Progress:</strong> Your courses are private and
+            only visible to you
           </li>
           <li>
-            <strong>Completion Tracking:</strong> Mark completion dates to track your learning journey
+            <strong>Completion Tracking:</strong> Mark completion dates to track
+            your learning journey
           </li>
           <li>
-            <strong>Multiple Sources:</strong> Add courses from any learning platform or resource
+            <strong>Multiple Sources:</strong> Add courses from any learning
+            platform or resource
           </li>
         </ul>
       </div>

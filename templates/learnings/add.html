@@ -70,10 +70,7 @@ endblock %} {% block content %}
               {% if session.username == 'admin' %}Save Global Learning Entry{%
               else %}Save Learning Entry{% endif %}
             </button>
-            <a
-              href="{{ url_for('dashboard') }}"
-              class="btn btn-secondary"
-            >
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
               <i class="fas fa-times"></i> Cancel
             </a>
           </div>
