@@ -2614,10 +2614,9 @@ def admin_change_password():
         current_password = request.form.get('current_password')
         new_password = request.form.get('new_password')
         confirm_password = request.form.get('confirm_password')
-        change_confirmation = request.form.get('change_confirmation')
         
         # Validate required fields
-        if not all([current_password, new_password, confirm_password, change_confirmation]):
+        if not all([current_password, new_password, confirm_password]):
             flash('All fields are required.', 'error')
             return render_template('admin/change_password.html')
         
@@ -2656,22 +2655,33 @@ def admin_change_password():
             )
             conn.commit()
             
-            # Log security event
+            # Log security event before session invalidation
             log_security_event(
                 'admin_password_change',
-                'Admin changed their own password',
+                'Admin changed their own password - session invalidated',
                 request.remote_addr,
                 session.get('user_id')
             )
             
-            flash('Password changed successfully. Please use your new password for future logins.', 'success')
+            # Invalidate current session
+            session_token = session.get('session_token')
+            if session_token:
+                invalidate_session(session_token)
+            
+            # Clear session data
+            session.clear()
+            
+            # Flash success message for login page
+            flash('Password changed successfully! Please log in with your new password.', 'success')
+            
+            # Redirect to login page
+            return redirect(url_for('login'))
             
         except Exception as e:
             flash(f'Error changing password: {str(e)}', 'error')
+            return render_template('admin/change_password.html')
         finally:
             conn.close()
-        
-        return redirect(url_for('admin_dashboard'))
     
     return render_template('admin/change_password.html')
 
