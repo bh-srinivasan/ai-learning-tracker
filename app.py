@@ -2467,7 +2467,7 @@ def admin_validate_password():
             'uppercase': bool(re.search(r'[A-Z]', password)),
             'lowercase': bool(re.search(r'[a-z]', password)),
             'number': bool(re.search(r'\d', password)),
-            'special': bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password))
+            'special': bool(re.search(r'[!@#$%^&*()_+\-=\[\]{};:,.<>?]', password))
         }
     }
 
@@ -2817,6 +2817,136 @@ def admin_change_password():
             conn.close()
     
     return render_template('admin/change_password.html')
+
+# Backend-Only Password Reset Functions
+# These functions are for internal use only and not exposed via web routes
+
+def validate_password_strength(password):
+    """
+    Validate password meets security requirements (backend-only)
+    
+    Requirements:
+    - Minimum 8 characters
+    - At least one uppercase letter
+    - At least one lowercase letter  
+    - At least one number
+    - At least one special character
+    
+    Args:
+        password (str): Password to validate
+        
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    import re
+    
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long"
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must contain at least one uppercase letter"
+    
+    if not re.search(r'[a-z]', password):
+        return False, "Password must contain at least one lowercase letter"
+    
+    if not re.search(r'\d', password):
+        return False, "Password must contain at least one number"
+    
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};:,.<>?]', password):
+        return False, "Password must contain at least one special character"
+    
+    return True, "Password meets security requirements"
+
+def backend_reset_admin_password(new_password, log_event=True):
+    """
+    Backend-only function to reset admin password (not exposed via routes)
+    
+    This function is for internal use only and should never be exposed
+    as a web route or API endpoint.
+    
+    Args:
+        new_password (str): The new password to set
+        log_event (bool): Whether to log the security event
+        
+    Returns:
+        tuple: (success, message)
+    """
+    try:
+        # Validate password strength
+        is_valid, validation_message = validate_password_strength(new_password)
+        if not is_valid:
+            if log_event:
+                log_security_event(
+                    'backend_admin_password_reset_failed',
+                    f'Backend admin password reset failed: {validation_message}',
+                    'internal',
+                    1
+                )
+            return False, validation_message
+        
+        # Connect to database
+        conn = get_db_connection()
+        
+        try:
+            # Verify admin user exists
+            admin_user = conn.execute(
+                'SELECT id FROM users WHERE username = ?',
+                ('admin',)
+            ).fetchone()
+            
+            if not admin_user:
+                if log_event:
+                    log_security_event(
+                        'backend_admin_password_reset_failed',
+                        'Backend admin password reset failed: Admin user not found',
+                        'internal',
+                        None
+                    )
+                return False, "Admin user not found"
+            
+            # Generate secure password hash
+            password_hash = generate_password_hash(new_password)
+            
+            # Update admin password
+            cursor = conn.execute(
+                'UPDATE users SET password_hash = ? WHERE username = ?',
+                (password_hash, 'admin')
+            )
+            
+            if cursor.rowcount != 1:
+                if log_event:
+                    log_security_event(
+                        'backend_admin_password_reset_failed',
+                        'Backend admin password reset failed: Database update failed',
+                        'internal',
+                        admin_user['id']
+                    )
+                return False, "Failed to update password in database"
+            
+            conn.commit()
+            
+            if log_event:
+                log_security_event(
+                    'backend_admin_password_reset_success',
+                    'Backend admin password reset successful',
+                    'internal',
+                    admin_user['id']
+                )
+            
+            return True, "Password reset successful"
+            
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        if log_event:
+            log_security_event(
+                'backend_admin_password_reset_error',
+                f'Backend admin password reset error: {str(e)}',
+                'internal',
+                None
+            )
+        return False, f"Internal error: {str(e)}"
 
 # Main application entry point
 if __name__ == '__main__':
