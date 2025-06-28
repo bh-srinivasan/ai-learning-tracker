@@ -2,9 +2,14 @@
 %} {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2><i class="fas fa-users"></i> Manage Users</h2>
-  <a href="{{ url_for('admin_add_user') }}" class="btn btn-primary">
-    <i class="fas fa-user-plus"></i> Add New User
-  </a>
+  <div>
+    <button type="button" class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#resetAllPasswordsModal">
+      <i class="fas fa-key"></i> Reset All User Passwords
+    </button>
+    <a href="{{ url_for('admin_add_user') }}" class="btn btn-primary">
+      <i class="fas fa-user-plus"></i> Add New User
+    </a>
+  </div>
 </div>
 
 <div class="card">
@@ -54,6 +59,18 @@
             <td>{{ user.created_at }}</td>
             <td>
               <div class="btn-group" role="group">
+                <!-- Password Reset Button -->
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#resetPasswordModal"
+                  data-user-id="{{ user.id }}"
+                  data-username="{{ user.username }}"
+                >
+                  <i class="fas fa-key"></i> Reset Password
+                </button>
+                <!-- Pause/Activate Button -->
                 <form
                   method="POST"
                   action="{{ url_for('admin_pause_user', user_id=user.id) }}"
@@ -77,6 +94,7 @@
                   </button>
                   {% endif %}
                 </form>
+                <!-- Delete Button -->
                 <form
                   method="POST"
                   action="{{ url_for('admin_delete_user', user_id=user.id) }}"
@@ -109,4 +127,137 @@
     {% endif %}
   </div>
 </div>
+
+<!-- Reset All Passwords Modal -->
+<div class="modal fade" id="resetAllPasswordsModal" tabindex="-1" aria-labelledby="resetAllPasswordsModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="resetAllPasswordsModalLabel">
+          <i class="fas fa-key"></i> Reset All User Passwords
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('admin_reset_all_user_passwords') }}">
+        <div class="modal-body">
+          <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Warning:</strong> This will reset passwords for all users except admin. 
+            All affected users will need to use the new password on their next login.
+          </div>
+          
+          <div class="mb-3">
+            <label for="new_password_all" class="form-label">New Password for All Users</label>
+            <input type="password" class="form-control" id="new_password_all" name="new_password" required>
+            <div class="form-text">
+              Password must be at least 8 characters with uppercase, lowercase, number, and special character.
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="confirm_password_all" class="form-label">Confirm Password</label>
+            <input type="password" class="form-control" id="confirm_password_all" name="confirm_password" required>
+          </div>
+          
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="reset_all_confirmation" name="reset_all_confirmation" required>
+            <label class="form-check-label" for="reset_all_confirmation">
+              I understand this will reset passwords for all users (except admin) and they will need to use the new password.
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">
+            <i class="fas fa-key"></i> Reset All Passwords
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Individual Password Modal -->
+<div class="modal fade" id="resetPasswordModal" tabindex="-1" aria-labelledby="resetPasswordModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="resetPasswordModalLabel">
+          <i class="fas fa-key"></i> Reset User Password
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('admin_reset_user_password') }}">
+        <input type="hidden" id="user_id" name="user_id">
+        <div class="modal-body">
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            Resetting password for user: <strong id="username_display"></strong>
+          </div>
+          
+          <div class="mb-3">
+            <label for="custom_password" class="form-label">Custom Password</label>
+            <input type="password" class="form-control" id="custom_password" name="custom_password" required>
+            <div class="form-text">
+              Password must be at least 8 characters with uppercase, lowercase, number, and special character.
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="confirm_custom_password" class="form-label">Confirm Password</label>
+            <input type="password" class="form-control" id="confirm_custom_password" name="confirm_custom_password" required>
+          </div>
+          
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="reset_individual_confirmation" name="reset_individual_confirmation" required>
+            <label class="form-check-label" for="reset_individual_confirmation">
+              I understand this will reset the user's password and they will need to use the new password.
+            </label>
+          </div>
+          
+          <div class="alert alert-success d-none" id="password_display_area">
+            <i class="fas fa-clipboard"></i>
+            <strong>New Password:</strong> <span id="generated_password" style="font-family: monospace;"></span>
+            <button type="button" class="btn btn-sm btn-outline-success ms-2" onclick="copyPassword()">
+              <i class="fas fa-copy"></i> Copy
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-key"></i> Reset Password
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// Handle individual password reset modal
+document.getElementById('resetPasswordModal').addEventListener('show.bs.modal', function (event) {
+  var button = event.relatedTarget;
+  var userId = button.getAttribute('data-user-id');
+  var username = button.getAttribute('data-username');
+  
+  var modal = this;
+  modal.querySelector('#user_id').value = userId;
+  modal.querySelector('#username_display').textContent = username;
+});
+
+// Copy password to clipboard
+function copyPassword() {
+  var passwordSpan = document.getElementById('generated_password');
+  navigator.clipboard.writeText(passwordSpan.textContent).then(function() {
+    var copyBtn = document.querySelector('#password_display_area button');
+    var originalText = copyBtn.innerHTML;
+    copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+    setTimeout(function() {
+      copyBtn.innerHTML = originalText;
+    }, 2000);
+  });
+}
+</script>
+
 {% endblock %}

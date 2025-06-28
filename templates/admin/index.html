@@ -106,6 +106,30 @@ Tracker{% endblock %} {% block content %}
             </form>
           </div>
         </div>
+        
+        <!-- Security Actions Row -->
+        <div class="row mt-3">
+          <div class="col-md-12">
+            <hr>
+            <h6 class="text-muted mb-3"><i class="fas fa-shield-alt"></i> Security & Monitoring</h6>
+          </div>
+          <div class="col-md-6 mb-2">
+            <a
+              href="{{ url_for('admin_security') }}"
+              class="btn btn-outline-secondary w-100"
+            >
+              <i class="fas fa-shield-alt"></i> Security Events
+            </a>
+          </div>
+          <div class="col-md-6 mb-2">
+            <a
+              href="{{ url_for('admin_sessions') }}"
+              class="btn btn-outline-secondary w-100"
+            >
+              <i class="fas fa-users-cog"></i> Active Sessions
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   </div>

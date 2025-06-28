@@ -614,11 +614,38 @@ def record_failed_attempt(ip_address, username=None):
 
 def validate_password_strength(password):
     """Validate password meets security requirements"""
+    errors = []
+    
+    # Length check
+    if len(password) < 8:
+        errors.append("Password must be at least 8 characters long")
+    
+    # Uppercase letter check
+    if not re.search(r'[A-Z]', password):
+        errors.append("Password must contain at least one uppercase letter")
+    
+    # Lowercase letter check
+    if not re.search(r'[a-z]', password):
+        errors.append("Password must contain at least one lowercase letter")
+    
+    # Number check
+    if not re.search(r'\d', password):
+        errors.append("Password must contain at least one number")
+    
+    # Special character check
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        errors.append("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)")
+    
+    if errors:
+        return False, "; ".join(errors)
+    
+    return True, "Password meets security requirements"
+
+def validate_password_strength_simple(password):
+    """Simple password validation for existing users (backward compatibility)"""
     if len(password) < SECURITY_CONFIG['PASSWORD_MIN_LENGTH']:
         return False, f"Password must be at least {SECURITY_CONFIG['PASSWORD_MIN_LENGTH']} characters long"
     
-    # For now, keep simple validation to maintain existing login
-    # In production, you might want stronger requirements
     return True, "Password is valid"
 
 def sanitize_input(input_string):
@@ -2354,6 +2381,227 @@ def debug_session():
     }
     
     return f"<pre>{debug_info}</pre>"
+
+# Admin Password Reset Routes
+@app.route('/admin/password-reset', methods=['GET', 'POST'])
+@require_admin
+def admin_password_reset():
+    """Admin password reset for all users"""
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        reset_confirmation = request.form.get('reset_confirmation')
+        
+        # Validate confirmation checkbox
+        if not reset_confirmation:
+            flash('You must confirm the password reset action.', 'error')
+            return render_template('admin/password_reset.html')
+        
+        # Validate passwords match
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return render_template('admin/password_reset.html')
+        
+        # Validate password strength
+        is_valid, message = validate_password_strength(new_password)
+        if not is_valid:
+            flash(f'Password does not meet security requirements: {message}', 'error')
+            return render_template('admin/password_reset.html')
+        
+        try:
+            conn = get_db_connection()
+            
+            # Get all users
+            users = conn.execute('SELECT id, username FROM users').fetchall()
+            
+            # Hash the new password
+            password_hash = generate_password_hash(new_password)
+            
+            # Update all users' passwords
+            updated_count = 0
+            for user in users:
+                conn.execute(
+                    'UPDATE users SET password_hash = ? WHERE id = ?',
+                    (password_hash, user['id'])
+                )
+                updated_count += 1
+            
+            conn.commit()
+            
+            # Log security event
+            log_security_event(
+                'admin_password_reset',
+                f'Admin reset passwords for all {updated_count} users',
+                request.remote_addr,
+                session.get('user_id')
+            )
+            
+            flash(f'Successfully reset passwords for all {updated_count} users. All users will need to use the new password on their next login.', 'success')
+            
+        except Exception as e:
+            flash(f'Error resetting passwords: {str(e)}', 'error')
+        finally:
+            conn.close()
+        
+        return redirect(url_for('admin'))
+    
+    return render_template('admin/password_reset.html')
+
+@app.route('/admin/validate-password', methods=['POST'])
+@require_admin
+def admin_validate_password():
+    """AJAX endpoint to validate password strength"""
+    password = request.json.get('password', '')
+    is_valid, message = validate_password_strength(password)
+    
+    return {
+        'valid': is_valid,
+        'message': message,
+        'requirements': {
+            'length': len(password) >= 8,
+            'uppercase': bool(re.search(r'[A-Z]', password)),
+            'lowercase': bool(re.search(r'[a-z]', password)),
+            'number': bool(re.search(r'\d', password)),
+            'special': bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password))
+        }
+    }
+
+@app.route('/admin/reset-all-user-passwords', methods=['POST'])
+@require_admin
+def admin_reset_all_user_passwords():
+    """Reset passwords for all users except admin"""
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+    reset_confirmation = request.form.get('reset_all_confirmation')
+    
+    # Validate confirmation checkbox
+    if not reset_confirmation:
+        flash('You must confirm the password reset action.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    # Validate passwords match
+    if new_password != confirm_password:
+        flash('Passwords do not match.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    # Validate password strength
+    is_valid, message = validate_password_strength(new_password)
+    if not is_valid:
+        flash(f'Password does not meet security requirements: {message}', 'error')
+        return redirect(url_for('admin_users'))
+    
+    try:
+        conn = get_db_connection()
+        
+        # Get all users except admin
+        users = conn.execute(
+            'SELECT id, username FROM users WHERE username != ?', 
+            ('admin',)
+        ).fetchall()
+        
+        if not users:
+            flash('No non-admin users found to reset passwords for.', 'warning')
+            return redirect(url_for('admin_users'))
+        
+        # Hash the new password
+        password_hash = generate_password_hash(new_password)
+        
+        # Update all non-admin users' passwords
+        updated_count = 0
+        for user in users:
+            conn.execute(
+                'UPDATE users SET password_hash = ? WHERE id = ?',
+                (password_hash, user['id'])
+            )
+            updated_count += 1
+        
+        conn.commit()
+        
+        # Log security event
+        log_security_event(
+            'admin_reset_all_user_passwords',
+            f'Admin reset passwords for {updated_count} non-admin users',
+            request.remote_addr,
+            session.get('user_id')
+        )
+        
+        flash(f'Successfully reset passwords for {updated_count} users (excluding admin). All affected users will need to use the new password on their next login.', 'success')
+        
+    except Exception as e:
+        flash(f'Error resetting passwords: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/reset-user-password', methods=['POST'])
+@require_admin
+def admin_reset_user_password():
+    """Reset password for individual user with custom password"""
+    user_id = request.form.get('user_id')
+    custom_password = request.form.get('custom_password')
+    confirm_custom_password = request.form.get('confirm_custom_password')
+    reset_confirmation = request.form.get('reset_individual_confirmation')
+    
+    # Validate required fields
+    if not all([user_id, custom_password, confirm_custom_password, reset_confirmation]):
+        flash('All fields are required.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    # Validate passwords match
+    if custom_password != confirm_custom_password:
+        flash('Passwords do not match.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    # Validate password strength
+    is_valid, message = validate_password_strength(custom_password)
+    if not is_valid:
+        flash(f'Password does not meet security requirements: {message}', 'error')
+        return redirect(url_for('admin_users'))
+    
+    try:
+        conn = get_db_connection()
+        
+        # Get user info (prevent admin password reset)
+        user = conn.execute(
+            'SELECT id, username FROM users WHERE id = ?', 
+            (user_id,)
+        ).fetchone()
+        
+        if not user:
+            flash('User not found.', 'error')
+            return redirect(url_for('admin_users'))
+        
+        if user['username'] == 'admin':
+            flash('Cannot reset admin password through this method.', 'error')
+            return redirect(url_for('admin_users'))
+        
+        # Hash the custom password
+        password_hash = generate_password_hash(custom_password)
+        
+        # Update user's password
+        conn.execute(
+            'UPDATE users SET password_hash = ? WHERE id = ?',
+            (password_hash, user_id)
+        )
+        conn.commit()
+        
+        # Log security event
+        log_security_event(
+            'admin_reset_user_password',
+            f'Admin reset password for user: {user["username"]} (ID: {user_id})',
+            request.remote_addr,
+            session.get('user_id')
+        )
+        
+        flash(f'Successfully reset password for user "{user["username"]}". The user will need to use the new password on their next login.', 'success')
+        
+    except Exception as e:
+        flash(f'Error resetting password: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_users'))
 
 # Main application entry point
 if __name__ == '__main__':
