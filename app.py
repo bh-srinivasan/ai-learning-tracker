@@ -2671,7 +2671,7 @@ def admin_change_password():
         finally:
             conn.close()
         
-        return redirect(url_for('admin'))
+        return redirect(url_for('admin_dashboard'))
     
     return render_template('admin/change_password.html')
 
