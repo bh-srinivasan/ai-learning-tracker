@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
@@ -2607,6 +2607,119 @@ def admin_reset_user_password():
         conn.close()
     
     return redirect(url_for('admin_users'))
+
+@app.route('/admin/view-user-password', methods=['POST'])
+@require_admin
+def admin_view_user_password():
+    """Generate and set a temporary viewable password for a user with admin authentication"""
+    try:
+        user_id = request.form.get('user_id')
+        admin_password = request.form.get('admin_password')
+        
+        if not all([user_id, admin_password]):
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        # Get admin user info from session
+        admin_user_id = session.get('user_id')
+        if not admin_user_id:
+            return jsonify({'success': False, 'error': 'Session expired'})
+        
+        conn = get_db_connection()
+        
+        try:
+            # Verify admin password
+            admin_user = conn.execute(
+                'SELECT * FROM users WHERE id = ? AND username = ?',
+                (admin_user_id, 'admin')
+            ).fetchone()
+            
+            if not admin_user or not check_password_hash(admin_user['password_hash'], admin_password):
+                # Log failed authentication attempt
+                log_security_event(
+                    'admin_password_view_failed',
+                    f'Failed admin authentication for viewing user password (User ID: {user_id})',
+                    request.remote_addr,
+                    admin_user_id
+                )
+                return jsonify({'success': False, 'error': 'Incorrect admin password'})
+            
+            # Get target user
+            target_user = conn.execute(
+                'SELECT id, username, password_hash FROM users WHERE id = ?',
+                (user_id,)
+            ).fetchone()
+            
+            if not target_user:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            # Don't allow viewing admin password
+            if target_user['username'] == 'admin':
+                return jsonify({'success': False, 'error': 'Cannot generate password for admin user'})
+            
+            # Generate a secure temporary password
+            import secrets
+            import string
+            
+            # Generate a secure random password
+            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+            temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+            
+            # Ensure it meets our password requirements
+            if (any(c.islower() for c in temp_password) and 
+                any(c.isupper() for c in temp_password) and 
+                any(c.isdigit() for c in temp_password) and 
+                any(c in "!@#$%^&*" for c in temp_password)):
+                
+                # Hash and update the user's password
+                password_hash = generate_password_hash(temp_password)
+                conn.execute(
+                    'UPDATE users SET password_hash = ? WHERE id = ?',
+                    (password_hash, user_id)
+                )
+                conn.commit()
+                
+                # Log security event
+                log_security_event(
+                    'admin_generated_viewable_password',
+                    f'Admin generated viewable password for user: {target_user["username"]} (ID: {user_id})',
+                    request.remote_addr,
+                    admin_user_id
+                )
+                
+                return jsonify({
+                    'success': True, 
+                    'password': temp_password,
+                    'message': 'Temporary password generated and set for user'
+                })
+            else:
+                # Fallback to a manually constructed secure password
+                temp_password = f"TempPass{secrets.randbelow(1000)}!"
+                password_hash = generate_password_hash(temp_password)
+                conn.execute(
+                    'UPDATE users SET password_hash = ? WHERE id = ?',
+                    (password_hash, user_id)
+                )
+                conn.commit()
+                
+                # Log security event
+                log_security_event(
+                    'admin_generated_viewable_password',
+                    f'Admin generated viewable password for user: {target_user["username"]} (ID: {user_id})',
+                    request.remote_addr,
+                    admin_user_id
+                )
+                
+                return jsonify({
+                    'success': True, 
+                    'password': temp_password,
+                    'message': 'Temporary password generated and set for user'
+                })
+            
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
 
 @app.route('/admin/change-password', methods=['GET', 'POST'])
 @require_admin

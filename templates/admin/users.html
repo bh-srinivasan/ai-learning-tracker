@@ -59,6 +59,18 @@
             <td>{{ user.created_at }}</td>
             <td>
               <div class="btn-group" role="group">
+                <!-- Generate Viewable Password Button -->
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-info"
+                  data-bs-toggle="modal"
+                  data-bs-target="#viewPasswordModal"
+                  data-user-id="{{ user.id }}"
+                  data-username="{{ user.username }}"
+                  title="Generate Viewable Password"
+                >
+                  <i class="fas fa-eye"></i> Generate Password
+                </button>
                 <!-- Password Reset Button -->
                 <button
                   type="button"
@@ -255,6 +267,183 @@ function copyPassword() {
     copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
     setTimeout(function() {
       copyBtn.innerHTML = originalText;
+    }, 2000);
+  });
+}
+</script>
+
+<!-- View Password Modal -->
+<div class="modal fade" id="viewPasswordModal" tabindex="-1" aria-labelledby="viewPasswordModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title" id="viewPasswordModalLabel">
+          <i class="fas fa-key"></i> Generate Viewable Password
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="fas fa-shield-alt"></i>
+          <strong>Security Check Required:</strong> 
+          To generate a new viewable password for <strong id="view_username_display"></strong>, 
+          please confirm your admin identity.
+        </div>
+        
+        <div class="alert alert-info">
+          <i class="fas fa-info-circle"></i>
+          <strong>Note:</strong> This will generate a new secure password for the user and replace their current password. 
+          The user will need to use this new password for their next login.
+        </div>
+        
+        <!-- Admin Authentication Step -->
+        <div id="adminAuthStep">
+          <form id="adminAuthForm">
+            <input type="hidden" id="view_user_id" name="user_id">
+            <div class="mb-3">
+              <label for="admin_password_confirm" class="form-label">
+                <i class="fas fa-key"></i> Your Admin Password
+              </label>
+              <input type="password" class="form-control" id="admin_password_confirm" 
+                     name="admin_password" required placeholder="Enter your admin password">
+              <div class="form-text">
+                Enter your current admin password to authorize viewing this user's password.
+              </div>
+            </div>
+            
+            <div class="d-grid gap-2">
+              <button type="submit" class="btn btn-info">
+                <i class="fas fa-key"></i> Generate New Password
+              </button>
+            </div>
+          </form>
+        </div>
+        
+        <!-- Password Display Step (hidden initially) -->
+        <div id="passwordDisplayStep" class="d-none">
+          <div class="alert alert-success">
+            <i class="fas fa-check-circle"></i>
+            <strong>Password Generated Successfully!</strong> New password created and set for user:
+          </div>
+          
+          <div class="card bg-light">
+            <div class="card-body">
+              <h6 class="card-title">
+                <i class="fas fa-user"></i> User: <span id="confirmed_username"></span>
+              </h6>
+              <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-key"></i></span>
+                <input type="text" class="form-control" id="user_password_display" 
+                       readonly style="font-family: monospace; background-color: #f8f9fa; font-weight: bold;">
+                <button type="button" class="btn btn-outline-success" onclick="copyUserPassword()">
+                  <i class="fas fa-copy"></i> Copy
+                </button>
+              </div>
+              <div class="form-text mt-2">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Important:</strong> Save this password securely. The user will need this for their next login.
+              </div>
+            </div>
+          </div>
+          
+          <div class="alert alert-info mt-3">
+            <i class="fas fa-info-circle"></i>
+            <small>This password generation and admin access has been logged for security audit purposes.</small>
+          </div>
+        </div>
+        
+        <!-- Error Display -->
+        <div id="viewPasswordError" class="alert alert-danger d-none">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span id="error_message"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Handle view password modal
+document.getElementById('viewPasswordModal').addEventListener('show.bs.modal', function (event) {
+  var button = event.relatedTarget;
+  var userId = button.getAttribute('data-user-id');
+  var username = button.getAttribute('data-username');
+  
+  var modal = this;
+  modal.querySelector('#view_user_id').value = userId;
+  modal.querySelector('#view_username_display').textContent = username;
+  
+  // Reset modal state
+  modal.querySelector('#adminAuthStep').classList.remove('d-none');
+  modal.querySelector('#passwordDisplayStep').classList.add('d-none');
+  modal.querySelector('#viewPasswordError').classList.add('d-none');
+  modal.querySelector('#admin_password_confirm').value = '';
+});
+
+// Handle admin authentication form submission
+document.getElementById('adminAuthForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  var formData = new FormData(this);
+  var userId = document.getElementById('view_user_id').value;
+  var username = document.getElementById('view_username_display').textContent;
+  
+  // Show loading state
+  var submitBtn = this.querySelector('button[type="submit"]');
+  var originalText = submitBtn.innerHTML;
+  submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+  submitBtn.disabled = true;
+  
+  fetch('/admin/view-user-password', {
+    method: 'POST',
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      // Hide auth step, show password
+      document.getElementById('adminAuthStep').classList.add('d-none');
+      document.getElementById('passwordDisplayStep').classList.remove('d-none');
+      document.getElementById('confirmed_username').textContent = username;
+      document.getElementById('user_password_display').value = data.password;
+      document.getElementById('viewPasswordError').classList.add('d-none');
+    } else {
+      // Show error
+      document.getElementById('viewPasswordError').classList.remove('d-none');
+      document.getElementById('error_message').textContent = data.error || 'Authentication failed';
+    }
+  })
+  .catch(error => {
+    document.getElementById('viewPasswordError').classList.remove('d-none');
+    document.getElementById('error_message').textContent = 'Network error occurred';
+  })
+  .finally(() => {
+    // Reset button state
+    submitBtn.innerHTML = originalText;
+    submitBtn.disabled = false;
+  });
+});
+
+// Copy user password to clipboard
+function copyUserPassword() {
+  var passwordField = document.getElementById('user_password_display');
+  passwordField.select();
+  passwordField.setSelectionRange(0, 99999); // For mobile devices
+  navigator.clipboard.writeText(passwordField.value).then(function() {
+    // Show temporary success indication
+    var copyBtn = event.target.closest('button');
+    var originalText = copyBtn.innerHTML;
+    copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+    copyBtn.classList.remove('btn-outline-success');
+    copyBtn.classList.add('btn-success');
+    
+    setTimeout(function() {
+      copyBtn.innerHTML = originalText;
+      copyBtn.classList.remove('btn-success');
+      copyBtn.classList.add('btn-outline-success');
     }, 2000);
   });
 }
