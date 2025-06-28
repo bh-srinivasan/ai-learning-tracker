@@ -2620,30 +2620,44 @@ def admin_change_password():
             flash('All fields are required.', 'error')
             return render_template('admin/change_password.html')
         
-        # Validate current password
-        user = get_current_user()
-        if not user or not check_password_hash(user['password_hash'], current_password):
-            flash('Current password is incorrect.', 'error')
-            return render_template('admin/change_password.html')
-        
-        # Validate passwords match
-        if new_password != confirm_password:
-            flash('New passwords do not match.', 'error')
-            return render_template('admin/change_password.html')
-        
-        # Validate new password is different from current
-        if check_password_hash(user['password_hash'], new_password):
-            flash('New password must be different from your current password.', 'error')
-            return render_template('admin/change_password.html')
-        
-        # Validate password strength
-        is_valid, message = validate_password_strength(new_password)
-        if not is_valid:
-            flash(f'Password does not meet security requirements: {message}', 'error')
-            return render_template('admin/change_password.html')
-        
+        # Get user session info
+        user_id = session.get('user_id')
+        if not user_id:
+            flash('Session expired. Please log in again.', 'error')
+            return redirect(url_for('login'))
+            
+        conn = get_db_connection()
         try:
-            conn = get_db_connection()
+            # Fetch complete user data from database
+            user = conn.execute(
+                'SELECT * FROM users WHERE id = ? AND username = ?', 
+                (user_id, 'admin')
+            ).fetchone()
+            
+            if not user:
+                flash('Admin user not found.', 'error')
+                return redirect(url_for('login'))
+            
+            # Validate current password
+            if not check_password_hash(user['password_hash'], current_password):
+                flash('Current password is incorrect.', 'error')
+                return render_template('admin/change_password.html')
+            
+            # Validate passwords match
+            if new_password != confirm_password:
+                flash('New passwords do not match.', 'error')
+                return render_template('admin/change_password.html')
+            
+            # Validate new password is different from current
+            if check_password_hash(user['password_hash'], new_password):
+                flash('New password must be different from your current password.', 'error')
+                return render_template('admin/change_password.html')
+            
+            # Validate password strength
+            is_valid, message = validate_password_strength(new_password)
+            if not is_valid:
+                flash(f'Password does not meet security requirements: {message}', 'error')
+                return render_template('admin/change_password.html')
             
             # Hash the new password
             password_hash = generate_password_hash(new_password)
