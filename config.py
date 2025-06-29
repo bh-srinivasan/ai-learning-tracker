@@ -24,8 +24,9 @@ class Config:
     DEMO_USERNAME = os.environ.get('DEMO_USERNAME', 'demo')
     DEMO_PASSWORD = os.environ.get('DEMO_PASSWORD', 'demo')
     
-    # Protected admin users (should not be modified in testing)
-    PROTECTED_USERS = ['bharath']  # These users should not be modified during testing
+    # Protected admin users (only admin is protected now)
+    # bharath is now treated as a normal user and not protected
+    PROTECTED_USERS = []  # No users are protected in testing except admin (handled separately)
     
     # Security settings
     SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', 3600))  # 1 hour default

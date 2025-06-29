@@ -42,3 +42,11 @@
 2025-06-29 22:21:39,435 - INFO - [SUCCESS] Deployment completed successfully!
 2025-06-29 22:21:39,435 - INFO - [INFO] Application URL: https://ai-learning-tracker-bharath.azurewebsites.net
 2025-06-29 22:21:39,435 - INFO - [INFO] Admin Panel: https://ai-learning-tracker-bharath.azurewebsites.net/admin
+2025-06-29 22:30:19,213 - INFO - [SECURITY] Running security scan only...
+2025-06-29 22:30:19,213 - INFO - [SECURITY] Scanning for hardcoded password reset logic...
+2025-06-29 22:30:37,712 - WARNING - [WARNING] Found 1 potential security issues:
+2025-06-29 22:30:37,712 - WARNING -     app.py:302 - Hardcoded bharath password generation
+2025-06-29 22:30:37,712 - WARNING -         Match: generate_password_hash('bharath'
+2025-06-29 22:30:37,712 - INFO - [SECURITY] Checking protected user logic...
+2025-06-29 22:30:37,730 - WARNING - [WARNING] Protected user logic may be incomplete
+2025-06-29 22:30:37,731 - WARNING - [WARNING] Security scan completed - issues found
