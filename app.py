@@ -2882,135 +2882,158 @@ def admin_change_password():
     
     return render_template('admin/change_password.html')
 
-# Backend-Only Password Reset Functions
-# These functions are for internal use only and not exposed via web routes
-
-def validate_password_strength(password):
+@app.route('/admin/migrate-database')
+def migrate_database():
     """
-    Validate password meets security requirements (backend-only)
-    
-    Requirements:
-    - Minimum 8 characters
-    - At least one uppercase letter
-    - At least one lowercase letter  
-    - At least one number
-    - At least one special character
-    
-    Args:
-        password (str): Password to validate
-        
-    Returns:
-        tuple: (is_valid, error_message)
+    SECURITY: Only run this once to migrate Azure database
+    This endpoint will be removed after successful migration
     """
-    import re
+    if 'user_id' not in session:
+        flash('Please log in to access this page.', 'error')
+        return redirect(url_for('login'))
     
-    if len(password) < 8:
-        return False, "Password must be at least 8 characters long"
+    # Get current user
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
     
-    if not re.search(r'[A-Z]', password):
-        return False, "Password must contain at least one uppercase letter"
+    if not user or user['username'] not in ['admin', 'bharath']:
+        flash('Access denied. Admin privileges required.', 'error')
+        conn.close()
+        return redirect(url_for('dashboard'))
     
-    if not re.search(r'[a-z]', password):
-        return False, "Password must contain at least one lowercase letter"
+    migration_results = []
     
-    if not re.search(r'\d', password):
-        return False, "Password must contain at least one number"
-    
-    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};:,.<>?]', password):
-        return False, "Password must contain at least one special character"
-    
-    return True, "Password meets security requirements"
-
-def backend_reset_admin_password(new_password, log_event=True):
-    """
-    Backend-only function to reset admin password (not exposed via routes)
-    
-    This function is for internal use only and should never be exposed
-    as a web route or API endpoint.
-    
-    Args:
-        new_password (str): The new password to set
-        log_event (bool): Whether to log the security event
-        
-    Returns:
-        tuple: (success, message)
-    """
     try:
-        # Validate password strength
-        is_valid, validation_message = validate_password_strength(new_password)
-        if not is_valid:
-            if log_event:
-                log_security_event(
-                    'backend_admin_password_reset_failed',
-                    f'Backend admin password reset failed: {validation_message}',
-                    'internal',
-                    1
-                )
-            return False, validation_message
-        
-        # Connect to database
-        conn = get_db_connection()
+        # 1. Add missing columns to courses table
+        migration_results.append("🔄 Updating courses table schema...")
         
         try:
-            # Verify admin user exists
-            admin_user = conn.execute(
-                'SELECT id FROM users WHERE username = ?',
-                ('admin',)
-            ).fetchone()
-            
-            if not admin_user:
-                if log_event:
-                    log_security_event(
-                        'backend_admin_password_reset_failed',
-                        'Backend admin password reset failed: Admin user not found',
-                        'internal',
-                        None
-                    )
-                return False, "Admin user not found"
-            
-            # Generate secure password hash
-            password_hash = generate_password_hash(new_password)
-            
-            # Update admin password
-            cursor = conn.execute(
-                'UPDATE users SET password_hash = ? WHERE username = ?',
-                (password_hash, 'admin')
-            )
-            
-            if cursor.rowcount != 1:
-                if log_event:
-                    log_security_event(
-                        'backend_admin_password_reset_failed',
-                        'Backend admin password reset failed: Database update failed',
-                        'internal',
-                        admin_user['id']
-                    )
-                return False, "Failed to update password in database"
-            
-            conn.commit()
-            
-            if log_event:
-                log_security_event(
-                    'backend_admin_password_reset_success',
-                    'Backend admin password reset successful',
-                    'internal',
-                    admin_user['id']
-                )
-            
-            return True, "Password reset successful"
-            
-        finally:
-            conn.close()
-            
+            conn.execute('ALTER TABLE courses ADD COLUMN url TEXT')
+            migration_results.append("✅ Added 'url' column to courses table")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                migration_results.append("✅ 'url' column already exists")
+            else:
+                migration_results.append(f"❌ Error adding 'url' column: {e}")
+        
+        try:
+            conn.execute('ALTER TABLE courses ADD COLUMN category TEXT')
+            migration_results.append("✅ Added 'category' column to courses table")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                migration_results.append("✅ 'category' column already exists")
+            else:
+                migration_results.append(f"❌ Error adding 'category' column: {e}")
+        
+        try:
+            conn.execute('ALTER TABLE courses ADD COLUMN difficulty TEXT')
+            migration_results.append("✅ Added 'difficulty' column to courses table")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                migration_results.append("✅ 'difficulty' column already exists")
+            else:
+                migration_results.append(f"❌ Error adding 'difficulty' column: {e}")
+        
+        # 2. Update user passwords to use environment variables
+        migration_results.append("🔐 Updating user passwords...")
+        
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')
+        demo_username = os.environ.get('DEMO_USERNAME', 'demo')
+        demo_password = os.environ.get('DEMO_PASSWORD', 'demo')
+        
+        if admin_password != 'admin':
+            admin_hash = generate_password_hash(admin_password)
+            conn.execute('UPDATE users SET password_hash = ? WHERE username = ?', 
+                        (admin_hash, 'admin'))
+            migration_results.append("✅ Updated admin password from environment variable")
+        else:
+            migration_results.append("⚠️  Admin password using fallback (environment variable not set)")
+        
+        if demo_password != 'demo':
+            demo_hash = generate_password_hash(demo_password)
+            conn.execute('UPDATE users SET password_hash = ? WHERE username = ?', 
+                        (demo_hash, demo_username))
+            migration_results.append(f"✅ Updated {demo_username} password from environment variable")
+        else:
+            migration_results.append(f"⚠️  Demo password using fallback (environment variable not set)")
+        
+        # 3. Update admin learning entries to be global
+        migration_results.append("📊 Updating admin learning entries...")
+        
+        cursor = conn.execute('SELECT COUNT(*) FROM learnings WHERE user_id = (SELECT id FROM users WHERE username = "admin") AND is_global = 0')
+        admin_entries_count = cursor.fetchone()[0]
+        
+        if admin_entries_count > 0:
+            conn.execute('''UPDATE learnings 
+                           SET is_global = 1 
+                           WHERE user_id = (SELECT id FROM users WHERE username = "admin") 
+                           AND is_global = 0''')
+            migration_results.append(f"✅ Updated {admin_entries_count} admin entries to global")
+        else:
+            migration_results.append("✅ Admin entries already marked as global")
+        
+        # 4. Commit all changes
+        conn.commit()
+        migration_results.append("💾 All changes committed successfully")
+        
+        # 5. Verify migration
+        migration_results.append("🧪 Verifying migration...")
+        
+        # Check courses table structure
+        cursor = conn.execute("PRAGMA table_info(courses)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        required_columns = ['url', 'category', 'difficulty']
+        missing_columns = [col for col in required_columns if col not in columns]
+        
+        if not missing_columns:
+            migration_results.append("✅ All required columns present in courses table")
+        else:
+            migration_results.append(f"❌ Missing columns: {missing_columns}")
+        
+        # Check global learnings count
+        cursor = conn.execute('SELECT COUNT(*) FROM learnings WHERE is_global = 1')
+        global_count = cursor.fetchone()[0]
+        migration_results.append(f"📊 Global learning entries: {global_count}")
+        
+        migration_results.append("🎉 MIGRATION COMPLETED SUCCESSFULLY!")
+        
     except Exception as e:
-        if log_event:
-            log_security_event(
-                'backend_admin_password_reset_error',
-                f'Backend admin password reset error: {str(e)}',
-                'internal',
-                None
-            )
-        return False, f"Internal error: {str(e)}"
+        migration_results.append(f"❌ Migration error: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+    
+    # Return results as HTML page
+    results_html = "<br>".join(migration_results)
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Database Migration Results</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            .container {{ max-width: 800px; }}
+            .result {{ margin: 10px 0; padding: 10px; background-color: #f8f9fa; border-radius: 5px; }}
+            .success {{ background-color: #d4edda; color: #155724; }}
+            .warning {{ background-color: #fff3cd; color: #856404; }}
+            .error {{ background-color: #f8d7da; color: #721c24; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🛠️ Database Migration Results</h1>
+            <div class="result">
+                {results_html}
+            </div>
+            <hr>
+            <p><strong>⚠️ IMPORTANT:</strong> This migration endpoint should be removed after successful completion.</p>
+            <p><a href="/admin">← Back to Admin Panel</a></p>
+        </div>
+    </body>
+    </html>
+    '''
 
 # Main application entry point
 if __name__ == '__main__':
