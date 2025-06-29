@@ -841,6 +841,18 @@ def unblock_ip_address():
     
     return redirect(url_for('admin.security_dashboard'))
 
+@admin_bp.route('/admin/debug-session')
+def debug_session():
+    """Debug route to check session information"""
+    debug_info = {
+        'session_data': dict(session),
+        'user_id': session.get('user_id'),
+        'username': session.get('username'),
+        'is_admin_function': is_admin(),
+        'g_user': getattr(g, 'user', None)
+    }
+    return f"<pre>{debug_info}</pre>"
+
 # ...existing admin routes...
 
 def get_courses_for_topic(topic_name, search_keywords):

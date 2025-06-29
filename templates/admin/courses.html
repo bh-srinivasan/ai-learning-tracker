@@ -168,15 +168,15 @@ endblock %} {% block content %}
         </div>
         <p class="mt-2 text-muted">Loading courses...</p>
       </div>
-      <table id="coursesTable" class="table table-hover table-striped">
+      <table id="coursesTable" class="table table-hover table-striped sortable-table">
         <thead class="table-dark">
           <tr>
-            <th>Title</th>
-            <th>Source</th>
-            <th>Level</th>
-            <th>Points</th>
-            <th>Description</th>
-            <th>Created</th>
+            <th class="sortable" data-column="0" data-type="text">Title</th>
+            <th class="sortable" data-column="1" data-type="text">Source</th>
+            <th class="sortable" data-column="2" data-type="level">Level</th>
+            <th class="sortable" data-column="3" data-type="number">Points</th>
+            <th class="sortable" data-column="4" data-type="text">Description</th>
+            <th class="sortable" data-column="5" data-type="date">Created</th>
             <th class="no-sort">Actions</th>
           </tr>
         </thead>
@@ -291,17 +291,7 @@ endblock %} {% block content %}
 </div>
 
 {% endblock %} {% block scripts %}
-<!-- Include DataTables CSS and JS -->
-<link
-  rel="stylesheet"
-  href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css"
-/>
-<link
-  rel="stylesheet"
-  href="https://cdn.datatables.net/buttons/2.2.3/css/buttons.bootstrap5.min.css"
-/>
-<script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+<!-- Native JavaScript sorting - no external dependencies -->
 
 <style>
   .stat-card {
@@ -328,11 +318,11 @@ endblock %} {% block content %}
     margin-bottom: 1rem;
   }
 
-  .dataTables_info {
+  .pagination-info {
     margin-top: 1rem;
   }
 
-  .dataTables_paginate {
+  .pagination-controls {
     margin-top: 1rem;
   }
 
@@ -361,6 +351,147 @@ endblock %} {% block content %}
     height: 3rem;
   }
 
+  /* Professional black header table styling with Steel Blue accents */
+  .sortable-table {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .sortable-table thead {
+    background-color: #000000 !important; /* Pure black background */
+  }
+
+  .sortable-table th {
+    background-color: #000000 !important; /* Ensure black background */
+    color: #ffffff !important; /* White text for contrast */
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    padding: 1rem 0.75rem;
+    border-color: #333333; /* Subtle border between headers */
+  }
+
+  /* Professional hover styling with dark gray background */
+  .sortable-table th.sortable:hover {
+    background-color: #2e2e2e !important; /* Subtle dark gray on hover */
+    color: #ffffff !important; /* Maintain white text */
+    border-bottom-color: #4682b4; /* Steel blue accent border */
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(70, 130, 180, 0.3); /* Steel blue shadow */
+  }
+
+  /* Non-sortable headers maintain black background but no interactive effects */
+  .sortable-table th:not(.sortable) {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+  }
+
+  .sortable-table th:not(.sortable):hover {
+    background-color: #000000 !important; /* No hover effect for non-sortable */
+    transform: none;
+    box-shadow: none;
+    border-bottom-color: transparent;
+  }
+
+  /* Active/sorted column styling with Steel Blue highlight */
+  .sortable-table th.sortable.sort-asc,
+  .sortable-table th.sortable.sort-desc {
+    background-color: #4682b4 !important; /* Steel Blue for active sort */
+    color: #ffffff !important; /* White text maintained */
+    border-bottom-color: #1e3a52; /* Darker Steel Blue border */
+    box-shadow: 0 2px 8px rgba(70, 130, 180, 0.4);
+  }
+
+  /* Focus styles for accessibility with Steel Blue accent */
+  .sortable-table th.sortable:focus {
+    outline: 2px solid #4682b4;
+    outline-offset: -2px;
+    background-color: #2e2e2e !important;
+    color: #ffffff !important;
+  }
+
+  /* Enhanced row hover effects to complement the black header */
+  .sortable-table tbody tr:hover {
+    background-color: rgba(70, 130, 180, 0.05);
+    transform: scale(1.001);
+    transition: all 0.2s ease;
+  }
+
+  /* Professional sorting arrows with ▲ ▼ indicators */
+  .sortable-table th.sortable::after {
+    content: '↕'; /* Default unsorted indicator */
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.6;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    color: #cccccc; /* Light gray for visibility on black background */
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Hover state for sorting arrows on black background */
+  .sortable-table th.sortable:hover::after {
+    opacity: 1;
+    color: #ffffff; /* White arrows on dark gray hover */
+    transform: translateY(-50%) scale(1.1);
+  }
+
+  /* Active ascending sort with professional ▲ indicator */
+  .sortable-table th.sortable.sort-asc::after {
+    content: '▲'; /* Professional upward triangle */
+    opacity: 1;
+    color: #ffffff !important; /* White on Steel Blue background */
+    font-weight: bold;
+    transform: translateY(-50%) scale(1.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Active descending sort with professional ▼ indicator */
+  .sortable-table th.sortable.sort-desc::after {
+    content: '▼'; /* Professional downward triangle */
+    opacity: 1;
+    color: #ffffff !important; /* White on Steel Blue background */
+    font-weight: bold;
+    transform: translateY(-50%) scale(1.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Responsive hover effects for touch devices */
+  @media (hover: none) {
+    .sortable-table th.sortable:hover {
+      transform: none;
+      box-shadow: none;
+    }
+    
+    .sortable-table th.sortable:hover::after {
+      transform: translateY(-50%);
+    }
+  }
+
+  /* High contrast mode support for accessibility */
+  @media (prefers-contrast: high) {
+    .sortable-table th {
+      border: 1px solid #ffffff;
+    }
+    
+    .sortable-table th.sortable::after {
+      color: #ffffff;
+      text-shadow: none;
+    }
+  }
+
+  /* Hide sorting arrows for non-sortable columns */
+  .sortable-table th.no-sort::after {
+    display: none !important;
+  }
+
   /* Modal enhancements */
   .modal-body ul li {
     margin-bottom: 0.5rem;
@@ -387,199 +518,332 @@ endblock %} {% block content %}
     transition: transform 0.2s ease-in-out;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   }
+
+  /* Additional professional styling enhancements */
+  .sortable-table {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  }
+
+  .sortable-table thead {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  }
+
+  .sortable-table th {
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    padding: 1rem 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+  }
+
+  /* Focus styles for accessibility */
+  .sortable-table th.sortable:focus {
+    outline: 2px solid #667eea;
+    outline-offset: -2px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  }
+
+  /* Visual feedback for keyboard navigation */
+  .sortable-table th.sortable:focus::after {
+    opacity: 1;
+    color: #667eea;
+  }
+
+  /* Enhanced row hover effects */
+  .sortable-table tbody tr:hover {
+    background-color: rgba(102, 126, 234, 0.03);
+    transform: scale(1.001);
+    transition: all 0.2s ease;
+  }
+
+  /* Override Bootstrap's table-dark styling to ensure our custom black header */
+  .sortable-table.table thead th,
+  .sortable-table.table thead td {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border-color: #333333 !important;
+  }
+
+  /* Ensure proper text contrast and readability */
+  .sortable-table thead .sortable {
+    color: #ffffff !important;
+  }
+
+  .sortable-table thead .sortable:hover {
+    color: #ffffff !important;
+  }
+
+  .sortable-table thead .sortable.sort-asc,
+  .sortable-table thead .sortable.sort-desc {
+    color: #ffffff !important;
+  }
+
+  /* Additional accessibility improvements */
+  .sortable-table th.sortable {
+    /* Ensure minimum touch target size for mobile accessibility */
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Screen reader support for sort state */
+  .sortable-table th.sortable[aria-sort="ascending"]::before {
+    content: "Sorted ascending: ";
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+
+  .sortable-table th.sortable[aria-sort="descending"]::before {
+    content: "Sorted descending: ";
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
 </style>
 
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    console.log("DOM loaded");
+    console.log("DOM loaded - Native sorting implementation with Unicode arrows");
 
-    // Add filter event listeners
-    const sourceFilter = document.getElementById("sourceFilter");
-    const levelFilter = document.getElementById("levelFilter");
-    const pointsFilter = document.getElementById("pointsFilter");
-    const searchFilter = document.getElementById("searchFilter");
+    // Initialize native table sorting
+    initializeNativeSorting();
+    
+    // Initialize filters
+    initializeFilters();
 
-    if (sourceFilter) {
-      sourceFilter.addEventListener("change", filterTable);
-    }
-
-    if (levelFilter) {
-      levelFilter.addEventListener("change", filterTable);
-    }
-
-    if (pointsFilter) {
-      pointsFilter.addEventListener("change", filterTable);
-    }
-
-    if (searchFilter) {
-      searchFilter.addEventListener("input", filterTable);
-    }
-
-    console.log("jQuery available:", typeof $ !== "undefined");
-    console.log("DataTables available:", typeof $.fn.DataTable !== "undefined");
-
-    // Check if courses table exists and has data
-    if ($("#coursesTable tbody tr").length > 0) {
-      console.log("Courses data available, initializing table...");
-
-      // Show loading indicator
-      $("#tableLoading").show();
-      $("#coursesTable").hide();
-
-      // Custom sorting functions
-      // Level sorting (Beginner, Learner, Intermediate, Expert)
-      $.fn.dataTable.ext.type.order["level-pre"] = function (data) {
-        var level = $(data).text().trim();
-        switch (level) {
-          case "Beginner":
-            return 1;
-          case "Learner":
-            return 2;
-          case "Intermediate":
-            return 3;
-          case "Expert":
-            return 4;
-          default:
-            return 5;
-        }
-      };
-
-      // Points sorting (numeric)
-      $.fn.dataTable.ext.type.order["points-pre"] = function (data) {
-        var points = $(data).text().replace(/[^\d]/g, "");
-        return parseInt(points) || 0;
-      };
-
-      // Initialize DataTable
-      try {
-        var table = $("#coursesTable").DataTable({
-          pageLength: 10,
-          lengthMenu: [5, 10, 25, 50, 100],
-          order: [[0, "asc"]],
-          columnDefs: [
-            {
-              targets: "no-sort",
-              orderable: false,
-            },
-            {
-              targets: 2, // Level column
-              type: "level",
-            },
-            {
-              targets: 3, // Points column
-              type: "points",
-            },
-          ],
-          language: {
-            search: "Search courses:",
-            lengthMenu: "Show _MENU_ courses per page",
-            info: "Showing _START_ to _END_ of _TOTAL_ courses",
-            infoEmpty: "No courses to display",
-            infoFiltered: "(filtered from _MAX_ total courses)",
-            paginate: {
-              first: "First",
-              last: "Last",
-              next: "Next",
-              previous: "Previous",
-            },
-            emptyTable: "No courses available in table",
-            zeroRecords: "No matching courses found",
-          },
-          dom:
-            "<'row'<'col-sm-6'l><'col-sm-6'f>>" +
-            "<'row'<'col-sm-12'tr>>" +
-            "<'row'<'col-sm-5'i><'col-sm-7'p>>",
-          responsive: true,
-          processing: true,
-          initComplete: function () {
-            console.log("DataTable initialized successfully");
-            // Hide loading indicator and show table
-            $("#tableLoading").hide();
-            $("#coursesTable").show();
-          },
+    function initializeNativeSorting() {
+      const table = document.getElementById('coursesTable');
+      const tbody = table.querySelector('tbody');
+      const headers = table.querySelectorAll('th.sortable');
+      
+      console.log("Found sortable headers:", headers.length);
+      
+      let currentSort = { column: -1, direction: 'asc' };
+      
+      // Add click listeners to sortable headers
+      headers.forEach((header, index) => {
+        header.addEventListener('click', function() {
+          const column = parseInt(header.getAttribute('data-column'));
+          const type = header.getAttribute('data-type');
+          
+          console.log(`Sorting column ${column} (${type})`);
+          
+          // Update sort direction
+          if (currentSort.column === column) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+          } else {
+            currentSort.direction = 'asc';
+          }
+          currentSort.column = column;
+          
+          // Update visual indicators
+          updateSortIndicators(headers, header, currentSort.direction);
+          
+          // Sort the table
+          sortTable(tbody, column, type, currentSort.direction);
         });
+      });
+      
+      // Initial sort by Title (column 0)
+      if (headers.length > 0) {
+        updateSortIndicators(headers, headers[0], 'asc');
+        sortTable(tbody, 0, 'text', 'asc');
+        currentSort = { column: 0, direction: 'asc' };
+      }
+    }
+    
+    function updateSortIndicators(headers, activeHeader, direction) {
+      // Clear all sort classes
+      headers.forEach(header => {
+        header.classList.remove('sort-asc', 'sort-desc');
+      });
+      
+      // Add sort class to active header
+      activeHeader.classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+    
+    function sortTable(tbody, columnIndex, dataType, direction) {
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      
+      rows.sort((a, b) => {
+        const aCell = a.cells[columnIndex];
+        const bCell = b.cells[columnIndex];
+        
+        let aValue = getCellValue(aCell, dataType);
+        let bValue = getCellValue(bCell, dataType);
+        
+        let comparison = 0;
+        
+        switch (dataType) {
+          case 'number':
+            comparison = aValue - bValue;
+            break;
+          case 'level':
+            comparison = getLevelOrder(aValue) - getLevelOrder(bValue);
+            break;
+          case 'date':
+            comparison = new Date(aValue) - new Date(bValue);
+            break;
+          default: // text
+            comparison = aValue.localeCompare(bValue, undefined, { numeric: true });
+        }
+        
+        return direction === 'asc' ? comparison : -comparison;
+      });
+      
+      // Clear tbody and append sorted rows
+      tbody.innerHTML = '';
+      rows.forEach(row => tbody.appendChild(row));
+      
+      console.log(`Table sorted by column ${columnIndex} (${dataType}) ${direction}`);
+    }
+    
+    function getCellValue(cell, dataType) {
+      let text = cell.textContent.trim();
+      
+      switch (dataType) {
+        case 'number':
+          // Extract numbers from text like "50 pts"
+          const numberMatch = text.match(/\d+/);
+          return numberMatch ? parseInt(numberMatch[0]) : 0;
+        case 'level':
+          // Extract level from badge
+          return text;
+        case 'date':
+          // Return date text for parsing
+          return text;
+        default:
+          // For text, get the main text (usually from <strong> tag)
+          const strongElement = cell.querySelector('strong');
+          return strongElement ? strongElement.textContent.trim() : text;
+      }
+    }
+    
+    function getLevelOrder(level) {
+      const levelOrder = {
+        'Beginner': 1,
+        'Learner': 2,
+        'Intermediate': 3,
+        'Expert': 4
+      };
+      return levelOrder[level] || 5;
+    }
 
-        console.log("DataTable object created:", table);
-      } catch (error) {
-        console.error("Error initializing DataTable:", error);
-        $("#tableLoading").hide();
-        $("#coursesTable").show();
-        alert("Error initializing table. Some features may not work properly.");
+    function initializeFilters() {
+      // Add filter event listeners
+      const sourceFilter = document.getElementById("sourceFilter");
+      const levelFilter = document.getElementById("levelFilter");
+      const pointsFilter = document.getElementById("pointsFilter");
+      const searchFilter = document.getElementById("searchFilter");
+
+      if (sourceFilter) {
+        sourceFilter.addEventListener("change", filterTable);
       }
 
-      // Custom filter functions
-      $("#sourceFilter").on("change", function () {
-        try {
-          var value = this.value;
-          table.column(1).search(value).draw();
-          console.log("Source filter applied:", value);
-        } catch (error) {
-          console.error("Error applying source filter:", error);
+      if (levelFilter) {
+        levelFilter.addEventListener("change", filterTable);
+      }
+
+      if (pointsFilter) {
+        pointsFilter.addEventListener("change", filterTable);
+      }
+
+      if (searchFilter) {
+        searchFilter.addEventListener("input", filterTable);
+      }
+    }
+
+    // Native filtering function
+    function filterTable() {
+      const sourceFilter = document
+        .getElementById("sourceFilter")
+        .value.toLowerCase();
+      const levelFilter = document
+        .getElementById("levelFilter")
+        .value.toLowerCase();
+      const pointsFilter = document.getElementById("pointsFilter").value;
+      const searchFilter = document
+        .getElementById("searchFilter")
+        .value.toLowerCase();
+      const table = document.getElementById("coursesTable");
+      const rows = table.querySelectorAll("tbody tr");
+
+      rows.forEach((row) => {
+        const cells = row.querySelectorAll("td");
+        const title = cells[0]?.textContent.toLowerCase() || "";
+        const source = cells[1]?.textContent.toLowerCase() || "";
+        const level = cells[2]?.textContent.toLowerCase() || "";
+        const pointsText = cells[3]?.textContent || "";
+        const points = parseInt(pointsText.replace(/[^\d]/g, "")) || 0;
+        const description = cells[4]?.textContent.toLowerCase() || "";
+
+        const matchesSource = !sourceFilter || source.includes(sourceFilter);
+        const matchesLevel = !levelFilter || level.includes(levelFilter);
+        const matchesPoints =
+          !pointsFilter ||
+          (pointsFilter === "0-50" && points >= 0 && points <= 50) ||
+          (pointsFilter === "51-100" && points >= 51 && points <= 100) ||
+          (pointsFilter === "101+" && points >= 101);
+        const matchesSearch =
+          !searchFilter ||
+          title.includes(searchFilter) ||
+          description.includes(searchFilter);
+
+        if (matchesSource && matchesLevel && matchesPoints && matchesSearch) {
+          row.style.display = "";
+        } else {
+          row.style.display = "none";
         }
       });
+    }
 
-      $("#levelFilter").on("change", function () {
-        try {
-          var value = this.value;
-          table.column(2).search(value).draw();
-          console.log("Level filter applied:", value);
-        } catch (error) {
-          console.error("Error applying level filter:", error);
-        }
+    // Clear filters function
+    window.clearFilters = function () {
+      document.getElementById("sourceFilter").value = "";
+      document.getElementById("levelFilter").value = "";
+      document.getElementById("pointsFilter").value = "";
+      document.getElementById("searchFilter").value = "";
+      
+      // Reset table display and sorting
+      filterTable();
+      initializeNativeSorting(); // Re-apply default sorting
+    };
+
+      // Native filter functions
+      document.getElementById("sourceFilter").addEventListener("change", function () {
+        filterTable();
       });
 
-      $("#pointsFilter").on("change", function () {
-        try {
-          var value = this.value;
-
-          // Remove existing custom search if any
-          $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(
-            function (fn) {
-              return fn.toString().indexOf("pointsFilter") === -1;
-            }
-          );
-
-          if (value) {
-            $.fn.dataTable.ext.search.push(function (
-              settings,
-              data,
-              dataIndex
-            ) {
-              // Extract points from the badge text
-              var pointsText = $(data[3]).text() || data[3];
-              var points = parseInt(pointsText.match(/\d+/)) || 0;
-
-              switch (value) {
-                case "0-50":
-                  return points >= 0 && points <= 50;
-                case "51-100":
-                  return points >= 51 && points <= 100;
-                case "101+":
-                  return points >= 101;
-                default:
-                  return true;
-              }
-            });
-          }
-          table.draw();
-          console.log("Points filter applied:", value);
-        } catch (error) {
-          console.error("Error applying points filter:", error);
-        }
+      document.getElementById("levelFilter").addEventListener("change", function () {
+        filterTable();
       });
 
-      // Clear all filters
+      document.getElementById("pointsFilter").addEventListener("change", function () {
+        filterTable();
+      });
+
+      // Clear all filters and reset sorting
       window.clearFilters = function () {
-        $("#sourceFilter").val("");
-        $("#levelFilter").val("");
-        $("#pointsFilter").val("");
+        document.getElementById("sourceFilter").value = "";
+        document.getElementById("levelFilter").value = "";
+        document.getElementById("pointsFilter").value = "";
+        document.getElementById("searchFilter").value = "";
 
         // Clear all column searches
         table.columns().search("").draw();
 
         // Remove custom search functions
         $.fn.dataTable.ext.search = [];
-        table.draw();
+        
+        // Reset sorting to default (Title column ascending)
+        table.order([[0, 'asc']]).draw();
+        
+        console.log("All filters and sorting cleared");
       };
 
       // Export functions
@@ -602,32 +866,34 @@ endblock %} {% block content %}
             var cleanRow = [];
 
             // Clean title (remove HTML tags)
-            var title = $(row[0]).find("strong").text() || $(row[0]).text();
+            var titleElement = row[0];
+            var titleStrong = titleElement.querySelector("strong");
+            var title = titleStrong ? titleStrong.textContent : titleElement.textContent;
             cleanRow.push('"' + title.replace(/"/g, '""') + '"');
 
             // Clean source (extract text from badge)
-            var source = $(row[1]).text().trim();
+            var source = row[1].textContent.trim();
             cleanRow.push('"' + source.replace(/"/g, '""') + '"');
 
             // Clean level (extract text from badge)
-            var level = $(row[2]).text().trim();
+            var level = row[2].textContent.trim();
             cleanRow.push('"' + level.replace(/"/g, '""') + '"');
 
             // Clean points (extract number)
-            var points = $(row[3]).text().replace(/[^\d]/g, "");
+            var points = row[3].textContent.replace(/[^\d]/g, "");
             cleanRow.push('"' + points + '"');
 
             // Clean description
-            var description =
-              $(row[4]).text() || $(row[4]).attr("title") || "No description";
+            var description = row[4].textContent || row[4].getAttribute("title") || "No description";
             cleanRow.push('"' + description.replace(/"/g, '""') + '"');
 
             // Extract course link
-            var courseLink = $(row[0]).find("a").attr("href") || "";
+            var linkElement = row[0].querySelector("a");
+            var courseLink = linkElement ? linkElement.getAttribute("href") : "";
             cleanRow.push('"' + courseLink.replace(/"/g, '""') + '"');
 
             // Clean date
-            var date = $(row[5]).text().trim();
+            var date = row[5].textContent.trim();
             cleanRow.push('"' + date.replace(/"/g, '""') + '"');
 
             csv += cleanRow.join(",") + "\n";
@@ -656,27 +922,34 @@ endblock %} {% block content %}
           return;
         }
 
-        // Get filtered data
-        var data = table.rows({ search: "applied" }).data().toArray();
+        // Get filtered data from current table display
+        var tbody = table.querySelector('tbody');
+        var rows = Array.from(tbody.querySelectorAll('tr')).filter(row => 
+          row.style.display !== 'none'
+        );
+        
         var tableHtml = '<table class="table table-striped table-bordered">';
         tableHtml +=
           "<thead><tr><th>Title</th><th>Source</th><th>Level</th><th>Points</th><th>Description</th><th>Created</th></tr></thead>";
         tableHtml += "<tbody>";
 
-        data.forEach(function (row) {
-          tableHtml += "<tr>";
-          tableHtml +=
-            "<td>" +
-            ($(row[0]).find("strong").text() || $(row[0]).text()) +
-            "</td>";
-          tableHtml += "<td>" + $(row[1]).text().trim() + "</td>";
-          tableHtml += "<td>" + $(row[2]).text().trim() + "</td>";
-          tableHtml +=
-            "<td>" + $(row[3]).text().replace(/[^\d]/g, "") + " pts</td>";
-          tableHtml +=
-            "<td>" + ($(row[4]).text() || "No description") + "</td>";
-          tableHtml += "<td>" + $(row[5]).text().trim() + "</td>";
-          tableHtml += "</tr>";
+        rows.forEach(function (row) {
+          var cells = row.querySelectorAll('td');
+          if (cells.length >= 6) {
+            tableHtml += "<tr>";
+            
+            // Title
+            var titleElement = cells[0].querySelector("strong") || cells[0];
+            tableHtml += "<td>" + titleElement.textContent + "</td>";
+            
+            // Source, Level, Points, Description, Date
+            tableHtml += "<td>" + cells[1].textContent.trim() + "</td>";
+            tableHtml += "<td>" + cells[2].textContent.trim() + "</td>";
+            tableHtml += "<td>" + cells[3].textContent.replace(/[^\d]/g, "") + " pts</td>";
+            tableHtml += "<td>" + (cells[4].textContent || "No description") + "</td>";
+            tableHtml += "<td>" + cells[5].textContent.trim() + "</td>";
+            tableHtml += "</tr>";
+          }
         });
 
         tableHtml += "</tbody></table>";
@@ -716,28 +989,34 @@ endblock %} {% block content %}
 
       // Show detailed statistics
       window.showTableStats = function () {
-        var info = table.page.info();
-        var currentData = table.rows({ search: "applied" }).data().toArray();
+        var tbody = table.querySelector('tbody');
+        var visibleRows = Array.from(tbody.querySelectorAll('tr')).filter(row => 
+          row.style.display !== 'none'
+        );
 
         // Calculate statistics
         var totalPoints = 0;
         var levelCounts = {};
         var sourceCounts = {};
 
-        currentData.forEach(function (row) {
-          var points = parseInt($(row[3]).text().match(/\d+/)) || 0;
-          totalPoints += points;
+        visibleRows.forEach(function (row) {
+          var cells = row.querySelectorAll('td');
+          if (cells.length >= 6) {
+            var pointsText = cells[3].textContent.match(/\d+/);
+            var points = pointsText ? parseInt(pointsText[0]) : 0;
+            totalPoints += points;
 
-          var level = $(row[2]).text().trim();
-          var source = $(row[1]).text().trim();
+            var level = cells[2].textContent.trim();
+            var source = cells[1].textContent.trim();
 
-          levelCounts[level] = (levelCounts[level] || 0) + 1;
-          sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+            levelCounts[level] = (levelCounts[level] || 0) + 1;
+            sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+          }
         });
 
         var avgPoints =
-          currentData.length > 0
-            ? (totalPoints / currentData.length).toFixed(1)
+          visibleRows.length > 0
+            ? (totalPoints / visibleRows.length).toFixed(1)
             : 0;
 
         var statsHtml = `
@@ -843,7 +1122,7 @@ endblock %} {% block content %}
         var helpHtml = `
               <div class="row">
                   <div class="col-md-12">
-                      <h6>Keyboard Shortcuts</h6>
+                      <h6><i class="fas fa-keyboard"></i> Keyboard Shortcuts</h6>
                       <ul class="list-unstyled">
                           <li><kbd>Ctrl + E</kbd> - Export to CSV</li>
                           <li><kbd>Ctrl + P</kbd> - Print table</li>
@@ -851,21 +1130,37 @@ endblock %} {% block content %}
                           <li><kbd>Ctrl + S</kbd> - Show statistics</li>
                       </ul>
                       <hr>
-                      <h6>Table Features</h6>
+                      <h6><i class="fas fa-sort"></i> Admin Sorting Features</h6>
                       <ul class="list-unstyled">
-                          <li><strong>Sorting:</strong> Click column headers to sort</li>
+                          <li><strong>Column Sorting:</strong> Click any column header to sort</li>
+                          <li><strong>Visual Indicators:</strong> 
+                              <ul class="mt-2">
+                                  <li><i class="fas fa-sort text-muted"></i> Sortable column (default)</li>
+                                  <li><i class="fas fa-sort-up text-primary"></i> Sorted ascending</li>
+                                  <li><i class="fas fa-sort-down text-primary"></i> Sorted descending</li>
+                              </ul>
+                          </li>
+                          <li><strong>Sort Direction:</strong> Click same header to reverse order</li>
+                          <li><strong>Multi-level Sorting:</strong> Available on all columns except Actions</li>
+                      </ul>
+                      <hr>
+                      <h6><i class="fas fa-table"></i> Table Features</h6>
+                      <ul class="list-unstyled">
                           <li><strong>Filtering:</strong> Use the search box or dropdown filters</li>
                           <li><strong>Pagination:</strong> Navigate through pages at the bottom</li>
                           <li><strong>Export:</strong> Download filtered results as CSV</li>
                           <li><strong>Print:</strong> Print current view with clean formatting</li>
+                          <li><strong>Statistics:</strong> View detailed analytics of current data</li>
                       </ul>
                       <hr>
-                      <h6>Tips</h6>
+                      <h6><i class="fas fa-lightbulb"></i> Pro Tips</h6>
                       <ul class="list-unstyled">
-                          <li>• Use multiple filters for precise results</li>
-                          <li>• Click "Clear Filters" to reset all filters</li>
-                          <li>• Export includes only filtered data</li>
-                          <li>• Statistics update based on current filters</li>
+                          <li>• Combine sorting and filtering for precise results</li>
+                          <li>• Hover over column headers to see sorting options</li>
+                          <li>• Use "Clear Filters" to reset all filters and sorting</li>
+                          <li>• Export and statistics reflect current filtered/sorted view</li>
+                          <li>• Level sorting: Beginner → Learner → Intermediate → Expert</li>
+                          <li>• Points sorting: Numerical order (0 → highest)</li>
                       </ul>
                   </div>
               </div>
@@ -928,8 +1223,7 @@ endblock %} {% block content %}
           }
         }
       });
-    } // End of courses table check
-  });
+  }); // End of DOMContentLoaded
 
   // Export data function
   function exportData(format) {
@@ -1006,20 +1300,40 @@ Keyboard Shortcuts:
 • Ctrl+R: Clear all filters
 • Ctrl+S: Show statistics
 
-Features:
-• Click column headers to sort
+Admin Features:
+• Click column headers to sort (ascending/descending)
+• Visual sorting indicators (arrows) show current sort direction
+• Full sorting available on all columns except Actions
 • Use filters to narrow results
 • Export filtered data
-• Print current view`);
+• Print current view
+
+Sorting:
+• ↕ Default sortable column
+• ↑ Sorted ascending
+• ↓ Sorted descending
+• Click header again to reverse sort order`);
   }
 
-  // Clear filters function
+  // Clear filters function (fallback for manual filtering)
   function clearFilters() {
     document.getElementById("sourceFilter").value = "";
     document.getElementById("levelFilter").value = "";
     document.getElementById("pointsFilter").value = "";
     document.getElementById("searchFilter").value = "";
+    
+    // Clear filters and reset sorting
     filterTable();
+    
+    // Reset to default sorting
+    var table = document.getElementById('coursesTable');
+    if (table) {
+      var headers = table.querySelectorAll('th.sortable');
+      headers.forEach(function(header) {
+        header.classList.remove('sort-asc', 'sort-desc');
+        header.classList.add('sort-default');
+      });
+    }
   }
 
   // Filter table function
