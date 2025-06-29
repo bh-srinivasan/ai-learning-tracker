@@ -301,10 +301,11 @@ def populate_linkedin_courses():
             
             # Add the course
             conn.execute('''
-                INSERT INTO courses (title, source, level, link, points, description)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO courses (title, source, level, link, url, points, description, category, difficulty)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (course['title'], 'LinkedIn Learning', course['level'], 
-                  course['link'], course['points'], course['description']))
+                  course['link'], course['link'], course['points'], course['description'],
+                  'AI/ML', course['level']))
             
             # Add to our local set to prevent duplicates within this batch
             existing_titles.add(course['title'].lower().strip())

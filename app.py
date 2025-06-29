@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
 import sqlite3
 import os
 from datetime import datetime, timedelta
@@ -10,12 +11,15 @@ import time
 from collections import defaultdict
 import re
 
+# Load environment variables from .env file
+load_dotenv()
+
 app = Flask(__name__)
 
 # Enhanced security configuration
 app.config.update(
-    SECRET_KEY=os.environ.get('SECRET_KEY', secrets.token_hex(32)),
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),  # Session expires after 24 hours
+    SECRET_KEY=os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32)),
+    PERMANENT_SESSION_LIFETIME=timedelta(seconds=int(os.environ.get('SESSION_TIMEOUT', 3600))),
     SESSION_COOKIE_SECURE=True if os.environ.get('FLASK_ENV') == 'production' else False,
     SESSION_COOKIE_HTTPONLY=True,  # Prevent XSS attacks
     SESSION_COOKIE_SAMESITE='Lax',  # CSRF protection
@@ -287,13 +291,22 @@ def init_db():
         # Columns already exist
         pass
     
-    # Create default users (admin and bharath)
-    admin_hash = generate_password_hash('admin')
-    bharath_hash = generate_password_hash('bharath')
+    # Create default users (admin, bharath as protected admin, and demo for testing)
+    admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')  # Fallback to default if not set
+    demo_username = os.environ.get('DEMO_USERNAME', 'demo')
+    demo_password = os.environ.get('DEMO_PASSWORD', 'demo')  # Fallback to default if not set
+    
+    admin_hash = generate_password_hash(admin_password)
+    bharath_hash = generate_password_hash('bharath')  # Protected admin user with fixed password
+    demo_hash = generate_password_hash(demo_password)
     
     try:
+        # Create admin user
         conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('admin', admin_hash))
+        # Create bharath as protected admin user  
         conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('bharath', bharath_hash))
+        # Create demo user for testing
+        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (demo_username, demo_hash))
         conn.commit()
     except sqlite3.IntegrityError:
         # Users already exist
@@ -1038,6 +1051,11 @@ def forbidden(error):
 def rate_limit_exceeded(error):
     return render_template('auth/login.html'), 429
 
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """Handle Method Not Allowed errors with helpful message"""
+    return render_template('auth/login.html'), 405
+
 # Security monitoring route
 @app.route('/security-health')
 def security_health():
@@ -1544,7 +1562,7 @@ def admin_course_configs():
     finally:
         conn.close()
 
-@app.route('/admin/settings')
+@app.route('/admin/settings', methods=['GET', 'POST'])
 def admin_settings():
     """Admin settings"""
     user = get_current_user()
@@ -1552,7 +1570,53 @@ def admin_settings():
         flash('Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get level settings and system settings
+    if request.method == 'POST':
+        # Handle level settings update
+        conn = get_db_connection()
+        try:
+            # Get all level settings to update
+            level_settings = conn.execute('SELECT * FROM level_settings ORDER BY points_required').fetchall()
+            
+            updated_count = 0
+            for level in level_settings:
+                field_name = f"{level['level_name'].lower()}_points"
+                new_points = request.form.get(field_name)
+                
+                if new_points:
+                    try:
+                        new_points = int(new_points)
+                        if new_points >= 0:
+                            conn.execute('UPDATE level_settings SET points_required = ? WHERE level_name = ?', 
+                                       (new_points, level['level_name']))
+                            updated_count += 1
+                        else:
+                            flash(f'Points for {level["level_name"]} must be non-negative.', 'error')
+                    except ValueError:
+                        flash(f'Invalid points value for {level["level_name"]}.', 'error')
+            
+            if updated_count > 0:
+                conn.commit()
+                
+                # Log security event
+                log_security_event(
+                    user_id=user['id'],
+                    event_type='admin_settings_update',
+                    details=f'Updated {updated_count} level settings',
+                    ip_address=request.remote_addr
+                )
+                
+                flash(f'Successfully updated {updated_count} level settings!', 'success')
+            else:
+                flash('No valid updates were made.', 'warning')
+                
+        except Exception as e:
+            flash(f'Error updating settings: {str(e)}', 'error')
+        finally:
+            conn.close()
+        
+        return redirect(url_for('admin_settings'))
+    
+    # GET request - display settings page
     conn = get_db_connection()
     try:
         level_settings = conn.execute('SELECT * FROM level_settings ORDER BY points_required').fetchall()
