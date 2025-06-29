@@ -293,11 +293,12 @@ def init_db():
     
     # Create default users (admin, bharath as protected admin, and demo for testing)
     admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')  # Fallback to default if not set
+    bharath_password = os.environ.get('BHARATH_PASSWORD', 'bharath')  # Protected admin user password from env
     demo_username = os.environ.get('DEMO_USERNAME', 'demo')
     demo_password = os.environ.get('DEMO_PASSWORD', 'demo')  # Fallback to default if not set
     
     admin_hash = generate_password_hash(admin_password)
-    bharath_hash = generate_password_hash('bharath')  # Protected admin user with fixed password
+    bharath_hash = generate_password_hash(bharath_password)
     demo_hash = generate_password_hash(demo_password)
     
     try:
@@ -1738,14 +1739,16 @@ def admin_delete_user(user_id):
     """Delete a user (admin only)"""
     conn = get_db_connection()
     try:
-        # Check if user exists and is not admin
+        # Check if user exists and is not admin or protected user
         user = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
         if not user:
             flash('User not found.', 'error')
             return redirect(url_for('admin_users'))
         
-        if user['username'] == 'admin':
-            flash('Cannot delete admin user.', 'error')
+        # Protected users that cannot be deleted
+        protected_users = ['admin', 'bharath']
+        if user['username'] in protected_users:
+            flash(f'Cannot delete protected user "{user["username"]}".', 'error')
             return redirect(url_for('admin_users'))
         
         # Delete user and related data
@@ -1776,8 +1779,10 @@ def admin_pause_user(user_id):
             flash('User not found.', 'error')
             return redirect(url_for('admin_users'))
         
-        if user['username'] == 'admin':
-            flash('Cannot pause admin user.', 'error')
+        # Protected users that cannot be paused
+        protected_users = ['admin', 'bharath']
+        if user['username'] in protected_users:
+            flash(f'Cannot pause protected user "{user["username"]}".', 'error')
             return redirect(url_for('admin_users'))
         
         # Toggle status
@@ -2483,29 +2488,41 @@ def admin_password_reset():
             # Get all users
             users = conn.execute('SELECT id, username FROM users').fetchall()
             
+            # Protected users that should not have passwords reset
+            protected_users = ['bharath']  # Add more protected users as needed
+            
             # Hash the new password
             password_hash = generate_password_hash(new_password)
             
-            # Update all users' passwords
+            # Update users' passwords (excluding protected users)
             updated_count = 0
+            skipped_users = []
+            
             for user in users:
-                conn.execute(
-                    'UPDATE users SET password_hash = ? WHERE id = ?',
-                    (password_hash, user['id'])
-                )
-                updated_count += 1
+                if user['username'] not in protected_users:
+                    conn.execute(
+                        'UPDATE users SET password_hash = ? WHERE id = ?',
+                        (password_hash, user['id'])
+                    )
+                    updated_count += 1
+                else:
+                    skipped_users.append(user['username'])
             
             conn.commit()
             
             # Log security event
             log_security_event(
                 'admin_password_reset',
-                f'Admin reset passwords for all {updated_count} users',
+                f'Admin reset passwords for {updated_count} users (skipped protected users: {", ".join(skipped_users)})',
                 request.remote_addr,
                 session.get('user_id')
             )
             
-            flash(f'Successfully reset passwords for all {updated_count} users. All users will need to use the new password on their next login.', 'success')
+            success_message = f'Successfully reset passwords for {updated_count} users.'
+            if skipped_users:
+                success_message += f' Protected users ({", ".join(skipped_users)}) were not modified.'
+            
+            flash(success_message, 'success')
             
         except Exception as e:
             flash(f'Error resetting passwords: {str(e)}', 'error')
@@ -2562,20 +2579,22 @@ def admin_reset_all_user_passwords():
     try:
         conn = get_db_connection()
         
-        # Get all users except admin
+        # Get all users except admin and protected users
+        protected_users = ['admin', 'bharath']
+        placeholders = ','.join(['?' for _ in protected_users])
         users = conn.execute(
-            'SELECT id, username FROM users WHERE username != ?', 
-            ('admin',)
+            f'SELECT id, username FROM users WHERE username NOT IN ({placeholders})', 
+            protected_users
         ).fetchall()
         
         if not users:
-            flash('No non-admin users found to reset passwords for.', 'warning')
+            flash('No non-protected users found to reset passwords for.', 'warning')
             return redirect(url_for('admin_users'))
         
         # Hash the new password
         password_hash = generate_password_hash(new_password)
         
-        # Update all non-admin users' passwords
+        # Update all non-protected users' passwords
         updated_count = 0
         for user in users:
             conn.execute(
@@ -2589,12 +2608,12 @@ def admin_reset_all_user_passwords():
         # Log security event
         log_security_event(
             'admin_reset_all_user_passwords',
-            f'Admin reset passwords for {updated_count} non-admin users',
+            f'Admin reset passwords for {updated_count} non-protected users (excluding: {", ".join(protected_users)})',
             request.remote_addr,
             session.get('user_id')
         )
         
-        flash(f'Successfully reset passwords for {updated_count} users (excluding admin). All affected users will need to use the new password on their next login.', 'success')
+        flash(f'Successfully reset passwords for {updated_count} users (excluding protected users: {", ".join(protected_users)}). All affected users will need to use the new password on their next login.', 'success')
         
     except Exception as e:
         flash(f'Error resetting passwords: {str(e)}', 'error')
@@ -2631,7 +2650,7 @@ def admin_reset_user_password():
     try:
         conn = get_db_connection()
         
-        # Get user info (prevent admin password reset)
+        # Get user info (prevent protected users' password reset)
         user = conn.execute(
             'SELECT id, username FROM users WHERE id = ?', 
             (user_id,)
@@ -2641,8 +2660,10 @@ def admin_reset_user_password():
             flash('User not found.', 'error')
             return redirect(url_for('admin_users'))
         
-        if user['username'] == 'admin':
-            flash('Cannot reset admin password through this method.', 'error')
+        # Protected users that cannot have passwords reset
+        protected_users = ['admin', 'bharath']
+        if user['username'] in protected_users:
+            flash(f'Cannot reset password for protected user "{user["username"]}".', 'error')
             return redirect(url_for('admin_users'))
         
         # Hash the custom password

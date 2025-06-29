@@ -1,0 +1,9 @@
+2025-06-29 22:15:03,952 - WARNING -     deploy_azure_secure.py:2 - Hardcoded bharath user creation
+2025-06-29 22:15:03,952 - WARNING -         Match: INSERT.*bharath.*password
+2025-06-29 22:15:03,964 - ERROR - Error checking protected user logic: unterminated character set at position 26
+2025-06-29 22:18:45,299 - INFO - [SECURITY] Running security scan only...
+2025-06-29 22:18:45,299 - INFO - [SECURITY] Scanning for hardcoded password reset logic...
+2025-06-29 22:18:47,872 - INFO - [SUCCESS] No hardcoded password reset issues found
+2025-06-29 22:18:47,872 - INFO - [SECURITY] Checking protected user logic...
+2025-06-29 22:18:47,886 - INFO - [SUCCESS] Protected user logic appears to be properly implemented
+2025-06-29 22:18:47,886 - INFO - [SUCCESS] Security scan completed - no issues found
