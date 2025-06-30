@@ -8,7 +8,7 @@ endblock %} {% block content %}
 
 <!-- Stats Cards -->
 <div class="row mb-4">
-  <div class="col-md-6 col-lg-3 mb-3">
+  <div class="col-md-6 col-lg-4 mb-3">
     <div class="card bg-primary text-white">
       <div class="card-body">
         <div class="d-flex justify-content-between">
@@ -24,53 +24,32 @@ endblock %} {% block content %}
     </div>
   </div>
 
-  <div class="col-md-6 col-lg-3 mb-3">
+  <div class="col-md-6 col-lg-4 mb-3">
     <div class="card bg-success text-white">
       <div class="card-body">
         <div class="d-flex justify-content-between">
           <div>
-            <h6 class="card-title">Points Earned</h6>
-            <h4>{{ user_points }}</h4>
+            <h6 class="card-title">Learning Entries</h6>
+            <h4>{{ learning_count }}</h4>
           </div>
           <div class="align-self-center">
-            <i class="fas fa-star fa-2x"></i>
+            <i class="fas fa-book fa-2x"></i>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="col-md-6 col-lg-3 mb-3">
+  <div class="col-md-6 col-lg-4 mb-3">
     <div class="card bg-info text-white">
       <div class="card-body">
         <div class="d-flex justify-content-between">
           <div>
-            <h6 class="card-title">Next Level</h6>
-            <h6>{{ next_level_info }}</h6>
+            <h6 class="card-title">Completed Courses</h6>
+            <h4>{{ completed_courses|length }}</h4>
           </div>
           <div class="align-self-center">
-            <i class="fas fa-arrow-up fa-2x"></i>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-6 col-lg-3 mb-3">
-    <div class="card bg-warning text-white">
-      <div class="card-body">
-        <div class="d-flex justify-content-between">
-          <div>
-            <h6 class="card-title">Progress</h6>
-            <div class="progress" style="height: 10px">
-              <div
-                class="progress-bar bg-light"
-                data-width="{{ progress_percentage }}"
-              ></div>
-            </div>
-          </div>
-          <div class="align-self-center">
-            <i class="fas fa-chart-line fa-2x"></i>
+            <i class="fas fa-graduation-cap fa-2x"></i>
           </div>
         </div>
       </div>
@@ -91,7 +70,7 @@ endblock %} {% block content %}
         </a>
       </div>
       <div class="card-body">
-        {% if recent_entries %} {% for entry in recent_entries %}
+        {% if recent_learnings %} {% for entry in recent_learnings %}
         <div class="learning-card card mb-3">
           <div class="card-body py-2">
             <h6 class="card-title mb-1">{{ entry.title }}</h6>
@@ -150,9 +129,6 @@ endblock %} {% block content %}
                 <div class="mb-1">
                   <span class="badge bg-primary">{{ course.level }}</span>
                   <span class="badge bg-info">{{ course.source }}</span>
-                  <span class="badge bg-warning text-dark"
-                    >{{ course.points }} pts</span
-                  >
                 </div>
                 {% if course.description %}
                 <p class="small text-muted mb-1">
@@ -220,9 +196,6 @@ endblock %} {% block content %}
                 <div class="mb-1">
                   <span class="badge bg-primary">{{ course.level }}</span>
                   <span class="badge bg-info">{{ course.source }}</span>
-                  <span class="badge bg-warning text-dark"
-                    >{{ course.points }} pts</span
-                  >
                   <span class="badge bg-success">Completed</span>
                 </div>
                 {% if course.description %}

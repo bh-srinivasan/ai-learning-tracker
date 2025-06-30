@@ -1163,30 +1163,6 @@ def dashboard():
         ).fetchone()['count']
         
         current_level = user_data['level'] if user_data else 'Beginner'
-        user_points = user_data['points'] if user_data else 0
-        
-        # Calculate next level info
-        level_mapping = {'Beginner': 0, 'Learner': 100, 'Intermediate': 250, 'Expert': 500}
-        next_level = 'Expert'
-        points_needed = 0
-        
-        for level, required_points in level_mapping.items():
-            if user_points < required_points:
-                next_level = level
-                points_needed = required_points - user_points
-                break
-        
-        next_level_info = f"{points_needed} pts to {next_level}" if points_needed > 0 else "Max Level!"
-        
-        # Calculate progress percentage
-        current_points = user_points
-        next_level_points = next((points for level, points in level_mapping.items() if points > user_points), 500)
-        prev_level_points = max([points for points in level_mapping.values() if points <= user_points], default=0)
-        
-        if next_level_points > prev_level_points:
-            progress_percentage = ((current_points - prev_level_points) / (next_level_points - prev_level_points)) * 100
-        else:
-            progress_percentage = 100
         
         # Get recent learning entries
         recent_learnings = conn.execute('''
@@ -1212,9 +1188,6 @@ def dashboard():
         
         return render_template('dashboard/index.html',
                              current_level=current_level,
-                             user_points=user_points,
-                             next_level_info=next_level_info,
-                             progress_percentage=int(progress_percentage),
                              learning_count=learning_count,
                              recent_learnings=recent_learnings,
                              available_courses=available_courses,
