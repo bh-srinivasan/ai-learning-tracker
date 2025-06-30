@@ -101,12 +101,12 @@ class DeploymentManager:
         
         issues = []
         
-        # Patterns to look for - focusing on bharath user specifically
+        # Patterns to look for - only admin-related patterns matter now
         patterns = [
-            (r"generate_password_hash\s*\(\s*['\"]bharath['\"]", "Hardcoded bharath password generation", "HIGH"),
-            (r"bharath['\"]\s*,\s*['\"](bharath|password)", "Hardcoded bharath credentials", "HIGH"),
-            (r"UPDATE\s+users\s+SET\s+password_hash.*WHERE.*bharath", "Direct password update for bharath", "HIGH"),
-            (r"password\s*=\s*['\"]bharath['\"]", "Hardcoded bharath password assignment", "HIGH"),
+            (r"generate_password_hash\s*\(\s*['\"]admin['\"]", "Hardcoded admin password generation", "HIGH"),
+            (r"admin['\"]\s*,\s*['\"](admin|password)", "Hardcoded admin credentials", "HIGH"),
+            (r"UPDATE\s+users\s+SET\s+password_hash.*WHERE.*admin", "Direct password update for admin", "HIGH"),
+            (r"password\s*=\s*['\"]admin['\"]", "Hardcoded admin password assignment", "HIGH"),
         ]
         
         # Files to scan
@@ -202,7 +202,6 @@ class DeploymentManager:
         required_env_vars = [
             "FLASK_SECRET_KEY",
             "ADMIN_PASSWORD", 
-            "BHARATH_PASSWORD",
             "DEMO_USERNAME", 
             "DEMO_PASSWORD",
             "SESSION_TIMEOUT",

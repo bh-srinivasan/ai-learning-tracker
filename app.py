@@ -291,22 +291,18 @@ def init_db():
         # Columns already exist
         pass
     
-    # Create default users (admin and demo for testing)
-    # Note: bharath is treated as a normal user, not protected
+    # Create default users (only admin and demo for testing)
+    # bharath is a normal user and should NOT be auto-created
     admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')  # Fallback to default if not set
     demo_username = os.environ.get('DEMO_USERNAME', 'demo')
     demo_password = os.environ.get('DEMO_PASSWORD', 'demo')  # Fallback to default if not set
     
     admin_hash = generate_password_hash(admin_password)
-    # bharath will be created as a normal user with default password 'bharath'
-    bharath_hash = generate_password_hash('bharath')  # Normal user with default password
     demo_hash = generate_password_hash(demo_password)
     
     try:
         # Create admin user
         conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('admin', admin_hash))
-        # Create bharath as normal user (not protected)
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('bharath', bharath_hash))
         # Create demo user for testing
         conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (demo_username, demo_hash))
         conn.commit()

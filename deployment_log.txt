@@ -13,3 +13,17 @@
 2025-06-30 23:30:07,692 - WARNING -     ?? deployment_log.txt
 2025-06-30 23:30:07,693 - ERROR - ❌ Uncommitted changes detected. Please commit or stash them first.
 2025-06-30 23:30:07,693 - INFO - 💡 Use --auto-commit flag to automatically commit changes
+2025-06-30 23:30:49,006 - INFO - 🎯 Starting AI Learning Tracker deployment process...
+2025-06-30 23:30:49,008 - INFO - 📁 Working directory: C:\Users\bhsrinivasan\Downloads\Learning\Vibe Coding\AI_Learning
+2025-06-30 23:30:49,008 - INFO - [GIT] Checking git status...
+2025-06-30 23:30:49,199 - WARNING - [WARNING] Uncommitted changes detected:
+2025-06-30 23:30:49,199 - WARNING -     ?? deployment_log.txt
+2025-06-30 23:30:49,199 - INFO - [COMMIT] Committing changes: Auto-commit: Security fixes and deployment - 2025-06-30 23:30:49
+2025-06-30 23:30:49,730 - INFO - [SUCCESS] Changes committed successfully
+2025-06-30 23:30:49,731 - INFO - [SECURITY] Scanning for hardcoded password reset logic...
+2025-06-30 23:31:23,384 - WARNING - ⚠️  Found 2 potential security issues:
+2025-06-30 23:31:23,394 - WARNING -     app.py:302 - Hardcoded bharath password generation
+2025-06-30 23:31:23,395 - WARNING -         Match: generate_password_hash('bharath'
+2025-06-30 23:31:23,395 - WARNING -     deploy_azure_secure.py:109 - Hardcoded bharath user creation
+2025-06-30 23:31:23,395 - WARNING -         Match: INSERT.*bharath.*password
+2025-06-30 23:31:23,396 - ERROR - ❌ High severity security issues found. Please fix them before deployment.

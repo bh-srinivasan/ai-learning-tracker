@@ -101,12 +101,12 @@ class DeploymentManager:
         
         issues = []
         
-        # Patterns to look for
+        # Patterns to look for - only admin-related patterns now matter
         patterns = [
-            (r"generate_password_hash\s*\(\s*['\"]bharath['\"]", "Hardcoded bharath password generation"),
-            (r"bharath['\"]\s*,\s*['\"](bharath|password)", "Hardcoded bharath credentials"),
-            (r"UPDATE\s+users\s+SET\s+password_hash.*bharath", "Direct password update for bharath"),
-            (r"INSERT.*bharath.*password", "Hardcoded bharath user creation"),
+            (r"generate_password_hash\s*\(\s*['\"]admin['\"]", "Hardcoded admin password generation"),
+            (r"admin['\"]\s*,\s*['\"](admin|password)", "Hardcoded admin credentials"),
+            (r"UPDATE\s+users\s+SET\s+password_hash.*admin", "Direct password update for admin"),
+            (r"INSERT.*admin.*password", "Hardcoded admin user creation"),
         ]
         
         # Files to scan
@@ -127,7 +127,7 @@ class DeploymentManager:
                             "line": line_num,
                             "pattern": description,
                             "match": match.group(),
-                            "severity": "HIGH" if "bharath" in match.group().lower() else "MEDIUM"
+                            "severity": "HIGH" if "admin" in match.group().lower() else "MEDIUM"
                         })
                         
             except Exception as e:
@@ -199,7 +199,6 @@ class DeploymentManager:
         required_env_vars = [
             "FLASK_SECRET_KEY",
             "ADMIN_PASSWORD", 
-            "BHARATH_PASSWORD",
             "DEMO_USERNAME",
             "DEMO_PASSWORD",
             "SESSION_TIMEOUT",
