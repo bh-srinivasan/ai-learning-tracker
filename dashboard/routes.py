@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request, g
 import sqlite3
+from level_manager import LevelManager
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -12,107 +13,40 @@ def get_current_user():
     """Get current user from g object (set by before_request handler)"""
     return getattr(g, 'user', None)
 
+# Initialize level manager
+level_manager = LevelManager()
+
 def calculate_user_level(user_id):
-    """Calculate user level based on points earned and admin settings"""
-    conn = get_db_connection()
-    user_points = conn.execute('SELECT points FROM users WHERE id = ?', (user_id,)).fetchone()['points']
-    
-    # Get level settings from database
-    level_settings = conn.execute('''
-        SELECT level_name, points_required 
-        FROM level_settings 
-        ORDER BY points_required DESC
-    ''').fetchall()
-    
-    conn.close()
-    
-    # Find the appropriate level based on points
-    for level in level_settings:
-        if user_points >= level['points_required']:
-            return level['level_name']
-    
-    return 'Beginner'  # fallback
+    """Calculate user level based on points earned and admin settings - DEPRECATED, use LevelManager"""
+    return level_manager.calculate_level_from_points(user_id)
 
 def update_user_points_from_courses(user_id):
-    """Update user points based on completed courses"""
-    conn = get_db_connection()
-    
-    # Calculate total points from completed courses
-    total_points = conn.execute('''
-        SELECT COALESCE(SUM(c.points), 0) as total
-        FROM user_courses uc
-        JOIN courses c ON uc.course_id = c.id
-        WHERE uc.user_id = ? AND uc.completed = 1
-    ''', (user_id,)).fetchone()['total']
-    
-    # Update user points
-    conn.execute('UPDATE users SET points = ? WHERE id = ?', (total_points, user_id))
-    conn.commit()
-    
-    # Update level based on points
-    new_level = calculate_user_level(user_id)
-    conn.execute('UPDATE users SET level = ? WHERE id = ?', (new_level, user_id))
-    conn.commit()
-    
-    conn.close()
-    # Update session level if it exists
-    if 'user_level' in session:
-        session['user_level'] = new_level
-    return new_level, total_points
+    """Update user points based on completed courses - DEPRECATED, use LevelManager"""
+    return level_manager.update_user_points_from_courses(user_id)
 
 def update_user_level(user_id):
-    """Update user level in database based on points"""
-    new_level, total_points = update_user_points_from_courses(user_id)
+    """Update user level in database based on points - DEPRECATED, use LevelManager"""
+    new_level, total_points, level_points = level_manager.update_user_points_from_courses(user_id)
+    # Update session if needed
+    if 'user_level' in session:
+        session['user_level'] = new_level
     return new_level
 
 def calculate_progress_percentage(current_level, user_points):
     """Calculate progress percentage toward next level based on points and admin settings"""
-    conn = get_db_connection()
-    
-    # Get level settings from database
-    level_settings = conn.execute('''
-        SELECT level_name, points_required 
-        FROM level_settings 
-        ORDER BY points_required ASC
-    ''').fetchall()
-    
-    conn.close()
-    
-    # Find current and next level
-    current_points = 0
-    next_points = None
-    
-    for i, level in enumerate(level_settings):
-        if level['level_name'] == current_level:
-            current_points = level['points_required']
-            if i + 1 < len(level_settings):
-                next_points = level_settings[i + 1]['points_required']
-            break
-    
-    if next_points is None:
-        return 100  # Already at max level
-    
-    progress = min((user_points / next_points * 100), 100)
-    return int(progress)
+    breakdown = level_manager.get_level_points_breakdown(user_points, current_level)
+    return int(breakdown['progress_percentage'])
 
 def get_next_level_info(current_level):
     """Get information about the next level based on admin settings"""
-    conn = get_db_connection()
-    
-    # Get level settings from database
-    level_settings = conn.execute('''
-        SELECT level_name, points_required 
-        FROM level_settings 
-        ORDER BY points_required ASC
-    ''').fetchall()
-    
-    conn.close()
+    # Get level settings from level manager
+    settings = level_manager.get_level_settings()
     
     # Find next level
-    for i, level in enumerate(level_settings):
+    for i, level in enumerate(settings):
         if level['level_name'] == current_level:
-            if i + 1 < len(level_settings):
-                next_level = level_settings[i + 1]
+            if i + 1 < len(settings):
+                next_level = settings[i + 1]
                 return f"{next_level['level_name']} ({next_level['points_required']}+ points)"
             break
     
@@ -241,34 +175,39 @@ def complete_course(course_id):
 
 @dashboard_bp.route('/profile', methods=['GET', 'POST'])
 def profile():
+    """Enhanced profile route with comprehensive level management"""
     user = get_current_user()
     if not user:
         return redirect(url_for('auth.login'))
     
     user_id = user['id']
-    conn = get_db_connection()
     
     if request.method == 'POST':
-        # User can only update their selected level
+        # Handle level update with enhanced validation
         user_selected_level = request.form.get('user_selected_level')
         
         if user_selected_level in ['Beginner', 'Learner', 'Intermediate', 'Expert']:
-            try:
-                conn.execute('''
-                    UPDATE users 
-                    SET user_selected_level = ? 
-                    WHERE id = ?
-                ''', (user_selected_level, user_id))
-                conn.commit()
-                flash(f'Profile updated! Your expertise level set to {user_selected_level}', 'success')
-            except Exception as e:
-                flash(f'Error updating profile: {str(e)}', 'error')
+            # Use level manager to update with validation
+            result = level_manager.update_user_selected_level(user_id, user_selected_level)
+            
+            if result['success']:
+                flash(result['message'], 'success')
+                
+                # Update session if needed
+                if 'user_level' in session:
+                    session['user_selected_level'] = user_selected_level
+            else:
+                flash(result['message'], 'error')
         else:
             flash('Invalid expertise level selected', 'error')
     
-    # Get user data including session information
+    # Get comprehensive user level information
+    level_info = level_manager.get_user_level_info(user_id)
+    
+    # Get user data for display
+    conn = get_db_connection()
     user_data = conn.execute('''
-        SELECT username, level, points, user_selected_level, created_at, 
+        SELECT username, level, points, level_points, user_selected_level, created_at, 
                last_login, last_activity, login_count
         FROM users 
         WHERE id = ?
@@ -303,14 +242,19 @@ def profile():
         WHERE user_id = ? AND completed = 0
     ''', (user_id,)).fetchone()['count']
     
+    # Get recent points log for user
+    points_log = level_manager.get_user_points_log(user_id, limit=10)
+    
     conn.close()
     
     return render_template('dashboard/profile.html',
                          user=user_data,
+                         level_info=level_info,
                          active_sessions=active_sessions,
                          total_learnings=total_learnings,
                          completed_courses=completed_courses,
-                         enrolled_courses=enrolled_courses)
+                         enrolled_courses=enrolled_courses,
+                         points_log=points_log)
 
 @dashboard_bp.route('/add_course', methods=['GET', 'POST'])
 def add_course():
@@ -474,3 +418,64 @@ def delete_course(course_id):
         conn.close()
     
     return redirect(url_for('dashboard.my_courses'))
+
+@dashboard_bp.route('/toggle_course_completion/<int:course_id>', methods=['POST'])
+def toggle_course_completion(course_id):
+    """Toggle course completion status with enhanced level management"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('auth.login'))
+    
+    user_id = user['id']
+    completed = request.form.get('completed') == '1'
+    
+    # Use level manager to handle completion
+    result = level_manager.mark_course_completion(user_id, course_id, completed)
+    
+    if result['success']:
+        flash(result['message'], 'success')
+        
+        # Show level progression information if level changed
+        if result.get('points_change', 0) != 0:
+            points_msg = f"Points: {'+'  if result['points_change'] > 0 else ''}{result['points_change']}"
+            flash(f"{points_msg} | Level: {result['new_level']} ({result['level_points']} at level)", 'info')
+        
+        # Update session level if it changed
+        if 'user_level' in session and session['user_level'] != result['new_level']:
+            session['user_level'] = result['new_level']
+    else:
+        flash(result['message'], 'error')
+    
+    return redirect(url_for('dashboard.my_courses'))
+
+@dashboard_bp.route('/level_info')
+def level_info():
+    """Get current user's level information as JSON"""
+    user = get_current_user()
+    if not user:
+        return {'error': 'Not authenticated'}, 401
+    
+    level_info = level_manager.get_user_level_info(user['id'])
+    return level_info
+
+@dashboard_bp.route('/points_log')
+def points_log():
+    """View user's points transaction history"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('auth.login'))
+    
+    user_id = user['id']
+    
+    # Get pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    
+    # Get points log with pagination
+    points_log = level_manager.get_user_points_log(user_id, limit=per_page * page)
+    level_info = level_manager.get_user_level_info(user_id)
+    
+    return render_template('dashboard/points_log.html',
+                         points_log=points_log,
+                         level_info=level_info,
+                         page=page)

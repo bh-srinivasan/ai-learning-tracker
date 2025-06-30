@@ -1353,23 +1353,166 @@ def my_courses():
     finally:
         conn.close()
 
-@app.route('/profile')
+@app.route('/profile', methods=['GET', 'POST'])
 def profile():
-    """User profile page"""
+    """User profile page with level management"""
     user = get_current_user()
     if not user:
         return redirect(url_for('login'))
     
-    # Get user profile data
+    user_id = user['id']
+    
+    # Import level manager here to avoid circular imports
+    from level_manager import LevelManager
+    level_manager = LevelManager()
+    
+    if request.method == 'POST':
+        # Handle profile updates
+        user_selected_level = request.form.get('user_selected_level')
+        
+        if user_selected_level:
+            # Update selected level using level manager
+            result = level_manager.update_user_selected_level(user_id, user_selected_level)
+            
+            if result['success']:
+                flash(f'Profile updated successfully! {result["message"]}', 'success')
+                
+                # Update session if needed
+                if 'user_level' in session:
+                    session['user_selected_level'] = user_selected_level
+            else:
+                flash(result['message'], 'error')
+        else:
+            flash('Invalid expertise level selected', 'error')
+    
+    # Get comprehensive user level information
+    level_info = level_manager.get_user_level_info(user_id)
+    
+    # Get user data for display
     conn = get_db_connection()
     try:
         user_data = conn.execute('''
-            SELECT * FROM users WHERE id = ?
-        ''', (user['id'],)).fetchone()
+            SELECT username, level, points, level_points, user_selected_level, created_at, 
+                   last_login, last_activity, login_count
+            FROM users 
+            WHERE id = ?
+        ''', (user_id,)).fetchone()
         
-        return render_template('dashboard/profile.html', user=user_data)
+        # Get user's active sessions
+        active_sessions = conn.execute('''
+            SELECT session_token, created_at, expires_at, ip_address, user_agent,
+                   CASE WHEN expires_at > datetime('now') THEN 'Active' ELSE 'Expired' END as status
+            FROM user_sessions 
+            WHERE user_id = ? AND is_active = 1
+            ORDER BY created_at DESC
+            LIMIT 5
+        ''', (user_id,)).fetchall()
+        
+        # Get user's learning stats
+        total_learnings = conn.execute('''
+            SELECT COUNT(*) as count 
+            FROM learning_entries 
+            WHERE user_id = ? AND is_global = 0
+        ''', (user_id,)).fetchone()['count']
+        
+        completed_courses = conn.execute('''
+            SELECT COUNT(*) as count 
+            FROM user_courses 
+            WHERE user_id = ? AND completed = 1
+        ''', (user_id,)).fetchone()['count']
+        
+        enrolled_courses = conn.execute('''
+            SELECT COUNT(*) as count 
+            FROM user_courses 
+            WHERE user_id = ? AND completed = 0
+        ''', (user_id,)).fetchone()['count']
+        
+        # Get recent points log for user
+        points_log = level_manager.get_user_points_log(user_id, limit=10)
+        
+        return render_template('dashboard/profile.html',
+                             user=user_data,
+                             level_info=level_info,
+                             active_sessions=active_sessions,
+                             total_learnings=total_learnings,
+                             completed_courses=completed_courses,
+                             enrolled_courses=enrolled_courses,
+                             points_log=points_log)
     finally:
         conn.close()
+
+@app.route('/points_log')
+def points_log():
+    """View user's points transaction history"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    user_id = user['id']
+    
+    # Import level manager here to avoid circular imports
+    from level_manager import LevelManager
+    level_manager = LevelManager()
+    
+    # Get pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    
+    # Get points log with pagination
+    points_log = level_manager.get_user_points_log(user_id, limit=per_page * page)
+    level_info = level_manager.get_user_level_info(user_id)
+    
+    return render_template('dashboard/points_log.html',
+                         points_log=points_log,
+                         level_info=level_info,
+                         page=page)
+
+@app.route('/toggle_course_completion/<int:course_id>', methods=['POST'])
+def toggle_course_completion(course_id):
+    """Toggle course completion status with enhanced level management"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    user_id = user['id']
+    completed = request.form.get('completed') == '1'
+    
+    # Import level manager here to avoid circular imports
+    from level_manager import LevelManager
+    level_manager = LevelManager()
+    
+    # Use level manager to handle completion
+    result = level_manager.mark_course_completion(user_id, course_id, completed)
+    
+    if result['success']:
+        flash(result['message'], 'success')
+        
+        # Show level progression information if level changed
+        if result.get('points_change', 0) != 0:
+            points_msg = f"Points: {'+'  if result['points_change'] > 0 else ''}{result['points_change']}"
+            flash(f"{points_msg} | Level: {result['new_level']} ({result['level_points']} at level)", 'info')
+        
+        # Update session level if it changed
+        if 'user_level' in session and session['user_level'] != result['new_level']:
+            session['user_level'] = result['new_level']
+    else:
+        flash(result['message'], 'error')
+    
+    return redirect(url_for('my_courses'))
+
+@app.route('/level_info')
+def level_info():
+    """Get current user's level information as JSON"""
+    user = get_current_user()
+    if not user:
+        return {'error': 'Not authenticated'}, 401
+    
+    # Import level manager here to avoid circular imports
+    from level_manager import LevelManager
+    level_manager = LevelManager()
+    
+    level_info = level_manager.get_user_level_info(user['id'])
+    return level_info
 
 # Admin routes
 @app.route('/admin')
