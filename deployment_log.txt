@@ -1,0 +1,15 @@
+2025-06-30 23:29:16,908 - INFO - 🎯 Starting AI Learning Tracker deployment process...
+2025-06-30 23:29:16,908 - INFO - 📁 Working directory: C:\Users\bhsrinivasan\Downloads\Learning\Vibe Coding\AI_Learning
+2025-06-30 23:29:16,908 - INFO - [GIT] Checking git status...
+2025-06-30 23:29:17,398 - WARNING - [WARNING] Uncommitted changes detected:
+2025-06-30 23:29:17,398 - WARNING -     M ai_learning.db
+2025-06-30 23:29:17,398 - WARNING -     ?? deployment_log.txt
+2025-06-30 23:29:17,400 - ERROR - ❌ Uncommitted changes detected. Please commit or stash them first.
+2025-06-30 23:29:17,400 - INFO - 💡 Use --auto-commit flag to automatically commit changes
+2025-06-30 23:30:07,517 - INFO - 🎯 Starting AI Learning Tracker deployment process...
+2025-06-30 23:30:07,517 - INFO - 📁 Working directory: C:\Users\bhsrinivasan\Downloads\Learning\Vibe Coding\AI_Learning
+2025-06-30 23:30:07,517 - INFO - [GIT] Checking git status...
+2025-06-30 23:30:07,692 - WARNING - [WARNING] Uncommitted changes detected:
+2025-06-30 23:30:07,692 - WARNING -     ?? deployment_log.txt
+2025-06-30 23:30:07,693 - ERROR - ❌ Uncommitted changes detected. Please commit or stash them first.
+2025-06-30 23:30:07,693 - INFO - 💡 Use --auto-commit flag to automatically commit changes
