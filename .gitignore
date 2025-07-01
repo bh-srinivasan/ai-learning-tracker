@@ -3,6 +3,12 @@
 .env.local
 .env.production
 
+# Database files - should not be committed to version control
+*.db
+*.sqlite
+*.sqlite3
+ai_learning.db
+
 # Python
 __pycache__/
 *.py[cod]
@@ -70,11 +76,6 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
 
 # Logs
 *.log
