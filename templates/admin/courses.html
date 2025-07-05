@@ -128,7 +128,7 @@ endblock %} {% block content %}
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label for="levelFilter" class="form-label">Filter by Level:</label>
         <select id="levelFilter" class="form-select form-select-sm">
           <option value="">All Levels</option>
@@ -138,7 +138,17 @@ endblock %} {% block content %}
           <option value="Expert">Expert</option>
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
+        <label for="urlStatusFilter" class="form-label">Filter by URL Status:</label>
+        <select id="urlStatusFilter" class="form-select form-select-sm">
+          <option value="">All Status</option>
+          <option value="Working">✅ Working</option>
+          <option value="Not Working">❌ Not Working</option>
+          <option value="Broken">🔗 Broken</option>
+          <option value="unchecked">⏸️ Unchecked</option>
+        </select>
+      </div>
+      <div class="col-md-2">
         <label for="pointsFilter" class="form-label">Filter by Points:</label>
         <select id="pointsFilter" class="form-select form-select-sm">
           <option value="">All Points</option>
@@ -156,7 +166,9 @@ endblock %} {% block content %}
           placeholder="Search title or description..."
         />
       </div>
-      <div class="col-md-3 d-flex align-items-end">
+    </div>
+    <div class="row mb-3">
+      <div class="col-md-3">
         <button
           type="button"
           class="btn btn-outline-danger btn-sm"
@@ -769,6 +781,7 @@ endblock %} {% block content %}
       // Add filter event listeners
       const sourceFilter = document.getElementById("sourceFilter");
       const levelFilter = document.getElementById("levelFilter");
+      const urlStatusFilter = document.getElementById("urlStatusFilter");
       const pointsFilter = document.getElementById("pointsFilter");
       const searchFilter = document.getElementById("searchFilter");
 
@@ -778,6 +791,10 @@ endblock %} {% block content %}
 
       if (levelFilter) {
         levelFilter.addEventListener("change", filterTable);
+      }
+
+      if (urlStatusFilter) {
+        urlStatusFilter.addEventListener("change", filterTable);
       }
 
       if (pointsFilter) {
@@ -797,6 +814,9 @@ endblock %} {% block content %}
       const levelFilter = document
         .getElementById("levelFilter")
         .value.toLowerCase();
+      const urlStatusFilter = document
+        .getElementById("urlStatusFilter")
+        .value.toLowerCase();
       const pointsFilter = document.getElementById("pointsFilter").value;
       const searchFilter = document
         .getElementById("searchFilter")
@@ -804,7 +824,15 @@ endblock %} {% block content %}
       const table = document.getElementById("coursesTable");
       const rows = table.querySelectorAll("tbody tr");
 
-      rows.forEach((row) => {
+      // Debug logging
+      if (urlStatusFilter) {
+        console.log(`🔍 URL Status Filter: "${urlStatusFilter}"`);
+      }
+
+      let visibleCount = 0;
+      let urlStatusMatchCount = 0;
+
+      rows.forEach((row, index) => {
         const cells = row.querySelectorAll("td");
         const title = cells[0]?.textContent.toLowerCase() || "";
         const source = cells[1]?.textContent.toLowerCase() || "";
@@ -812,9 +840,28 @@ endblock %} {% block content %}
         const pointsText = cells[3]?.textContent || "";
         const points = parseInt(pointsText.replace(/[^\d]/g, "")) || 0;
         const description = cells[4]?.textContent.toLowerCase() || "";
+        const urlStatusCell = cells[5];
+        let urlStatus = "";
+        if (urlStatusCell) {
+          // Get the text content and clean it up
+          const fullText = urlStatusCell.textContent || "";
+          // Remove all non-letter characters except spaces, then trim
+          urlStatus = fullText.replace(/[^\w\s]/g, '').trim().toLowerCase();
+          // Handle the specific cases we know about
+          if (urlStatus.includes('working') && !urlStatus.includes('not')) {
+            urlStatus = 'working';
+          } else if (urlStatus.includes('not') && urlStatus.includes('working')) {
+            urlStatus = 'not working';
+          } else if (urlStatus.includes('broken')) {
+            urlStatus = 'broken';
+          } else if (urlStatus.includes('unchecked')) {
+            urlStatus = 'unchecked';
+          }
+        }
 
         const matchesSource = !sourceFilter || source.includes(sourceFilter);
         const matchesLevel = !levelFilter || level.includes(levelFilter);
+        const matchesUrlStatus = !urlStatusFilter || urlStatus === urlStatusFilter.toLowerCase();
         const matchesPoints =
           !pointsFilter ||
           (pointsFilter === "0-50" && points >= 0 && points <= 50) ||
@@ -825,18 +872,29 @@ endblock %} {% block content %}
           title.includes(searchFilter) ||
           description.includes(searchFilter);
 
-        if (matchesSource && matchesLevel && matchesPoints && matchesSearch) {
+        if (urlStatusFilter && matchesUrlStatus) {
+          urlStatusMatchCount++;
+        }
+
+        if (matchesSource && matchesLevel && matchesUrlStatus && matchesPoints && matchesSearch) {
           row.style.display = "";
+          visibleCount++;
         } else {
           row.style.display = "none";
         }
       });
+
+      // Debug summary
+      if (urlStatusFilter) {
+        console.log(`📊 URL Status "${urlStatusFilter}": ${urlStatusMatchCount} matches, ${visibleCount} visible after all filters`);
+      }
     }
 
     // Clear filters function
     window.clearFilters = function () {
       document.getElementById("sourceFilter").value = "";
       document.getElementById("levelFilter").value = "";
+      document.getElementById("urlStatusFilter").value = "";
       document.getElementById("pointsFilter").value = "";
       document.getElementById("searchFilter").value = "";
       
@@ -862,6 +920,7 @@ endblock %} {% block content %}
       window.clearFilters = function () {
         document.getElementById("sourceFilter").value = "";
         document.getElementById("levelFilter").value = "";
+        document.getElementById("urlStatusFilter").value = "";
         document.getElementById("pointsFilter").value = "";
         document.getElementById("searchFilter").value = "";
 
@@ -1350,6 +1409,7 @@ Sorting:
   function clearFilters() {
     document.getElementById("sourceFilter").value = "";
     document.getElementById("levelFilter").value = "";
+    document.getElementById("urlStatusFilter").value = "";
     document.getElementById("pointsFilter").value = "";
     document.getElementById("searchFilter").value = "";
     
@@ -1375,6 +1435,9 @@ Sorting:
     const levelFilter = document
       .getElementById("levelFilter")
       .value.toLowerCase();
+    const urlStatusFilter = document
+      .getElementById("urlStatusFilter")
+      .value.toLowerCase();
     const pointsFilter = document.getElementById("pointsFilter").value;
     const searchFilter = document
       .getElementById("searchFilter")
@@ -1390,9 +1453,28 @@ Sorting:
       const pointsText = cells[3]?.textContent || "";
       const points = parseInt(pointsText.replace(/[^\d]/g, "")) || 0;
       const description = cells[4]?.textContent.toLowerCase() || "";
+      const urlStatusCell = cells[5];
+      let urlStatus = "";
+      if (urlStatusCell) {
+        // Get the text content and clean it up
+        const fullText = urlStatusCell.textContent || "";
+        // Remove all non-letter characters except spaces, then trim
+        urlStatus = fullText.replace(/[^\w\s]/g, '').trim().toLowerCase();
+        // Handle the specific cases we know about
+        if (urlStatus.includes('working') && !urlStatus.includes('not')) {
+          urlStatus = 'working';
+        } else if (urlStatus.includes('not') && urlStatus.includes('working')) {
+          urlStatus = 'not working';
+        } else if (urlStatus.includes('broken')) {
+          urlStatus = 'broken';
+        } else if (urlStatus.includes('unchecked')) {
+          urlStatus = 'unchecked';
+        }
+      }
 
       const matchesSource = !sourceFilter || source.includes(sourceFilter);
       const matchesLevel = !levelFilter || level.includes(levelFilter);
+      const matchesUrlStatus = !urlStatusFilter || urlStatus === urlStatusFilter.toLowerCase();
       const matchesPoints =
         !pointsFilter ||
         (pointsFilter === "0-50" && points >= 0 && points <= 50) ||
@@ -1403,7 +1485,7 @@ Sorting:
         title.includes(searchFilter) ||
         description.includes(searchFilter);
 
-      if (matchesSource && matchesLevel && matchesPoints && matchesSearch) {
+      if (matchesSource && matchesLevel && matchesUrlStatus && matchesPoints && matchesSearch) {
         row.style.display = "";
       } else {
         row.style.display = "none";
