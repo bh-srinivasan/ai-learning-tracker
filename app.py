@@ -2713,7 +2713,7 @@ def debug_session():
 @app.route('/admin/password-reset', methods=['GET', 'POST'])
 @require_admin
 @password_reset_guard(ui_triggered=True, require_explicit_request=False)
-@production_safe('ui_triggered_password_reset')
+@production_safe('admin_bulk_password_reset')
 def admin_password_reset():
     """Admin password reset for all users - Protected by security guards and production safeguards"""
     if request.method == 'POST':
@@ -2882,7 +2882,7 @@ def admin_reset_all_user_passwords():
 @app.route('/admin/reset-user-password', methods=['POST'])
 @require_admin
 @password_reset_guard(ui_triggered=True, require_explicit_request=False)
-@production_safe('ui_triggered_password_reset')
+@production_safe('admin_individual_password_reset')
 def admin_reset_user_password():
     """Reset password for individual user with custom password - Production safe"""
     user_id = request.form.get('user_id')
