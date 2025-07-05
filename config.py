@@ -25,7 +25,7 @@ class Config:
     DEMO_PASSWORD = os.environ.get('DEMO_PASSWORD', 'demo')
     
     # Protected admin users (only admin is protected now)
-    # bharath is now treated as a normal user and not protected
+    # All other users are treated as normal users and not protected
     PROTECTED_USERS = []  # No users are protected in testing except admin (handled separately)
     
     # Security settings

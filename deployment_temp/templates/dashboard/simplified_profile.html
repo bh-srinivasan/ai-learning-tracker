@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4><i class="fas fa-user"></i> My Profile</h4>
+            </div>
+            <div class="card-body">
+                
+                <!-- AI Expertise Level Section -->
+                <div class="row justify-content-center mb-4">
+                    <div class="col-md-10">
+                        <div class="card border-primary">
+                            <div class="card-body text-center">
+                                <h5 class="card-title mb-3">
+                                    <i class="fas fa-brain text-primary"></i> Your AI Expertise Level
+                                    <i class="fas fa-info-circle text-muted ms-2" 
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top" 
+                                       title="Based on your learning progress and self-assessment"></i>
+                                </h5>
+                                
+                                <div class="mb-3">
+                                    <span class="badge bg-{% if expertise.level == 'Advanced' %}success{% elif expertise.level == 'Intermediate' %}warning{% else %}primary{% endif %} fs-5 px-4 py-2">
+                                        {{ expertise.level }}
+                                    </span>
+                                </div>
+                                
+                                <p class="text-muted mb-3">{{ expertise.description }}</p>
+                                
+                                {% if expertise.message %}
+                                <div class="alert alert-{% if expertise.confidence == 'high' %}success{% elif expertise.confidence == 'medium' %}info{% else %}warning{% endif %} py-2">
+                                    <i class="fas fa-lightbulb"></i> {{ expertise.message }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Account Information -->
+                <div class="row justify-content-center mb-4">
+                    <div class="col-md-10">
+                        <h5><i class="fas fa-user-circle"></i> Account Information</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Username:</strong></td>
+                                <td>{{ user.username }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Member Since:</strong></td>
+                                <td>{{ user.created_at.split(' ')[0] if user.created_at else 'N/A' }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Learning Points:</strong></td>
+                                <td>
+                                    <strong class="text-success">{{ stats.points }}</strong>
+                                    <small class="text-muted">points earned</small>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Learning Progress (Gamification for Progress Only) -->
+                <div class="row justify-content-center mb-4">
+                    <div class="col-md-10">
+                        <h5><i class="fas fa-chart-line"></i> Learning Progress</h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-book fa-2x text-primary mb-2"></i>
+                                        <h4 class="text-primary">{{ stats.total_learnings }}</h4>
+                                        <small class="text-muted">Learning Entries</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-calendar-check fa-2x text-success mb-2"></i>
+                                        <h4 class="text-success">{{ stats.monthly_active_days }}</h4>
+                                        <small class="text-muted">Active Days (Last 30)</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <!-- Self-Assessment Update Form -->
+                <div class="row justify-content-center">
+                    <div class="col-md-10">
+                        <h5><i class="fas fa-edit"></i> Update Your Self-Assessment</h5>
+                        <p class="text-muted">Help us understand your current AI knowledge level to provide better recommendations.</p>
+                        
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="self_assessment" class="form-label">How would you rate your AI expertise?</label>
+                                <select class="form-control" id="self_assessment" name="self_assessment" required>
+                                    <option value="Beginner" {% if current_self_level == 'Beginner' %}selected{% endif %}>
+                                        Beginner - New to AI and machine learning
+                                    </option>
+                                    <option value="Intermediate" {% if current_self_level == 'Intermediate' %}selected{% endif %}>
+                                        Intermediate - Some knowledge, actively learning
+                                    </option>
+                                    <option value="Advanced" {% if current_self_level == 'Advanced' %}selected{% endif %}>
+                                        Advanced - Good understanding, can apply concepts
+                                    </option>
+                                </select>
+                                <div class="form-text">
+                                    Current self-assessment: 
+                                    <span class="badge bg-{% if current_self_level == 'Advanced' %}success{% elif current_self_level == 'Intermediate' %}warning{% else %}primary{% endif %}">
+                                        {{ current_self_level }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Update Self-Assessment
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <hr>
+                
+                <!-- Learning History Link -->
+                <div class="row justify-content-center">
+                    <div class="col-md-10 text-center">
+                        <h5><i class="fas fa-history"></i> Want to see your learning journey?</h5>
+                        <p class="text-muted">View your complete learning history and progress over time.</p>
+                        <a href="{{ url_for('learnings') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-list"></i> View Learning History
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Bootstrap tooltips -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %}

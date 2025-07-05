@@ -2,6 +2,29 @@
 
 # AI Learning Tracker - Copilot Instructions
 
+## 🚨 CRITICAL SECURITY RULES - READ FIRST
+
+### NEVER DELETE USERS WITHOUT EXPLICIT AUTHORIZATION
+- **NEVER run database cleanup scripts automatically**
+- **NEVER delete users unless explicitly requested by the user**
+- **NEVER assume that completing a task includes cleaning up data**
+- **ALWAYS ask for explicit permission before any destructive operation**
+- **User data integrity is PARAMOUNT - when in doubt, DON'T**
+
+### Authorization Required Operations
+These operations require explicit user authorization:
+- User deletion (any user, any reason)
+- Database cleanup or user removal
+- Password resets for non-test users  
+- Bulk user operations
+- Any operation that modifies user data permanently
+
+## Project Overview
+
+This is a Python Flask web application for tracking personal AI learning progress and providing course recommendations. The app uses SQLite for data storage and Bootstrap for responsive UI.e this file to provide workspace-specific custom instructions to Copilot. For more details, visit https://code.visualstudio.com/docs/copilot/copilot-customization#_use-a-githubcopilotinstructionsmd-file -->
+
+# AI Learning Tracker - Copilot Instructions
+
 ## Project Overview
 
 This is a Python Flask web application for tracking personal AI learning progress and providing course recommendations. The app uses SQLite for data storage and Bootstrap for responsive UI.
@@ -53,7 +76,7 @@ This is a Python Flask web application for tracking personal AI learning progres
 
 ## Testing Approach
 
-- Test with the two demo users: admin/admin and bharath/bharath
+- Test with the demo users: admin (with environment password) and demo (with environment password)
 - Verify level progression logic with different entry counts
 - Test form validation and error handling
 - Ensure proper session management and logout

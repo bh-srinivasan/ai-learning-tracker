@@ -1,0 +1,195 @@
+{% extends "base.html" %} 
+{% block title %}Dashboard - AI Learning Tracker{% endblock %} 
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <h2 class="mb-4"><i class="fas fa-tachometer-alt"></i> Your Learning Dashboard</h2>
+  </div>
+</div>
+
+<!-- AI Expertise Level Card -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card border-primary">
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col-md-8">
+            <h5 class="card-title mb-2">
+              <i class="fas fa-brain text-primary"></i> Your AI Expertise Level
+            </h5>
+            <h3 class="mb-2">
+              <span class="badge bg-{% if expertise.level == 'Advanced' %}success{% elif expertise.level == 'Intermediate' %}warning{% else %}primary{% endif %} fs-5">
+                {{ expertise.level }}
+              </span>
+            </h3>
+            <p class="text-muted mb-2">{{ expertise.description }}</p>
+            {% if expertise.message %}
+            <div class="alert alert-{% if expertise.confidence == 'high' %}success{% elif expertise.confidence == 'medium' %}info{% else %}warning{% endif %} py-2 mb-0">
+              <small><i class="fas fa-lightbulb"></i> {{ expertise.message }}</small>
+            </div>
+            {% endif %}
+          </div>
+          <div class="col-md-4 text-center">
+            <i class="fas fa-user-graduate fa-4x text-{% if expertise.level == 'Advanced' %}success{% elif expertise.level == 'Intermediate' %}warning{% else %}primary{% endif %}"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Progress Stats Cards -->
+<div class="row mb-4">
+  <div class="col-md-6 col-lg-3 mb-3">
+    <div class="card bg-primary text-white">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h6 class="card-title">Learning Entries</h6>
+            <h4>{{ stats.total_learnings }}</h4>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-book fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6 col-lg-3 mb-3">
+    <div class="card bg-success text-white">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h6 class="card-title">Learning Points</h6>
+            <h4>{{ stats.points }}</h4>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-star fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6 col-lg-3 mb-3">
+    <div class="card bg-info text-white">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h6 class="card-title">Active Days</h6>
+            <h6>{{ stats.monthly_active_days }} this month</h6>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-calendar-check fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6 col-lg-3 mb-3">
+    <div class="card bg-warning text-white">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h6 class="card-title">Streak</h6>
+            <h6>Keep learning!</h6>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-fire fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-rocket"></i> Quick Actions</h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-3 mb-3">
+            <a href="{{ url_for('add_learning') }}" class="btn btn-primary btn-lg w-100">
+              <i class="fas fa-plus"></i><br>
+              <small>Add Learning</small>
+            </a>
+          </div>
+          <div class="col-md-3 mb-3">
+            <a href="{{ url_for('learnings') }}" class="btn btn-info btn-lg w-100">
+              <i class="fas fa-list"></i><br>
+              <small>View History</small>
+            </a>
+          </div>
+          <div class="col-md-3 mb-3">
+            <a href="{{ url_for('my_courses') }}" class="btn btn-success btn-lg w-100">
+              <i class="fas fa-graduation-cap"></i><br>
+              <small>My Courses</small>
+            </a>
+          </div>
+          <div class="col-md-3 mb-3">
+            <a href="{{ url_for('profile') }}" class="btn btn-warning btn-lg w-100">
+              <i class="fas fa-user"></i><br>
+              <small>Profile</small>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Learning Entries -->
+{% if recent_learnings %}
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-history"></i> Recent Learning</h5>
+        <a href="{{ url_for('learnings') }}" class="btn btn-sm btn-outline-primary">View All</a>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          {% for learning in recent_learnings[:6] %}
+          <div class="col-md-6 mb-3">
+            <div class="card learning-card">
+              <div class="card-body">
+                <h6 class="card-title">{{ learning.title }}</h6>
+                {% if learning.description %}
+                <p class="card-text">{{ learning.description[:100] }}{% if learning.description|length > 100 %}...{% endif %}</p>
+                {% endif %}
+                <small class="text-muted">
+                  <i class="fas fa-calendar"></i> {{ learning.date_added.split(' ')[0] if learning.date_added else 'N/A' }}
+                </small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body text-center">
+        <i class="fas fa-book fa-4x text-muted mb-3"></i>
+        <h5>Start Your AI Learning Journey!</h5>
+        <p class="text-muted">Add your first learning entry to begin tracking your progress.</p>
+        <a href="{{ url_for('add_learning') }}" class="btn btn-primary">
+          <i class="fas fa-plus"></i> Add First Learning
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

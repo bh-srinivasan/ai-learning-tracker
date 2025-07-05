@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Course - AI Learning Tracker{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4><i class="fas fa-edit"></i> Edit Course</h4>
+        <a href="{{ url_for('dashboard_my_courses') }}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left"></i> Back to My Courses
+        </a>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label for="title" class="form-label">Course Title *</label>
+            <input
+              type="text"
+              class="form-control"
+              id="title"
+              name="title"
+              value="{{ course.title }}"
+              required
+            />
+          </div>
+
+          <div class="mb-3">
+            <label for="source" class="form-label">Source *</label>
+            <select class="form-control" id="source" name="source" required>
+              <option value="">Select Source</option>
+              <option value="LinkedIn Learning" {% if course.source == 'LinkedIn Learning' %}selected{% endif %}>LinkedIn Learning</option>
+              <option value="Microsoft Learn" {% if course.source == 'Microsoft Learn' %}selected{% endif %}>Microsoft Learn</option>
+              <option value="Coursera" {% if course.source == 'Coursera' %}selected{% endif %}>Coursera</option>
+              <option value="edX" {% if course.source == 'edX' %}selected{% endif %}>edX</option>
+              <option value="Udemy" {% if course.source == 'Udemy' %}selected{% endif %}>Udemy</option>
+              <option value="Pluralsight" {% if course.source == 'Pluralsight' %}selected{% endif %}>Pluralsight</option>
+              <option value="YouTube" {% if course.source == 'YouTube' %}selected{% endif %}>YouTube</option>
+              <option value="Khan Academy" {% if course.source == 'Khan Academy' %}selected{% endif %}>Khan Academy</option>
+              <option value="FreeCodeCamp" {% if course.source == 'FreeCodeCamp' %}selected{% endif %}>FreeCodeCamp</option>
+              <option value="University Course" {% if course.source == 'University Course' %}selected{% endif %}>University Course</option>
+              <option value="Other" {% if course.source == 'Other' %}selected{% endif %}>Other</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label for="course_url" class="form-label">Course URL *</label>
+            <input
+              type="url"
+              class="form-control"
+              id="course_url"
+              name="course_url"
+              value="{{ course.course_url }}"
+              required
+            />
+            <div class="form-text">
+              Link to the course page or learning resource
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea
+              class="form-control"
+              id="description"
+              name="description"
+              rows="4"
+            >{{ course.description if course.description else '' }}</textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="completion_date" class="form-label">Completion Date</label>
+            <input
+              type="date"
+              class="form-control"
+              id="completion_date"
+              name="completion_date"
+              value="{{ course.completion_date if course.completion_date else '' }}"
+            />
+            <div class="form-text">
+              Leave empty if you haven't completed the course yet
+            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save"></i> Update Course
+            </button>
+            <a href="{{ url_for('dashboard_my_courses') }}" class="btn btn-secondary">
+              <i class="fas fa-times"></i> Cancel
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,508 @@
+{% extends "base.html" %}
+{% block title %}URL Validation - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="fas fa-link"></i> Course URL Validation</h2>
+  <div>
+    <a href="{{ url_for('admin_courses') }}" class="btn btn-secondary me-2">
+      <i class="fas fa-arrow-left"></i> Back to Courses
+    </a>
+    <button type="button" class="btn btn-info" onclick="refreshStatus()">
+      <i class="fas fa-sync-alt"></i> Refresh Status
+    </button>
+  </div>
+</div>
+
+<!-- Validation Summary Cards -->
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card stat-card border-success">
+      <div class="card-body text-center">
+        <h4 class="text-success">{{ summary.get('Working', {}).get('count', 0) }}</h4>
+        <small class="text-muted">Working URLs</small>
+        {% if summary.get('Working', {}).get('latest_check') %}
+        <div class="text-muted small mt-1">
+          Last check: {{ summary.get('Working', {}).get('latest_check')[:10] }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card border-danger">
+      <div class="card-body text-center">
+        <h4 class="text-danger">{{ summary.get('Not Working', {}).get('count', 0) }}</h4>
+        <small class="text-muted">Not Working URLs</small>
+        {% if summary.get('Not Working', {}).get('latest_check') %}
+        <div class="text-muted small mt-1">
+          Last check: {{ summary.get('Not Working', {}).get('latest_check')[:10] }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card border-warning">
+      <div class="card-body text-center">
+        <h4 class="text-warning">{{ summary.get('Broken', {}).get('count', 0) }}</h4>
+        <small class="text-muted">Broken URLs</small>
+        {% if summary.get('Broken', {}).get('latest_check') %}
+        <div class="text-muted small mt-1">
+          Last check: {{ summary.get('Broken', {}).get('latest_check')[:10] }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card border-secondary">
+      <div class="card-body text-center">
+        <h4 class="text-secondary">{{ summary.get('unchecked', {}).get('count', 0) }}</h4>
+        <small class="text-muted">Unchecked URLs</small>
+        <div class="text-muted small mt-1">
+          Total courses: {{ total_courses_with_urls }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Validation Controls -->
+<div class="card mb-4">
+  <div class="card-header">
+    <h5 class="mb-0"><i class="fas fa-cogs"></i> Validation Controls</h5>
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.validate_urls') }}" id="validationForm">
+      <div class="row">
+        <div class="col-md-3">
+          <label for="status_filter" class="form-label">Filter by Status</label>
+          <select class="form-select" id="status_filter" name="status_filter">
+            <option value="all">All Courses</option>
+            <option value="unchecked">Unchecked Only</option>
+            <option value="Working">Working URLs</option>
+            <option value="Not Working">Not Working URLs</option>
+            <option value="Broken">Broken URLs</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label for="max_courses" class="form-label">Max Courses</label>
+          <input type="number" class="form-control" id="max_courses" name="max_courses" 
+                 placeholder="Leave empty for all" min="1" max="1000">
+          <div class="form-text">Limit validation to prevent overload</div>
+        </div>
+        <div class="col-md-4">
+          <label for="course_ids" class="form-label">Specific Course IDs</label>
+          <input type="text" class="form-control" id="course_ids" name="course_ids" 
+                 placeholder="e.g., 1,5,10">
+          <div class="form-text">Comma-separated IDs for specific courses</div>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="fas fa-play"></i> Start Validation
+          </button>
+        </div>
+      </div>
+    </form>
+    
+    <div class="alert alert-info mt-3">
+      <i class="fas fa-info-circle"></i>
+      <strong>Note:</strong> URL validation runs in the background. Large validations may take several minutes. 
+      Use the refresh button to check progress.
+    </div>
+  </div>
+</div>
+
+<!-- Validation Results Tabs -->
+<div class="card">
+  <div class="card-header">
+    <ul class="nav nav-tabs card-header-tabs" id="validationTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="working-tab" data-bs-toggle="tab" 
+                data-bs-target="#working" type="button" role="tab">
+          <i class="fas fa-check-circle text-success"></i> Working ({{ working_courses|length }})
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="not-working-tab" data-bs-toggle="tab" 
+                data-bs-target="#not-working" type="button" role="tab">
+          <i class="fas fa-times-circle text-danger"></i> Not Working ({{ not_working_courses|length }})
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="broken-tab" data-bs-toggle="tab" 
+                data-bs-target="#broken" type="button" role="tab">
+          <i class="fas fa-exclamation-triangle text-warning"></i> Broken ({{ broken_courses|length }})
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="unchecked-tab" data-bs-toggle="tab" 
+                data-bs-target="#unchecked" type="button" role="tab">
+          <i class="fas fa-question-circle text-secondary"></i> Unchecked ({{ unchecked_courses|length }})
+        </button>
+      </li>
+    </ul>
+  </div>
+  <div class="card-body">
+    <div class="tab-content" id="validationTabContent">
+      
+      <!-- Working URLs Tab -->
+      <div class="tab-pane fade show active" id="working" role="tabpanel">
+        {% if working_courses %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover">
+            <thead class="table-success">
+              <tr>
+                <th>ID</th>
+                <th>Course Title</th>
+                <th>URL</th>
+                <th>Last Checked</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for course in working_courses %}
+              <tr>
+                <td>{{ course.id }}</td>
+                <td>{{ course.title[:50] }}{% if course.title|length > 50 %}...{% endif %}</td>
+                <td>
+                  <a href="{{ course.url or course.link }}" target="_blank" class="text-decoration-none">
+                    <i class="fas fa-external-link-alt"></i> View
+                  </a>
+                </td>
+                <td class="small text-muted">
+                  {{ course.last_url_check[:16] if course.last_url_check else 'Never' }}
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" 
+                          onclick="validateSingleURL({{ course.id }})"
+                          data-course-id="{{ course.id }}">
+                    <i class="fas fa-sync-alt"></i> Recheck
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+          <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+          <h5 class="text-muted">No working URLs found</h5>
+          <p class="text-muted">Run validation to check course URLs.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Not Working URLs Tab -->
+      <div class="tab-pane fade" id="not-working" role="tabpanel">
+        {% if not_working_courses %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover">
+            <thead class="table-danger">
+              <tr>
+                <th>ID</th>
+                <th>Course Title</th>
+                <th>URL</th>
+                <th>Last Checked</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for course in not_working_courses %}
+              <tr>
+                <td>{{ course.id }}</td>
+                <td>{{ course.title[:50] }}{% if course.title|length > 50 %}...{% endif %}</td>
+                <td>
+                  <a href="{{ course.url or course.link }}" target="_blank" class="text-decoration-none text-muted">
+                    <i class="fas fa-external-link-alt"></i> {{ (course.url or course.link)[:30] }}...
+                  </a>
+                </td>
+                <td class="small text-muted">
+                  {{ course.last_url_check[:16] if course.last_url_check else 'Never' }}
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" 
+                          onclick="validateSingleURL({{ course.id }})"
+                          data-course-id="{{ course.id }}">
+                    <i class="fas fa-sync-alt"></i> Recheck
+                  </button>
+                  <a href="{{ url_for('admin.edit_course', course_id=course.id) }}" 
+                     class="btn btn-sm btn-outline-warning">
+                    <i class="fas fa-edit"></i> Edit
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+          <i class="fas fa-times-circle fa-3x text-danger mb-3"></i>
+          <h5 class="text-muted">No non-working URLs found</h5>
+          <p class="text-muted">All checked URLs are working properly.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Broken URLs Tab -->
+      <div class="tab-pane fade" id="broken" role="tabpanel">
+        {% if broken_courses %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover">
+            <thead class="table-warning">
+              <tr>
+                <th>ID</th>
+                <th>Course Title</th>
+                <th>URL</th>
+                <th>Last Checked</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for course in broken_courses %}
+              <tr>
+                <td>{{ course.id }}</td>
+                <td>{{ course.title[:50] }}{% if course.title|length > 50 %}...{% endif %}</td>
+                <td>
+                  <span class="text-muted">
+                    <i class="fas fa-unlink"></i> {{ (course.url or course.link)[:30] }}...
+                  </span>
+                </td>
+                <td class="small text-muted">
+                  {{ course.last_url_check[:16] if course.last_url_check else 'Never' }}
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" 
+                          onclick="validateSingleURL({{ course.id }})"
+                          data-course-id="{{ course.id }}">
+                    <i class="fas fa-sync-alt"></i> Recheck
+                  </button>
+                  <a href="{{ url_for('admin.edit_course', course_id=course.id) }}" 
+                     class="btn btn-sm btn-outline-warning">
+                    <i class="fas fa-edit"></i> Fix URL
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+          <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+          <h5 class="text-muted">No broken URLs found</h5>
+          <p class="text-muted">All URLs are properly formatted.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Unchecked URLs Tab -->
+      <div class="tab-pane fade" id="unchecked" role="tabpanel">
+        {% if unchecked_courses %}
+        <div class="alert alert-info">
+          <i class="fas fa-info-circle"></i>
+          These courses have not been validated yet. Click "Start Validation" above to check their URLs.
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover">
+            <thead class="table-secondary">
+              <tr>
+                <th>ID</th>
+                <th>Course Title</th>
+                <th>URL</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for course in unchecked_courses %}
+              <tr>
+                <td>{{ course.id }}</td>
+                <td>{{ course.title[:50] }}{% if course.title|length > 50 %}...{% endif %}</td>
+                <td>
+                  <a href="{{ course.url or course.link }}" target="_blank" class="text-decoration-none">
+                    <i class="fas fa-external-link-alt"></i> {{ (course.url or course.link)[:40] }}...
+                  </a>
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" 
+                          onclick="validateSingleURL({{ course.id }})"
+                          data-course-id="{{ course.id }}">
+                    <i class="fas fa-check"></i> Check Now
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+          <i class="fas fa-check-double fa-3x text-success mb-3"></i>
+          <h5 class="text-muted">All URLs have been checked</h5>
+          <p class="text-muted">No unchecked courses remaining.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh functionality
+let autoRefresh = false;
+let refreshInterval;
+
+function refreshStatus() {
+  fetch('{{ url_for("admin.url_validation_status") }}')
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        console.error('Error refreshing status:', data.error);
+        return;
+      }
+      
+      // Update summary cards
+      updateSummaryCards(data.summary);
+      
+      // Show last update time
+      const lastUpdate = new Date(data.timestamp).toLocaleString();
+      showToast('Status updated at ' + lastUpdate, 'info');
+    })
+    .catch(error => {
+      console.error('Error refreshing status:', error);
+      showToast('Error refreshing status', 'error');
+    });
+}
+
+function updateSummaryCards(summary) {
+  // Update card values
+  const cards = {
+    'Working': '.text-success',
+    'Not Working': '.text-danger', 
+    'Broken': '.text-warning',
+    'unchecked': '.text-secondary'
+  };
+  
+  for (const [status, selector] of Object.entries(cards)) {
+    const element = document.querySelector(`h4${selector}`);
+    if (element && summary[status]) {
+      element.textContent = summary[status].count;
+    }
+  }
+}
+
+function validateSingleURL(courseId) {
+  const button = document.querySelector(`button[data-course-id="${courseId}"]`);
+  const originalHtml = button.innerHTML;
+  
+  // Show loading state
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+  
+  fetch(`{{ url_for("admin.validate_single_url", course_id=0) }}`.replace('0', courseId), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.error) {
+      showToast(`Error validating course: ${data.error}`, 'error');
+    } else {
+      showToast(`Course "${data.title}" validation: ${data.status}`, 'success');
+      // Refresh the page to show updated status
+      setTimeout(() => window.location.reload(), 1000);
+    }
+  })
+  .catch(error => {
+    console.error('Error validating URL:', error);
+    showToast('Error validating URL', 'error');
+  })
+  .finally(() => {
+    // Restore button state
+    button.disabled = false;
+    button.innerHTML = originalHtml;
+  });
+}
+
+function showToast(message, type = 'info') {
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+  toast.style.top = '20px';
+  toast.style.right = '20px';
+  toast.style.zIndex = '9999';
+  toast.style.minWidth = '300px';
+  
+  toast.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+  
+  document.body.appendChild(toast);
+  
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.remove();
+    }
+  }, 5000);
+}
+
+// Form validation
+document.getElementById('validationForm').addEventListener('submit', function(e) {
+  const maxCourses = document.getElementById('max_courses').value;
+  const courseIds = document.getElementById('course_ids').value;
+  
+  if (maxCourses && parseInt(maxCourses) > 100) {
+    if (!confirm('Validating more than 100 courses may take a long time. Continue?')) {
+      e.preventDefault();
+      return;
+    }
+  }
+  
+  if (courseIds && maxCourses) {
+    alert('Please use either "Max Courses" OR "Specific Course IDs", not both.');
+    e.preventDefault();
+    return;
+  }
+});
+
+// Auto-refresh every 30 seconds if validation is running
+setInterval(refreshStatus, 30000);
+</script>
+
+<style>
+.stat-card {
+  transition: transform 0.2s ease-in-out;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.nav-tabs .nav-link {
+  border-bottom: 2px solid transparent;
+}
+
+.nav-tabs .nav-link.active {
+  border-bottom-color: #007bff;
+}
+
+.table-responsive {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.btn-group-sm > .btn {
+  margin-right: 2px;
+}
+</style>
+{% endblock %}

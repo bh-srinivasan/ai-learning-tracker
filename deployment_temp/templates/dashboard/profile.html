@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+<!-- Updated: 2025-07-02 - Session information removed -->
+
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4><i class="fas fa-user"></i> My Profile</h4>
+            </div>
+            <div class="card-body">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <h5>Account Information</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Username:</strong></td>
+                                <td>{{ user.username }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Current Level:</strong></td>
+                                <td>
+                                    <span class="badge bg-{% if user.level == 'Expert' %}danger{% elif user.level == 'Intermediate' %}warning{% elif user.level == 'Learner' %}info{% else %}secondary{% endif %}">
+                                        {{ user.level }}
+                                    </span>
+                                    {% if level_info.next_level %}
+                                        <small class="text-muted">
+                                            → {{ level_info.next_level }} ({{ level_info.points_to_next }} points needed)
+                                        </small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Points:</strong></td>
+                                <td>
+                                    <strong>{{ user.points }}</strong>
+                                    {% if level_info.level_points > 0 %}
+                                        <small class="text-muted">({{ level_info.level_points }} at {{ user.level }} level)</small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Progress to Next Level:</strong></td>
+                                <td>
+                                    {% if level_info.next_level %}
+                                        <div class="progress" style="height: 8px;">
+                                            <div class="progress-bar bg-{% if level_info.progress_percentage >= 75 %}success{% elif level_info.progress_percentage >= 50 %}info{% elif level_info.progress_percentage >= 25 %}warning{% else %}secondary{% endif %}" 
+                                                 role="progressbar" 
+                                                 style="--progress-width: {{ level_info.progress_percentage }}%; width: var(--progress-width);"
+                                                 aria-valuenow="{{ level_info.progress_percentage }}" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">{{ "%.1f"|format(level_info.progress_percentage) }}% complete</small>
+                                    {% else %}
+                                        <span class="badge bg-success">Max Level Reached!</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <h5>Expertise Level Setting</h5>
+                <p class="text-muted">Set your self-assessed expertise level. This helps us recommend appropriate courses for you.</p>
+                
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="user_selected_level" class="form-label">Your Expertise Level</label>
+                        <select class="form-control" id="user_selected_level" name="user_selected_level" required>
+                            <option value="Beginner" {% if user.user_selected_level == 'Beginner' %}selected{% endif %}>
+                                Beginner - New to AI and machine learning
+                            </option>
+                            <option value="Learner" {% if user.user_selected_level == 'Learner' %}selected{% endif %}>
+                                Learner - Some knowledge, actively learning
+                            </option>
+                            <option value="Intermediate" {% if user.user_selected_level == 'Intermediate' %}selected{% endif %}>
+                                Intermediate - Good understanding, applying concepts
+                            </option>
+                            <option value="Expert" {% if user.user_selected_level == 'Expert' %}selected{% endif %}>
+                                Expert - Advanced knowledge, teaching others
+                            </option>
+                        </select>
+                        <div class="form-text">
+                            Current setting: 
+                            <span class="badge bg-{% if user.user_selected_level == 'Expert' %}danger{% elif user.user_selected_level == 'Intermediate' %}warning{% elif user.user_selected_level == 'Learner' %}info{% else %}secondary{% endif %}">
+                                {{ user.user_selected_level }}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Update Profile
+                        </button>
+                    </div>
+                </form>
+                
+                <hr>
+                
+                <!-- Points Log Section -->
+                <h5><i class="fas fa-history"></i> Recent Points Activity</h5>
+                {% if points_log %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                    <th>Course</th>
+                                    <th>Points</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in points_log[:5] %}
+                                <tr>
+                                    <td>
+                                        <small>{{ log.created_at.split(' ')[0] if log.created_at else 'N/A' }}</small>
+                                    </td>
+                                    <td>
+                                        <small>
+                                            {% if log.action == 'COURSE_COMPLETED' %}
+                                                <span class="badge bg-success">Completed</span>
+                                            {% elif log.action == 'COURSE_UNCOMPLETED' %}
+                                                <span class="badge bg-warning">Uncompleted</span>
+                                            {% elif log.action == 'LEVEL_CHANGE' %}
+                                                <span class="badge bg-info">Level Up</span>
+                                            {% elif log.action == 'LEVEL_SELECTED' %}
+                                                <span class="badge bg-secondary">Level Set</span>
+                                            {% else %}
+                                                <span class="badge bg-light text-dark">{{ log.action }}</span>
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <small>{{ log.course_title or log.reason or '-' }}</small>
+                                    </td>
+                                    <td>
+                                        <small>
+                                            {% if log.points_change > 0 %}
+                                                <span class="text-success">+{{ log.points_change }}</span>
+                                            {% elif log.points_change < 0 %}
+                                                <span class="text-danger">{{ log.points_change }}</span>
+                                            {% else %}
+                                                <span class="text-muted">0</span>
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <small><strong>{{ log.points_after }}</strong></small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if points_log|length > 5 %}
+                        <div class="text-center">
+                            <a href="{{ url_for('points_log') }}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-list"></i> View Full Points History
+                            </a>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No points activity yet. Complete courses to start earning points!
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

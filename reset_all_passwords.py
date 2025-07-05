@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Reset Both Admin and Demo User Passwords
-Updates both users to use passwords from environment variables
+Password reset utility with security guards
+Only allows resets for authorized test users in development environment
+IMPORTANT: This script can only be run with explicit user authorization
 """
 
 import os
@@ -9,9 +10,33 @@ import sqlite3
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 
-def reset_user_password(username, password, display_name):
-    """Reset a user's password"""
+# Import security guard system
+from security_guard import (
+    SecurityGuard, SecurityGuardError, password_reset_guard, 
+    validate_test_environment, get_test_credentials
+)
+
+@password_reset_guard(ui_triggered=False, require_explicit_request=True)
+def reset_user_password(username, password, display_name, explicit_user_request=False):
+    """
+    Reset a user's password - requires explicit user authorization
+    
+    Args:
+        username: Username to reset
+        password: New password
+        display_name: Display name for logging
+        explicit_user_request: Must be True to proceed
+    """
+    if not explicit_user_request:
+        raise SecurityGuardError(
+            "Password reset must be explicitly requested by the user. "
+            "Backend password resets are not allowed without explicit authorization."
+        )
+    
     try:
+        # Apply security guard validation for backend password reset
+        SecurityGuard.validate_operation('backend_password_reset', username, explicit_authorization=True)
+        
         conn = sqlite3.connect('ai_learning.db')
         cursor = conn.cursor()
         
@@ -42,35 +67,39 @@ def reset_user_password(username, password, display_name):
         return False
 
 def main():
-    """Reset both user passwords"""
+    """Reset both user passwords with security validation"""
     print("🔐 AI Learning Tracker - Reset All User Passwords")
     print("=" * 55)
+    
+    try:
+        # Validate test environment first
+        validate_test_environment()
+        print("✅ Security validation passed")
+    except SecurityGuardError as e:
+        print(f"❌ Security Guard Error: {str(e)}")
+        return False
     
     # Load environment variables
     load_dotenv()
     
-    admin_password = os.environ.get('ADMIN_PASSWORD')
-    demo_password = os.environ.get('DEMO_PASSWORD')
-    
-    if not admin_password:
-        print("❌ ADMIN_PASSWORD not found in environment")
-        return
-    
-    if not demo_password:
-        print("❌ DEMO_PASSWORD not found in environment")
-        return
+    # Use security-approved method to get credentials
+    test_creds = get_test_credentials()
+    admin_password = test_creds['admin']['password']
+    demo_password = test_creds['demo']['password']
     
     print("🔍 Environment Variables Status:")
     print(f"   ADMIN_PASSWORD: {len(admin_password)} characters")
     print(f"   DEMO_PASSWORD: {len(demo_password)} characters")
     
     print("\n🔄 Resetting passwords...")
+    print("⚠️  IMPORTANT: This operation requires explicit user authorization")
+    print("   By running this script, you are explicitly authorizing password resets")
     
-    # Reset admin password
-    admin_success = reset_user_password('admin', admin_password, 'Admin')
+    # Reset admin password (with explicit authorization)
+    admin_success = reset_user_password('admin', admin_password, 'Admin', explicit_user_request=True)
     
-    # Reset demo user password
-    demo_success = reset_user_password('bharath', demo_password, 'Demo User')
+    # Reset demo user password (with explicit authorization)
+    demo_success = reset_user_password('demo', demo_password, 'Demo User', explicit_user_request=True)
     
     print("\n" + "=" * 55)
     print("📊 Password Reset Results:")
@@ -81,7 +110,7 @@ def main():
         print("\n🎉 All passwords reset successfully!")
         print("\n🔑 Updated Login Credentials:")
         print(f"   👤 Admin:  admin / {admin_password}")
-        print(f"   👤 Demo:   bharath / {demo_password}")
+        print(f"   👤 Demo:   demo / {demo_password}")
         print("\n🌐 Login at: http://localhost:5000")
         print("\n💡 Next Steps:")
         print("   1. Test login with both accounts")

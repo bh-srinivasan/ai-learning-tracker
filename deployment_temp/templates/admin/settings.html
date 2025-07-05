@@ -1,0 +1,105 @@
+{% extends "base.html" %} {% block title %}Admin Settings{% endblock %} {% block
+content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card">
+      <div
+        class="card-header d-flex justify-content-between align-items-center"
+      >
+        <h4><i class="fas fa-cog"></i> Admin Settings</h4>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+      </div>
+      <div class="card-body">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        
+        <h5 class="mb-4">Level Point Requirements</h5>
+        <form method="POST" id="settingsForm">
+          {% for level in level_settings %}
+          <div class="mb-3">
+            <label
+              for="{{ level.level_name.lower() }}_points"
+              class="form-label"
+            >
+              <span
+                class="badge bg-{% if level.level_name == 'Expert' %}danger{% elif level.level_name == 'Intermediate' %}warning{% elif level.level_name == 'Learner' %}info{% else %}secondary{% endif %} me-2"
+              >
+                {{ level.level_name }}
+              </span>
+              Points Required
+            </label>
+            <input
+              type="number"
+              class="form-control"
+              id="{{ level.level_name.lower() }}_points"
+              name="{{ level.level_name.lower() }}_points"
+              value="{{ level.points_required }}"
+              min="0"
+              max="10000"
+              step="1"
+              required
+            />
+            <div class="form-text">
+              Current requirement: {{ level.points_required }} points
+            </div>
+          </div>
+          {% endfor %}
+
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            <strong>Note:</strong> Changes to level requirements will affect how
+            user levels are calculated based on their current points. Make sure to set appropriate thresholds that create a logical progression.
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary" id="updateButton">
+              <i class="fas fa-save"></i> Update Settings
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('settingsForm').addEventListener('submit', function(e) {
+    const updateButton = document.getElementById('updateButton');
+    updateButton.disabled = true;
+    updateButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    
+    // Validate that points are in logical order
+    const inputs = this.querySelectorAll('input[type="number"]');
+    const values = [];
+    let isValid = true;
+    
+    inputs.forEach(input => {
+        const value = parseInt(input.value);
+        if (value < 0) {
+            isValid = false;
+            input.classList.add('is-invalid');
+        } else {
+            input.classList.remove('is-invalid');
+            values.push(value);
+        }
+    });
+    
+    if (!isValid) {
+        e.preventDefault();
+        updateButton.disabled = false;
+        updateButton.innerHTML = '<i class="fas fa-save"></i> Update Settings';
+        alert('Please ensure all point values are non-negative.');
+    }
+});
+</script>
+{% endblock %}
