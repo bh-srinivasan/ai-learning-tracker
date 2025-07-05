@@ -55,6 +55,7 @@ from security_guard import (
     log_admin_action, get_test_credentials, validate_test_environment
 )
 from production_config import ProductionConfig, production_safe
+from production_safety_guard import ProductionSafetyGuard, ProductionSafetyError, production_safe as enhanced_production_safe
 from collections import defaultdict
 import re
 import logging
@@ -76,6 +77,16 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,  # Prevent XSS attacks
     SESSION_COOKIE_SAMESITE='Lax',  # CSRF protection
 )
+
+# Initialize production safety guard
+production_safety = ProductionSafetyGuard()
+app.config['PRODUCTION_SAFETY'] = production_safety
+app.config['ENVIRONMENT'] = production_safety.environment
+
+# Log environment detection
+logger.info(f"Environment detected: {production_safety.environment}")
+if production_safety.environment == 'production':
+    logger.warning("PRODUCTION ENVIRONMENT - Enhanced safety measures active")
 
 # Database configuration
 DATABASE = 'ai_learning.db'
