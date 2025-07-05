@@ -889,9 +889,6 @@ def debug_session():
     }
     return f"<pre>{debug_info}</pre>"
 
-# Import the course validator (moved to top of file)
-from course_validator import CourseURLValidator
-
 @admin_bp.route('/admin/url-validation')
 def url_validation():
     """URL validation management page - Admin only"""

@@ -1,5 +1,34 @@
 """
 Enhanced Level Management System
+
+CRITICAL BUSINESS RULES:
+========================
+
+1. LEVEL CALCULATION LOGIC
+   - Users advance levels based on total points earned
+   - Points are earned by completing courses 
+   - Level progression is cumulative (points carry over)
+   - No level downgrade even if points calculation suggests lower level
+
+2. POINTS SYSTEM
+   - Each course completion awards configured points
+   - Points are persistent and accumulate over time
+   - Course points can be configured per course
+   - Bonus points may be awarded for special achievements
+
+3. LEVEL RESTRICTIONS
+   - Users cannot be manually downgraded if their points exceed current level
+   - Level changes must be consistent with points earned
+   - Admin can manually adjust levels but system will warn of inconsistencies
+
+4. PROGRESSION TRACKING
+   - All level changes are logged with timestamps
+   - Point earning history is maintained
+   - Progress towards next level is calculated dynamically
+
+This module is CRITICAL for user progression and should not be modified
+without understanding the impact on existing user levels and points.
+
 Comprehensive level and points management with logging and restrictions
 """
 

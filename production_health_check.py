@@ -32,7 +32,7 @@ class ProductionValidator:
         """Test if the application responds to HTTP requests"""
         try:
             print(f"\n🔍 Testing connectivity to {self.base_url}")
-            response = requests.get(self.base_url, timeout=30)
+            response = requests.get(self.base_url, timeout=60)  # Increased timeout for Azure cold start
             
             if response.status_code == 200:
                 self.log_issue("INFO", f"HTTP connectivity successful (Status: {response.status_code})")
@@ -70,7 +70,7 @@ class ProductionValidator:
         for endpoint, description in test_endpoints:
             try:
                 url = urljoin(self.base_url, endpoint)
-                response = requests.get(url, timeout=15)
+                response = requests.get(url, timeout=30)  # Increased timeout
                 
                 if response.status_code == 200:
                     self.log_issue("INFO", f"{description} accessible ({endpoint})")
@@ -95,7 +95,7 @@ class ProductionValidator:
     def test_error_pages(self):
         """Check if we're getting error pages instead of the actual application"""
         try:
-            response = requests.get(self.base_url, timeout=15)
+            response = requests.get(self.base_url, timeout=30)  # Increased timeout
             content = response.text.lower()
             
             error_indicators = [

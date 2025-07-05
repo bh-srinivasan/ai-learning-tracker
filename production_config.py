@@ -7,6 +7,7 @@ Azure deployment configuration with comprehensive production safeguards
 
 import os
 import logging
+from functools import wraps
 from typing import Dict, Any
 
 class ProductionConfig:
@@ -171,6 +172,7 @@ def production_safe(operation_type: str):
         operation_type: Type of operation being performed
     """
     def decorator(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             # Determine context
             context = []
@@ -193,9 +195,6 @@ def production_safe(operation_type: str):
             
             return func(*args, **kwargs)
         
-        # Fix endpoint collision by giving wrapper a unique name
-        wrapper.__name__ = f"{func.__name__}_production_safe_wrapper"
-        wrapper.__qualname__ = f"{func.__qualname__}_production_safe_wrapper"
         return wrapper
     return decorator
 

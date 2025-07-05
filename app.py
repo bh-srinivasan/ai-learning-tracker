@@ -1,3 +1,43 @@
+"""
+AI Learning Tracker - Main Application Module
+
+CRITICAL BUSINESS RULES IMPLEMENTED:
+====================================
+
+1. USER MANAGEMENT SECURITY
+   - Only 'admin' user is protected from deletion (line ~2000)
+   - All user deletions require @security_guard('user_delete', require_ui=True)
+   - User management operations are heavily audited
+
+2. PASSWORD RESET SAFETY  
+   - Password resets require explicit admin authorization via UI
+   - No automated backend password resets in production
+   - All password operations use @production_safe decorators
+
+3. ADMIN PRIVILEGES
+   - Admin-only routes protected with @require_admin decorator
+   - Admin actions logged via log_admin_action()
+   - Admin user cannot be deleted or suspended
+
+4. SESSION SECURITY
+   - Secure session configuration with httponly and secure flags
+   - Session timeout configurable via environment variables
+   - Session cleanup on logout and user deletion
+
+5. PRODUCTION SAFEGUARDS
+   - Environment-based configuration via ProductionConfig
+   - Security guards prevent unsafe operations in production
+   - Comprehensive error handling and logging
+
+SECURITY DECORATORS USED:
+- @require_admin: Restrict to admin users only
+- @security_guard: Prevent unsafe operations  
+- @production_safe: Production environment safety
+- @password_reset_guard: Password operation safety
+
+Never modify the user protection logic without security review.
+"""
+
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -2078,7 +2118,7 @@ def admin_add_course():
             return render_template('admin/add_course.html')
         
         try:
-            points = int(points) if points else 0
+            points = int(points) if points else  0
         except ValueError:
             points = 0
         

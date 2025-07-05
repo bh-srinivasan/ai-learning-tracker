@@ -1,6 +1,34 @@
 #!/usr/bin/env python3
 """
 Security Guard Module - Uber-level safeguards for user management operations
+
+CRITICAL BUSINESS RULES - ENFORCED BY THIS MODULE:
+==================================================
+
+1. NEVER DELETE USERS WITHOUT EXPLICIT AUTHORIZATION
+   - Only admin user is permanently protected from deletion
+   - All user deletions MUST be triggered via UI (admin panel)
+   - NO automated/backend user deletion scripts allowed in production
+
+2. PASSWORD RESET SAFETY
+   - Password resets MUST be explicitly requested by admin via UI
+   - NO automated password resets unless specifically authorized
+   - Backend password reset scripts require explicit user consent
+
+3. PRODUCTION SAFEGUARDS
+   - All dangerous operations blocked in production unless explicitly authorized
+   - UI-only operations cannot be triggered programmatically
+   - Comprehensive audit logging for all protected operations
+
+4. ADMIN PROTECTION
+   - Admin user cannot be deleted under any circumstances
+   - Admin password resets require special authorization
+   - Admin account operations are heavily logged
+
+These rules are implemented via decorators:
+- @security_guard('operation_name', require_ui=True)
+- @production_safe('operation_name')
+
 Prevents unsafe operations in production and enforces strict controls
 """
 
