@@ -193,6 +193,9 @@ def production_safe(operation_type: str):
             
             return func(*args, **kwargs)
         
+        # Fix endpoint collision by giving wrapper a unique name
+        wrapper.__name__ = f"{func.__name__}_production_safe_wrapper"
+        wrapper.__qualname__ = f"{func.__qualname__}_production_safe_wrapper"
         return wrapper
     return decorator
 

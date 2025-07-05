@@ -9,12 +9,35 @@ import logging
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from course_validator import CourseURLValidator
 
 # Configure logging for admin operations
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 admin_bp = Blueprint('admin', __name__)
+
+def get_courses_for_topic(topic_name, search_keywords):
+    """
+    Placeholder function to get courses for a topic.
+    In a real implementation, this would integrate with external APIs
+    like Microsoft Learn, Coursera, etc.
+    
+    Args:
+        topic_name: The topic to search for courses
+        search_keywords: Additional keywords for refined search
+        
+    Returns:
+        List of course dictionaries with keys: title, source, level, link, points, description
+    """
+    # For now, return an empty list to prevent errors
+    # This should be replaced with actual API integration
+    logger.info(f"Course search requested for topic: {topic_name}, keywords: {search_keywords}")
+    
+    # Placeholder courses (remove this in production and add real API integration)
+    placeholder_courses = []
+    
+    return placeholder_courses
 
 def get_db_connection():
     conn = sqlite3.connect('ai_learning.db')
@@ -866,15 +889,8 @@ def debug_session():
     }
     return f"<pre>{debug_info}</pre>"
 
-# Import the course validator
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Import the course validator (moved to top of file)
 from course_validator import CourseURLValidator
-
-# Configure logging for admin operations
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 @admin_bp.route('/admin/url-validation')
 def url_validation():
