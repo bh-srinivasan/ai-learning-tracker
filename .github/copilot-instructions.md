@@ -5,6 +5,7 @@
 ## 🚨 CRITICAL SECURITY RULES - READ FIRST
 
 ### NEVER DELETE USERS WITHOUT EXPLICIT AUTHORIZATION
+
 - **NEVER run database cleanup scripts automatically**
 - **NEVER delete users unless explicitly requested by the user**
 - **NEVER assume that completing a task includes cleaning up data**
@@ -12,10 +13,12 @@
 - **User data integrity is PARAMOUNT - when in doubt, DON'T**
 
 ### Authorization Required Operations
+
 These operations require explicit user authorization:
+
 - User deletion (any user, any reason)
 - Database cleanup or user removal
-- Password resets for non-test users  
+- Password resets for non-test users
 - Bulk user operations
 - Any operation that modifies user data permanently
 
