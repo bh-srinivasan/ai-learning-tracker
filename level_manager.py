@@ -325,3 +325,66 @@ class LevelManager:
             'level_updated_at': user['level_updated_at'],
             **breakdown
         }
+
+    def calculate_level_from_points(self, total_points: int) -> Dict:
+        """
+        Calculate level based on total points without database lookup
+        
+        Args:
+            total_points (int): Total points earned by user
+            
+        Returns:
+            Dict: Level information including level name and requirements
+        """
+        # Default level thresholds (can be made configurable)
+        level_thresholds = [
+            (0, 'Beginner'),
+            (100, 'Learner'), 
+            (250, 'Intermediate'),
+            (500, 'Expert'),
+            (1000, 'Master'),
+            (2000, 'Guru')
+        ]
+        
+        # Find appropriate level
+        current_level = 'Beginner'
+        next_level = None
+        points_to_next = None
+        
+        for threshold, level_name in level_thresholds:
+            if total_points >= threshold:
+                current_level = level_name
+            else:
+                next_level = level_name
+                points_to_next = threshold - total_points
+                break
+        
+        # Calculate progress within current level
+        current_threshold = 0
+        next_threshold = None
+        
+        for i, (threshold, level_name) in enumerate(level_thresholds):
+            if level_name == current_level:
+                current_threshold = threshold
+                if i + 1 < len(level_thresholds):
+                    next_threshold = level_thresholds[i + 1][0]
+                break
+        
+        # Calculate level progress percentage
+        if next_threshold:
+            level_range = next_threshold - current_threshold
+            points_in_level = total_points - current_threshold
+            level_progress = (points_in_level / level_range) * 100 if level_range > 0 else 100
+        else:
+            level_progress = 100  # Max level reached
+        
+        return {
+            'level': current_level,
+            'total_points': total_points,
+            'points_in_level': total_points - current_threshold,
+            'next_level': next_level,
+            'points_to_next': points_to_next,
+            'level_progress': round(level_progress, 1),
+            'current_threshold': current_threshold,
+            'next_threshold': next_threshold
+        }
