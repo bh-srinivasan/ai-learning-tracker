@@ -363,22 +363,25 @@ def init_db():
     
     # Create default users (only admin and demo for testing)
     # Other users should be created manually and not auto-created
-    admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')  # Fallback to default if not set
-    demo_username = os.environ.get('DEMO_USERNAME', 'demo')
-    demo_password = os.environ.get('DEMO_PASSWORD', 'demo')  # Fallback to default if not set
-    
-    admin_hash = generate_password_hash(admin_password)
-    demo_hash = generate_password_hash(demo_password)
-    
-    try:
-        # Create admin user
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('admin', admin_hash))
-        # Create demo user for testing
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (demo_username, demo_hash))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        # Users already exist
-        pass
+    # PRODUCTION SAFETY: Only create users in development, NEVER in production
+    if os.environ.get('FLASK_ENV') == 'development' or os.environ.get('ENVIRONMENT') == 'development':
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')  # Fallback to default if not set
+        demo_username = os.environ.get('DEMO_USERNAME', 'demo')
+        demo_password = os.environ.get('DEMO_PASSWORD', 'demo')  # Fallback to default if not set
+        
+        admin_hash = generate_password_hash(admin_password)
+        demo_hash = generate_password_hash(demo_password)
+        
+        try:
+            # Create admin user ONLY in development
+            conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('admin', admin_hash))
+            # Create demo user for testing ONLY in development
+            conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (demo_username, demo_hash))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            # Users already exist
+            pass
+    # PRODUCTION: Never auto-create users - preserves existing production data
     
     conn.close()
 
