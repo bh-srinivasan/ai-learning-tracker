@@ -10,10 +10,10 @@ variables:
 
 stages:
 - stage: Deploy
-  displayName: 'Deploy Stable Version ef01c21'
+  displayName: 'Deploy Latest Version with Admin Init'
   jobs:
   - deployment: DeployWeb
-    displayName: 'Deploy Stable Version to Azure App Service'
+    displayName: 'Deploy Latest Version to Azure App Service'
     environment: 'production'
     strategy:
       runOnce:
