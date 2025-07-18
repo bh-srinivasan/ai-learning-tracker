@@ -156,7 +156,7 @@ EOF
 echo "Configuration saved to: azure_backup_config.json"
 '''
     
-    with open('setup_azure_backup.sh', 'w') as f:
+    with open('setup_azure_backup.sh', 'w', encoding='utf-8') as f:
         f.write(script)
     
     # Make executable
@@ -169,13 +169,14 @@ echo "Configuration saved to: azure_backup_config.json"
 
 def create_backup_test_script():
     """Create comprehensive backup system test script"""
-    script = '''#!/usr/bin/env python3
-"""
+    # Create the script content as a string with proper escaping
+    script_content = """#!/usr/bin/env python3
+'''
 Backup System Integration Test
 =============================
 
 Comprehensive test of backup and restore functionality
-"""
+'''
 
 import sys
 import os
@@ -191,11 +192,11 @@ from azure_backup_system import AzureBackupManager
 from data_integrity_monitor import DataIntegrityMonitor
 
 def create_test_database(db_path):
-    """Create a test database with sample data"""
+    '''Create a test database with sample data'''
     conn = sqlite3.connect(db_path)
     try:
-        # Create tables
-        conn.execute('''
+        # Create users table
+        users_sql = '''
             CREATE TABLE users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
@@ -204,9 +205,11 @@ def create_test_database(db_path):
                 points INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        '''
+        conn.execute(users_sql)
         
-        conn.execute('''
+        # Create courses table
+        courses_sql = '''
             CREATE TABLE courses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -214,7 +217,8 @@ def create_test_database(db_path):
                 level TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        '''
+        conn.execute(courses_sql)
         
         # Insert test data
         test_users = [
@@ -248,7 +252,7 @@ def create_test_database(db_path):
         conn.close()
 
 def test_backup_restore_cycle():
-    """Test complete backup and restore cycle"""
+    '''Test complete backup and restore cycle'''
     print("=== TESTING BACKUP AND RESTORE CYCLE ===")
     
     # Check for Azure connection string
@@ -264,11 +268,11 @@ def test_backup_restore_cycle():
         
         try:
             # Step 1: Create test database
-            print("\\n1. Creating test database...")
+            print("\\\\n1. Creating test database...")
             create_test_database(test_db_path)
             
             # Step 2: Initialize backup manager
-            print("\\n2. Initializing backup manager...")
+            print("\\\\n2. Initializing backup manager...")
             backup_manager = AzureBackupManager(
                 connection_string=connection_string,
                 container_name="ai-learning-backups-test",
@@ -276,7 +280,7 @@ def test_backup_restore_cycle():
             )
             
             # Step 3: Create backup
-            print("\\n3. Creating backup...")
+            print("\\\\n3. Creating backup...")
             backup_metadata = backup_manager.create_backup("test")
             
             if not backup_metadata:
@@ -286,7 +290,7 @@ def test_backup_restore_cycle():
             print(f"✅ Backup created: {backup_metadata.backup_id}")
             
             # Step 4: Modify database to simulate changes
-            print("\\n4. Modifying database...")
+            print("\\\\n4. Modifying database...")
             conn = sqlite3.connect(test_db_path)
             conn.execute("INSERT INTO users (username, password_hash) VALUES ('testuser4', 'hash4')")
             conn.execute("DELETE FROM courses WHERE id = 1")
@@ -294,7 +298,7 @@ def test_backup_restore_cycle():
             conn.close()
             
             # Step 5: Restore from backup
-            print("\\n5. Restoring from backup...")
+            print("\\\\n5. Restoring from backup...")
             restored_db_path = os.path.join(temp_dir, 'restored.db')
             
             success = backup_manager.restore_from_backup(backup_metadata.backup_id, restored_db_path)
@@ -306,7 +310,7 @@ def test_backup_restore_cycle():
             print("✅ Restore completed")
             
             # Step 6: Verify restored data
-            print("\\n6. Verifying restored data...")
+            print("\\\\n6. Verifying restored data...")
             
             # Check original data is restored
             conn = sqlite3.connect(restored_db_path)
@@ -321,7 +325,7 @@ def test_backup_restore_cycle():
                 return False
             
             # Step 7: Test integrity monitoring
-            print("\\n7. Testing integrity monitoring...")
+            print("\\\\n7. Testing integrity monitoring...")
             integrity_monitor = DataIntegrityMonitor(test_db_path)
             
             # Save snapshot
@@ -339,7 +343,7 @@ def test_backup_restore_cycle():
                 print(f"❌ Integrity check failed: {report.overall_result.value}")
                 return False
             
-            print("\\n=== ALL TESTS PASSED ===")
+            print("\\\\n=== ALL TESTS PASSED ===")
             return True
             
         except Exception as e:
@@ -347,8 +351,8 @@ def test_backup_restore_cycle():
             return False
 
 def test_backup_health_monitoring():
-    """Test backup health monitoring"""
-    print("\\n=== TESTING BACKUP HEALTH MONITORING ===")
+    '''Test backup health monitoring'''
+    print("\\\\n=== TESTING BACKUP HEALTH MONITORING ===")
     
     connection_string = os.environ.get('AZURE_STORAGE_CONNECTION_STRING')
     if not connection_string:
@@ -375,7 +379,7 @@ def test_backup_health_monitoring():
         return False
 
 def main():
-    """Run all tests"""
+    '''Run all tests'''
     print("AI Learning Tracker - Backup System Test")
     print("=" * 50)
     
@@ -390,7 +394,7 @@ def main():
     if test_backup_health_monitoring():
         tests_passed += 1
     
-    print(f"\\n=== TEST RESULTS ===")
+    print(f"\\\\n=== TEST RESULTS ===")
     print(f"Passed: {tests_passed}/{total_tests}")
     
     if tests_passed == total_tests:
@@ -403,10 +407,10 @@ def main():
 if __name__ == "__main__":
     success = main()
     sys.exit(0 if success else 1)
-'''
+"""
     
-    with open('test_backup_system.py', 'w') as f:
-        f.write(script)
+    with open('test_backup_system.py', 'w', encoding='utf-8') as f:
+        f.write(script_content)
     
     try:
         os.chmod('test_backup_system.py', 0o755)
@@ -486,7 +490,7 @@ jobs:
 '''
     
     os.makedirs('.github/workflows', exist_ok=True)
-    with open('.github/workflows/safe-deployment.yml', 'w') as f:
+    with open('.github/workflows/safe-deployment.yml', 'w', encoding='utf-8') as f:
         f.write(github_workflow)
     
     # Azure DevOps pipeline
@@ -570,7 +574,7 @@ stages:
       displayName: 'Validate integrity check results'
 '''
     
-    with open('azure-pipelines.yml', 'w') as f:
+    with open('azure-pipelines.yml', 'w', encoding='utf-8') as f:
         f.write(azure_pipeline)
     
     print("✅ Created deployment pipeline configurations")
