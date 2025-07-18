@@ -7,6 +7,9 @@ Simple script to verify files exist in Azure deployment.
 
 import os
 import sys
+import sqlite3
+from werkzeug.security import generate_password_hash
+from datetime import datetime
 
 def check_azure_files():
     """Check if required files exist"""
@@ -56,5 +59,28 @@ def check_azure_files():
     else:
         print("⚠️ DEMO_PASSWORD not found (will use default)")
 
+def initialize_admin_user():
+    """Initialize the admin user in the database"""
+    
+    conn = sqlite3.connect('ai_learning.db')
+    cursor = conn.cursor()
+
+    # Check if admin exists
+    cursor.execute('SELECT id FROM users WHERE username = "admin"')
+    if cursor.fetchone():
+        print('✅ Admin already exists')
+    else:
+        # Create admin user with correct password
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
+        password_hash = generate_password_hash(admin_password)
+        cursor.execute('INSERT INTO users (username, password_hash, level, points, status, user_selected_level, login_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+                       ('admin', password_hash, 'Advanced', 100, 'active', 'Advanced', 0, datetime.now().isoformat()))
+        conn.commit()
+        print('🎉 Admin user created successfully!')
+        print(f'   Username: admin')
+        print(f'   Password: {admin_password}')
+    conn.close()
+
 if __name__ == "__main__":
     check_azure_files()
+    initialize_admin_user()

@@ -1092,7 +1092,7 @@ def ensure_admin_user():
             cursor.execute("SELECT id FROM users WHERE username = 'admin'")
             if not cursor.fetchone():
                 # Create admin user
-                admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')
+                admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
                 password_hash = generate_password_hash(admin_password)
                 
                 cursor.execute("""
