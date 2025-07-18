@@ -59,7 +59,8 @@ try {
         # Execute the script via Azure CLI
         Write-Host "📤 Uploading and executing initialization script..." -ForegroundColor Blue
         
-        $result = az webapp ssh --resource-group $ResourceGroup --name $WebAppName --command "cd /home/site/wwwroot && python initialize_azure_admin.py" 2>&1
+        $command = "cd /home/site/wwwroot; python initialize_azure_admin.py"
+        $result = az webapp ssh --resource-group $ResourceGroup --name $WebAppName --command $command 2>&1
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ Script executed successfully!" -ForegroundColor Green
@@ -72,7 +73,7 @@ try {
             exit 1
         }
     } else {
-        Write-Host "🔍 Would execute: az webapp ssh --resource-group $ResourceGroup --name $WebAppName --command ""cd /home/site/wwwroot && python initialize_azure_admin.py""" -ForegroundColor Yellow
+        Write-Host "🔍 Would execute: az webapp ssh --resource-group $ResourceGroup --name $WebAppName --command '$command'" -ForegroundColor Yellow
     }
     
     # Cleanup

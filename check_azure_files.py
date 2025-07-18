@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Azure File Check
-================
-Simple script to verify files exist in Azure deployment.
+Complete Azure Admin Setup
+===========================
+Run this script in Azure environment to set up admin user.
 """
 
 import os
@@ -14,73 +14,130 @@ from datetime import datetime
 def check_azure_files():
     """Check if required files exist"""
     
-    print("=== AZURE FILE VERIFICATION ===")
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Python executable: {sys.executable}")
+    print("=== AZURE ENVIRONMENT VERIFICATION ===")
+    print(f"Working directory: {os.getcwd()}")
+    print(f"Python version: {sys.version}")
     print()
     
-    # Check for required files
-    required_files = [
-        'app.py',
-        'initialize_azure_admin.py',
-        'ai_learning.db',
-        'requirements.txt'
-    ]
+    # Check for key files
+    key_files = ['app.py', 'ai_learning.db', 'requirements.txt']
     
-    print("📁 Checking for required files:")
-    for file in required_files:
+    print("📁 Key files status:")
+    for file in key_files:
         if os.path.exists(file):
-            print(f"✅ {file} - Found")
+            size = os.path.getsize(file)
+            print(f"✅ {file} - Found ({size} bytes)")
         else:
             print(f"❌ {file} - Missing")
     
     print()
-    print("📂 Directory contents:")
+    print("📂 Directory contents (first 15 files):")
     try:
-        files = os.listdir('.')
-        for f in sorted(files)[:20]:  # Show first 20 files
+        files = sorted(os.listdir('.'))[:15]
+        for f in files:
             print(f"   {f}")
-        if len(files) > 20:
-            print(f"   ... and {len(files) - 20} more files")
     except Exception as e:
-        print(f"Error listing directory: {e}")
+        print(f"Error: {e}")
     
     print()
-    print("🔍 Environment variables:")
+    print("🔍 Environment check:")
+    azure_env = os.environ.get('WEBSITE_SITE_NAME')
+    if azure_env:
+        print(f"✅ Azure App Service detected: {azure_env}")
+    else:
+        print("❌ Not in Azure environment")
+    
     admin_pwd = os.environ.get('ADMIN_PASSWORD')
     if admin_pwd:
-        print(f"✅ ADMIN_PASSWORD is set (length: {len(admin_pwd)})")
+        print(f"✅ ADMIN_PASSWORD configured (length: {len(admin_pwd)})")
     else:
-        print("❌ ADMIN_PASSWORD not found in environment")
-    
-    demo_pwd = os.environ.get('DEMO_PASSWORD')  
-    if demo_pwd:
-        print(f"✅ DEMO_PASSWORD is set (length: {len(demo_pwd)})")
-    else:
-        print("⚠️ DEMO_PASSWORD not found (will use default)")
+        print("⚠️ ADMIN_PASSWORD not found, using default")
 
-def initialize_admin_user():
-    """Initialize the admin user in the database"""
+def create_admin_user_secure():
+    """Create admin user with secure setup"""
     
-    conn = sqlite3.connect('ai_learning.db')
-    cursor = conn.cursor()
-
-    # Check if admin exists
-    cursor.execute('SELECT id FROM users WHERE username = "admin"')
-    if cursor.fetchone():
-        print('✅ Admin already exists')
-    else:
-        # Create admin user with correct password
+    print("\n=== ADMIN USER INITIALIZATION ===")
+    
+    try:
+        # Connect to database
+        conn = sqlite3.connect('ai_learning.db')
+        cursor = conn.cursor()
+        print("✅ Database connection successful")
+        
+        # Check if admin exists
+        cursor.execute('SELECT id, username, level FROM users WHERE username = "admin"')
+        existing_admin = cursor.fetchone()
+        
+        if existing_admin:
+            print(f"✅ Admin user already exists:")
+            print(f"   ID: {existing_admin[0]}")
+            print(f"   Username: {existing_admin[1]}")
+            print(f"   Level: {existing_admin[2]}")
+            print("🔧 No action needed")
+            conn.close()
+            return True
+        
+        # Create admin user
+        print("🚀 Creating admin user...")
         admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
         password_hash = generate_password_hash(admin_password)
-        cursor.execute('INSERT INTO users (username, password_hash, level, points, status, user_selected_level, login_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-                       ('admin', password_hash, 'Advanced', 100, 'active', 'Advanced', 0, datetime.now().isoformat()))
+        
+        cursor.execute('''
+            INSERT INTO users (
+                username, password_hash, level, points, status, 
+                user_selected_level, login_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            'admin', 
+            password_hash, 
+            'Advanced',     # Admin level
+            1000,          # Admin points
+            'active', 
+            'Advanced', 
+            0, 
+            datetime.now().isoformat()
+        ))
+        
+        admin_id = cursor.lastrowid
         conn.commit()
-        print('🎉 Admin user created successfully!')
-        print(f'   Username: admin')
-        print(f'   Password: {admin_password}')
-    conn.close()
+        conn.close()
+        
+        print("🎉 ADMIN USER CREATED SUCCESSFULLY!")
+        print(f"   User ID: {admin_id}")
+        print(f"   Username: admin")
+        print(f"   Level: Advanced (Admin)")
+        print(f"   Password: {admin_password}")
+        print(f"   Points: 1000")
+        print(f"   Status: Active")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creating admin user: {e}")
+        return False
+
+def main():
+    """Main execution function"""
+    
+    print("🚀 AI Learning Tracker - Complete Azure Setup")
+    print("=" * 60)
+    
+    # Check environment
+    check_azure_files()
+    
+    # Create admin user
+    success = create_admin_user_secure()
+    
+    print("\n" + "=" * 60)
+    if success:
+        print("🎉 SETUP COMPLETE!")
+        print("✅ Admin user is ready for login")
+        print("\n🔗 Login URL: https://ai-learning-tracker-bharath.azurewebsites.net/")
+        print("👤 Username: admin")
+        print("🔑 Password: [check output above]")
+    else:
+        print("❌ Setup failed - check error messages above")
+    print("=" * 60)
 
 if __name__ == "__main__":
-    check_azure_files()
-    initialize_admin_user()
+    main()
