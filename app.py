@@ -1079,6 +1079,16 @@ cleanup_thread.start()
 # Initialize database on startup
 init_db()
 
+# Initialize admin user automatically on startup
+try:
+    from startup_init import startup_initialization
+    logger.info("🚀 Running startup initialization...")
+    startup_initialization()
+except ImportError:
+    logger.warning("⚠️ Startup initialization module not found")
+except Exception as e:
+    logger.error(f"❌ Startup initialization failed: {e}")
+
 # Initialize deployment safety and data integrity monitoring
 try:
     from deployment_safety import init_deployment_safety
