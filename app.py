@@ -1079,6 +1079,16 @@ cleanup_thread.start()
 # Initialize database on startup
 init_db()
 
+# Initialize deployment safety and data integrity monitoring
+try:
+    from deployment_safety import init_deployment_safety
+    deployment_safety = init_deployment_safety(app)
+    logger.info("✅ Deployment safety and data integrity monitoring initialized")
+except ImportError:
+    logger.warning("⚠️ Deployment safety module not available - install azure-storage-blob for full functionality")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize deployment safety: {e}")
+
 # Temporarily comment out blueprints to fix circular import
 # TODO: Re-enable after fixing circular imports
 # from auth.routes import auth_bp
