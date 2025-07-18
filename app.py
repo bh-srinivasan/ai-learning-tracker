@@ -2626,6 +2626,46 @@ def admin_populate_linkedin_courses():
     
     return redirect(url_for('admin_courses'))
 
+@app.route('/setup-admin')
+def setup_admin():
+    """Simple setup route to create admin user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if admin exists
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        if cursor.fetchone():
+            conn.close()
+            return "✅ Admin user already exists! <a href='/'>Go to Login</a>"
+        
+        # Create admin user
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
+        password_hash = generate_password_hash(admin_password)
+        
+        cursor.execute("""
+            INSERT INTO users (
+                username, password_hash, level, points, status,
+                user_selected_level, login_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            'admin', password_hash, 'Advanced', 100, 'active',
+            'Advanced', 0, datetime.now().isoformat()
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return f"""
+        🎉 Admin user created successfully!<br>
+        Username: admin<br>
+        Password: {admin_password}<br>
+        <a href='/'>Go to Login</a>
+        """
+        
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
 @app.route('/health')
 def health_check():
     """Health check endpoint with admin initialization"""
