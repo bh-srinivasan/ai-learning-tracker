@@ -10,7 +10,7 @@ variables:
 
 stages:
 - stage: Deploy
-  displayName: 'Deploy Latest Version with Admin Init'
+  displayName: 'Deploy Latest Version with Admin Init - v2'
   jobs:
   - deployment: DeployWeb
     displayName: 'Deploy Latest Version to Azure App Service'
