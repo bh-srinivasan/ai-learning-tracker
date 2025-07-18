@@ -1,0 +1,43 @@
+trigger:
+- master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  azureServiceConnection: 'azure-service-connection'
+  webAppName: 'ai-learning-tracker-bharath'
+
+stages:
+- stage: Deploy
+  displayName: 'Deploy Stable Version ef01c21'
+  jobs:
+  - deployment: DeployWeb
+    displayName: 'Deploy Stable Version to Azure App Service'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.9'
+          
+          - script: |
+              pip install -r requirements.txt
+            displayName: 'Install dependencies'
+          
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              appType: 'webAppLinux'
+              appName: $(webAppName)
+              package: '$(System.DefaultWorkingDirectory)'
+          
+          - script: |
+              echo "Initializing Azure database with admin user..."
+              python initialize_azure_admin.py
+            displayName: 'Initialize Admin User'
+            env:
+              ADMIN_PASSWORD: $(ADMIN_PASSWORD)
+              DEMO_PASSWORD: $(DEMO_PASSWORD)
