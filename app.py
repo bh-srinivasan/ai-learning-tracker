@@ -2588,111 +2588,128 @@ def admin_populate_linkedin_courses():
     
     return redirect(url_for('admin_courses'))
 
-@app.route('/initialize-admin', methods=['GET', 'POST'])
-def initialize_admin():
-    """Initialize admin user - One-time setup route"""
+@app.route('/init-admin')
+def simple_init_admin():
+    """Simple admin initialization via URL parameter"""
     
-    # Simple password protection for this route
-    if request.method == 'GET':
-        return '''
-        <html>
-        <head><title>Admin Initialization</title></head>
-        <body style="font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px;">
-            <h2>🔧 Admin User Initialization</h2>
-            <p>This is a one-time setup to create the admin user.</p>
-            <form method="POST">
-                <div style="margin: 15px 0;">
-                    <label>Initialization Password:</label><br>
-                    <input type="password" name="init_password" required style="width: 100%; padding: 8px;">
-                    <small>Use the ADMIN_PASSWORD from environment</small>
-                </div>
-                <button type="submit" style="background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px;">
-                    Initialize Admin User
-                </button>
-            </form>
-        </body>
-        </html>
-        '''
+    # Get password from URL parameter
+    init_password = request.args.get('password', '')
+    expected_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')
     
-    if request.method == 'POST':
-        init_password = request.form.get('init_password', '')
-        expected_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')
-        
-        if init_password != expected_password:
-            return '''
-            <html><body style="font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px;">
-                <h2>❌ Invalid Password</h2>
-                <p>The initialization password is incorrect.</p>
-                <a href="/initialize-admin">Try Again</a>
-            </body></html>
+    # Basic HTML template
+    html_template = '''
+    <html>
+    <head><title>Admin Initialization</title></head>
+    <body style="font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; background: #f5f5f5;">
+        <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color: #333; margin-bottom: 20px;">{title}</h2>
+            {content}
+        </div>
+    </body>
+    </html>
+    '''
+    
+    if not init_password:
+        return html_template.format(
+            title="🔧 Admin User Initialization",
+            content='''
+            <p>To initialize the admin user, add your password as a URL parameter:</p>
+            <p><strong>URL Format:</strong></p>
+            <code style="background: #f0f0f0; padding: 10px; border-radius: 4px; display: block; margin: 10px 0;">
+            https://your-app.azurewebsites.net/init-admin?password=YOUR_ADMIN_PASSWORD
+            </code>
+            <p><small>⚠️ Use your ADMIN_PASSWORD environment variable value</small></p>
             '''
+        )
+    
+    if init_password != expected_password:
+        return html_template.format(
+            title="❌ Invalid Password",
+            content='''
+            <p>The initialization password is incorrect.</p>
+            <p>Please check your ADMIN_PASSWORD environment variable.</p>
+            <a href="/init-admin" style="color: #007bff;">Try Again</a>
+            '''
+        )
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Check if admin already exists
-            cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-            if cursor.fetchone():
-                conn.close()
-                return '''
-                <html><body style="font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px;">
-                    <h2>✅ Admin Already Exists</h2>
-                    <p>The admin user has already been created.</p>
-                    <a href="/login">Go to Login</a>
-                </body></html>
+        # Check if admin already exists
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        if cursor.fetchone():
+            conn.close()
+            return html_template.format(
+                title="✅ Admin Already Exists",
+                content='''
+                <p>The admin user has already been created.</p>
+                <p>You can now login with username <strong>admin</strong></p>
+                <a href="/" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
+                    Go to Login
+                </a>
                 '''
-            
-            # Create admin user
-            password_hash = generate_password_hash(expected_password)
+            )
+        
+        # Create admin user
+        password_hash = generate_password_hash(expected_password)
+        cursor.execute("""
+            INSERT INTO users (
+                username, password_hash, level, points, status,
+                user_selected_level, login_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            'admin', password_hash, 'Advanced', 100, 'active',
+            'Advanced', 0, datetime.now().isoformat()
+        ))
+        
+        admin_id = cursor.lastrowid
+        
+        # Create demo user too
+        demo_password = os.environ.get('DEMO_PASSWORD', 'demo123')
+        cursor.execute("SELECT id FROM users WHERE username = 'demo'")
+        if not cursor.fetchone():
+            demo_hash = generate_password_hash(demo_password)
             cursor.execute("""
                 INSERT INTO users (
                     username, password_hash, level, points, status,
                     user_selected_level, login_count, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                'admin', password_hash, 'Advanced', 100, 'active',
-                'Advanced', 0, datetime.now().isoformat()
+                'demo', demo_hash, 'Beginner', 0, 'active',
+                'Beginner', 0, datetime.now().isoformat()
             ))
-            
-            # Create demo user too
-            demo_password = os.environ.get('DEMO_PASSWORD', 'demo123')
-            cursor.execute("SELECT id FROM users WHERE username = 'demo'")
-            if not cursor.fetchone():
-                demo_hash = generate_password_hash(demo_password)
-                cursor.execute("""
-                    INSERT INTO users (
-                        username, password_hash, level, points, status,
-                        user_selected_level, login_count, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    'demo', demo_hash, 'Beginner', 0, 'active',
-                    'Beginner', 0, datetime.now().isoformat()
-                ))
-            
-            conn.commit()
-            conn.close()
-            
-            return '''
-            <html><body style="font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px;">
-                <h2>🎉 Initialization Complete!</h2>
-                <p>✅ Admin user created successfully</p>
-                <p>✅ Demo user created successfully</p>
-                <p>Your application is now ready to use!</p>
-                <a href="/login" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
-                    Go to Login
-                </a>
-            </body></html>
+        
+        conn.commit()
+        conn.close()
+        
+        return html_template.format(
+            title="🎉 Initialization Complete!",
+            content=f'''
+            <p>✅ <strong>Admin user created successfully!</strong></p>
+            <p>✅ Demo user created successfully</p>
+            <p>📊 Admin user ID: {admin_id}</p>
+            <hr style="margin: 20px 0;">
+            <h3>🔗 Ready to Login:</h3>
+            <p><strong>Username:</strong> admin</p>
+            <p><strong>Password:</strong> [your ADMIN_PASSWORD]</p>
+            <p><strong>Level:</strong> Advanced</p>
+            <br>
+            <a href="/" style="background: #28a745; color: white; padding: 15px 25px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                🚀 Go to Login Page
+            </a>
             '''
-            
-        except Exception as e:
-            return f'''
-            <html><body style="font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px;">
-                <h2>❌ Initialization Failed</h2>
-                <p>Error: {str(e)}</p>
-                <a href="/initialize-admin">Try Again</a>
-            </body></html>
+        )
+        
+    except Exception as e:
+        return html_template.format(
+            title="❌ Initialization Failed",
+            content=f'''
+            <p><strong>Error:</strong> {str(e)}</p>
+            <p>Please check the application logs for more details.</p>
+            <a href="/init-admin" style="color: #007bff;">Try Again</a>
             '''
+        )
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
