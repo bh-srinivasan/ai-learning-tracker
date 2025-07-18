@@ -2598,6 +2598,110 @@ def admin_populate_linkedin_courses():
     
     return redirect(url_for('admin_courses'))
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint with admin initialization"""
+    
+    import sqlite3
+    from werkzeug.security import generate_password_hash
+    from datetime import datetime
+    
+    html_template = '''
+    <html>
+    <head><title>Health Check</title></head>
+    <body style="font-family: Arial; max-width: 800px; margin: 20px auto; padding: 20px;">
+        <h2>🔍 AI Learning Tracker - Health Check</h2>
+        {content}
+        <hr>
+        <p><small>Last updated: {timestamp}</small></p>
+    </body>
+    </html>
+    '''
+    
+    try:
+        status_info = []
+        
+        # Check database connection
+        try:
+            conn = get_db_connection()
+            status_info.append("✅ Database connection: OK")
+            
+            # Check tables
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in cursor.fetchall()]
+            
+            if 'users' in tables:
+                status_info.append("✅ Users table: EXISTS")
+                
+                # Check admin user
+                cursor.execute("SELECT id, username, level FROM users WHERE username = 'admin'")
+                admin_user = cursor.fetchone()
+                
+                if admin_user:
+                    status_info.append(f"✅ Admin user: EXISTS (ID: {admin_user[0]}, Level: {admin_user[2]})")
+                else:
+                    status_info.append("❌ Admin user: MISSING")
+                    
+                    # Try to create admin user
+                    status_info.append("🔧 Attempting to create admin user...")
+                    
+                    admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')
+                    password_hash = generate_password_hash(admin_password)
+                    
+                    cursor.execute("""
+                        INSERT INTO users (
+                            username, password_hash, level, points, status,
+                            user_selected_level, login_count, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        'admin', password_hash, 'Advanced', 100, 'active',
+                        'Advanced', 0, datetime.now().isoformat()
+                    ))
+                    
+                    admin_id = cursor.lastrowid
+                    conn.commit()
+                    
+                    status_info.append(f"🎉 Admin user CREATED! (ID: {admin_id})")
+                
+                # Check total users
+                cursor.execute("SELECT COUNT(*) FROM users")
+                user_count = cursor.fetchone()[0]
+                status_info.append(f"📊 Total users: {user_count}")
+                
+            else:
+                status_info.append("❌ Users table: MISSING")
+            
+            conn.close()
+            
+        except Exception as e:
+            status_info.append(f"❌ Database error: {str(e)}")
+        
+        # Check environment variables
+        admin_pwd = os.environ.get('ADMIN_PASSWORD')
+        if admin_pwd:
+            status_info.append(f"✅ ADMIN_PASSWORD: SET (length: {len(admin_pwd)})")
+        else:
+            status_info.append("❌ ADMIN_PASSWORD: NOT SET")
+        
+        # Add login test link
+        status_info.append("")
+        status_info.append("🔗 <strong>Test Login:</strong>")
+        status_info.append(f'<a href="/" style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px;">Go to Login Page</a>')
+        
+        content = "<br>".join(status_info)
+        
+        return html_template.format(
+            content=content,
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+        )
+        
+    except Exception as e:
+        return html_template.format(
+            content=f"❌ Health check failed: {str(e)}",
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+        )
+
 @app.route('/init-admin')
 def simple_init_admin():
     """Simple admin initialization via URL parameter"""
