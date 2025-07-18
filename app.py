@@ -1079,15 +1079,43 @@ cleanup_thread.start()
 # Initialize database on startup
 init_db()
 
-# Initialize admin user automatically on startup
-try:
-    from startup_init import startup_initialization
-    logger.info("🚀 Running startup initialization...")
-    startup_initialization()
-except ImportError:
-    logger.warning("⚠️ Startup initialization module not found")
-except Exception as e:
-    logger.error(f"❌ Startup initialization failed: {e}")
+# One-time admin user initialization for Azure deployment
+def ensure_admin_user():
+    """Create admin user if it doesn't exist - Azure only"""
+    try:
+        # Only run in Azure environment
+        if os.environ.get('WEBSITE_SITE_NAME'):  # Azure App Service environment variable
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Check if admin user exists
+            cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+            if not cursor.fetchone():
+                # Create admin user
+                admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')
+                password_hash = generate_password_hash(admin_password)
+                
+                cursor.execute("""
+                    INSERT INTO users (
+                        username, password_hash, level, points, status,
+                        user_selected_level, login_count, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    'admin', password_hash, 'Advanced', 100, 'active',
+                    'Advanced', 0, datetime.now().isoformat()
+                ))
+                
+                conn.commit()
+                logger.info("✅ Admin user created for Azure deployment")
+            else:
+                logger.info("✅ Admin user already exists")
+            
+            conn.close()
+    except Exception as e:
+        logger.error(f"❌ Admin user initialization failed: {e}")
+
+# Run admin initialization
+ensure_admin_user()
 
 # Initialize deployment safety and data integrity monitoring
 try:
