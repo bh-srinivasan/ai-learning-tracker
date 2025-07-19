@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """
-Course URL Validation Service
-Validates course URLs and updates their status in the database
+Enhanced Course Validation Service
+- Validates course URLs with async support
+- Enforces comprehensive course schema validation
+- Provides debounced validation for better UX
+- Logs validation errors and maintains validation cache
 """
 import requests
 import sqlite3
 import logging
+import asyncio
+import aiohttp
+import time
+import re
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
-import time
-from typing import Dict, List, Tuple
-import re
+from typing import Dict, List, Tuple, Optional, Any, Union
+from dataclasses import dataclass, field
+from enum import Enum
 
 # Configure logging
 logging.basicConfig(
@@ -19,27 +26,221 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class CourseLevel(Enum):
+    """Valid course levels"""
+    BEGINNER = "Beginner"
+    LEARNER = "Learner"
+    INTERMEDIATE = "Intermediate"
+    EXPERT = "Expert"
+
+class CourseSource(Enum):
+    """Valid course sources"""
+    LINKEDIN_LEARNING = "LinkedIn Learning"
+    COURSERA = "Coursera"
+    EDX = "edX"
+    UDACITY = "Udacity"
+    UDEMY = "Udemy"
+    KHAN_ACADEMY = "Khan Academy"
+    MIT_OPENCOURSEWARE = "MIT OpenCourseWare"
+    STANFORD_ONLINE = "Stanford Online"
+    GOOGLE_AI_EDUCATION = "Google AI Education"
+    MICROSOFT_LEARN = "Microsoft Learn"
+    AWS_TRAINING = "AWS Training"
+    IBM = "IBM"
+    MANUAL = "Manual"
+    DYNAMIC = "Dynamic"
+
+class URLStatus(Enum):
+    """URL validation status"""
+    UNCHECKED = "unchecked"
+    WORKING = "Working"
+    NOT_WORKING = "Not Working"
+    BROKEN = "Broken"
+    TIMEOUT = "Timeout"
+    INVALID_FORMAT = "Invalid Format"
+
+@dataclass
+class CourseValidationError:
+    """Represents a validation error for a course field"""
+    field: str
+    message: str
+    severity: str = "error"  # error, warning, info
+
+@dataclass
+class URLValidationResult:
+    """Result of URL validation"""
+    url: str
+    status: URLStatus
+    response_code: Optional[int] = None
+    response_time: Optional[float] = None
+    error_message: Optional[str] = None
+    checked_at: Optional[str] = None
+
+@dataclass
+class CourseSchema:
+    """
+    Comprehensive course schema with validation
+    """
+    # Required fields
+    title: str
+    description: str
+    source: str
+    level: str
+    
+    # Optional fields
+    url: Optional[str] = None
+    link: Optional[str] = None
+    category: Optional[str] = None
+    points: int = 0
+    difficulty: Optional[str] = None
+    
+    # System fields
+    id: Optional[int] = None
+    created_at: Optional[str] = None
+    url_status: str = URLStatus.UNCHECKED.value
+    last_url_check: Optional[str] = None
+    
+    # Validation results
+    validation_errors: List[CourseValidationError] = field(default_factory=list)
+    is_valid: bool = True
+
 class CourseURLValidator:
     """
-    Validates course URLs and updates database with validation results
+    Enhanced Course URL Validator with schema validation and async support
     """
     
     def __init__(self, database_path: str = 'ai_learning.db'):
         self.database_path = database_path
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'AI-Learning-Tracker/1.0 (Course Validation Bot)'
+            'User-Agent': 'AI-Learning-Tracker/1.0 (Enhanced Course Validation Bot)'
         })
         # Set reasonable timeout
         self.timeout = 10
         # Rate limiting
         self.request_delay = 1  # 1 second between requests
+        # Validation cache
+        self.url_cache = {}
+        self.validation_cache = {}
         
     def get_db_connection(self):
         """Get database connection with row factory"""
         conn = sqlite3.connect(self.database_path)
         conn.row_factory = sqlite3.Row
         return conn
+    
+    def validate_schema(self, course_data: Dict[str, Any]) -> CourseSchema:
+        """
+        Validate course data against comprehensive schema
+        
+        Args:
+            course_data: Dictionary containing course data
+            
+        Returns:
+            CourseSchema object with validation results
+        """
+        errors = []
+        
+        # Extract and validate required fields
+        title = course_data.get('title', '').strip()
+        description = course_data.get('description', '').strip()
+        source = course_data.get('source', '').strip()
+        level = course_data.get('level', '').strip()
+        
+        # Validate title
+        if not title:
+            errors.append(CourseValidationError('title', 'Title is required'))
+        elif len(title) < 3:
+            errors.append(CourseValidationError('title', 'Title must be at least 3 characters long'))
+        elif len(title) > 200:
+            errors.append(CourseValidationError('title', 'Title must not exceed 200 characters'))
+        elif not self._is_valid_text(title):
+            errors.append(CourseValidationError('title', 'Title contains invalid characters'))
+            
+        # Validate description
+        if not description:
+            errors.append(CourseValidationError('description', 'Description is required'))
+        elif len(description) < 10:
+            errors.append(CourseValidationError('description', 'Description must be at least 10 characters long'))
+        elif len(description) > 2000:
+            errors.append(CourseValidationError('description', 'Description must not exceed 2000 characters'))
+            
+        # Validate source
+        if not source:
+            errors.append(CourseValidationError('source', 'Source is required'))
+        else:
+            valid_sources = [s.value for s in CourseSource]
+            if source not in valid_sources:
+                errors.append(CourseValidationError('source', f'Invalid source. Must be one of: {", ".join(valid_sources)}', 'warning'))
+                
+        # Validate level
+        if not level:
+            errors.append(CourseValidationError('level', 'Level is required'))
+        else:
+            valid_levels = [l.value for l in CourseLevel]
+            if level not in valid_levels:
+                errors.append(CourseValidationError('level', f'Invalid level. Must be one of: {", ".join(valid_levels)}'))
+        
+        # Validate optional fields
+        url = course_data.get('url', '').strip() if course_data.get('url') else None
+        link = course_data.get('link', '').strip() if course_data.get('link') else None
+        points = course_data.get('points', 0)
+        
+        # Validate URLs
+        if url and not self._is_valid_url_format(url):
+            errors.append(CourseValidationError('url', 'Invalid URL format'))
+            
+        if link and not self._is_valid_url_format(link):
+            errors.append(CourseValidationError('link', 'Invalid link format'))
+            
+        # Validate points
+        try:
+            points = int(points) if points else 0
+            if points < 0 or points > 1000:
+                errors.append(CourseValidationError('points', 'Points must be between 0 and 1000'))
+        except (ValueError, TypeError):
+            errors.append(CourseValidationError('points', 'Points must be a valid number'))
+            points = 0
+            
+        # Create course schema object
+        course = CourseSchema(
+            id=course_data.get('id'),
+            title=title,
+            description=description,
+            source=source,
+            level=level,
+            url=url,
+            link=link,
+            category=course_data.get('category', '').strip() if course_data.get('category') else None,
+            points=points,
+            difficulty=course_data.get('difficulty', '').strip() if course_data.get('difficulty') else None,
+            created_at=course_data.get('created_at'),
+            url_status=course_data.get('url_status', URLStatus.UNCHECKED.value),
+            last_url_check=course_data.get('last_url_check'),
+            validation_errors=errors,
+            is_valid=len([e for e in errors if e.severity == 'error']) == 0
+        )
+        
+        logger.info(f"Course validation completed: {len(errors)} issues found for '{title}'")
+        if errors:
+            for error in errors:
+                logger.warning(f"Validation {error.severity} in {error.field}: {error.message}")
+        
+        return course
+    
+    def _is_valid_text(self, text: str) -> bool:
+        """Check if text contains only valid characters"""
+        # Allow letters, numbers, spaces, and common punctuation
+        pattern = re.compile(r'^[a-zA-Z0-9\s\-\.,\!\?\(\)\[\]\:;\'\"\_\+\&\@\#\$\%\^]*$')
+        return bool(pattern.match(text))
+    
+    def _is_valid_url_format(self, url: str) -> bool:
+        """Check if URL has valid format"""
+        try:
+            result = urlparse(url)
+            return all([result.scheme in ['http', 'https'], result.netloc])
+        except Exception:
+            return False
     
     def validate_url(self, url: str) -> Dict[str, str]:
         """

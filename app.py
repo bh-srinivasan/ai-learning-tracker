@@ -2010,17 +2010,89 @@ def admin_security():
 
 @app.route('/admin/courses')
 def admin_courses():
-    """Admin course management"""
+    """Admin course management with pagination"""
     user = get_current_user()
     if not user or user['username'] != 'admin':
         flash('Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get courses
+    # Get pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 25, type=int)  # Default 25 courses per page
+    search = request.args.get('search', '', type=str)
+    source_filter = request.args.get('source', '', type=str)
+    level_filter = request.args.get('level', '', type=str)
+    
+    # Ensure per_page is within reasonable bounds
+    per_page = max(10, min(100, per_page))
+    
+    # Get courses with pagination
     conn = get_db_connection()
     try:
-        courses = conn.execute('SELECT * FROM courses ORDER BY created_at DESC').fetchall()
-        return render_template('admin/courses.html', courses=courses)
+        # Build WHERE clause for filters
+        where_conditions = []
+        params = []
+        
+        if search:
+            where_conditions.append("(title LIKE ? OR description LIKE ?)")
+            params.extend([f'%{search}%', f'%{search}%'])
+            
+        if source_filter:
+            where_conditions.append("source = ?")
+            params.append(source_filter)
+            
+        if level_filter:
+            where_conditions.append("level = ?")
+            params.append(level_filter)
+        
+        where_clause = ""
+        if where_conditions:
+            where_clause = "WHERE " + " AND ".join(where_conditions)
+        
+        # Get total count for pagination
+        count_query = f'SELECT COUNT(*) as count FROM courses {where_clause}'
+        total_courses = conn.execute(count_query, params).fetchone()['count']
+        
+        # Calculate pagination info
+        total_pages = max(1, (total_courses + per_page - 1) // per_page)  # Ceiling division
+        page = max(1, min(page, total_pages))  # Ensure page is within bounds
+        offset = (page - 1) * per_page
+        
+        # Get courses for current page
+        query = f'''
+            SELECT * FROM courses 
+            {where_clause}
+            ORDER BY created_at DESC 
+            LIMIT ? OFFSET ?
+        '''
+        params.extend([per_page, offset])
+        courses = conn.execute(query, params).fetchall()
+        
+        # Get available sources and levels for filters
+        sources = conn.execute('SELECT DISTINCT source FROM courses WHERE source IS NOT NULL ORDER BY source').fetchall()
+        levels = conn.execute('SELECT DISTINCT level FROM courses WHERE level IS NOT NULL ORDER BY level').fetchall()
+        
+        pagination_info = {
+            'page': page,
+            'per_page': per_page,
+            'total_courses': total_courses,
+            'total_pages': total_pages,
+            'has_prev': page > 1,
+            'has_next': page < total_pages,
+            'prev_page': page - 1 if page > 1 else None,
+            'next_page': page + 1 if page < total_pages else None,
+            'start_course': offset + 1,
+            'end_course': min(offset + per_page, total_courses)
+        }
+        
+        return render_template('admin/courses.html', 
+                             courses=courses, 
+                             pagination=pagination_info,
+                             sources=[row['source'] for row in sources],
+                             levels=[row['level'] for row in levels],
+                             current_search=search,
+                             current_source=source_filter,
+                             current_level=level_filter)
     finally:
         conn.close()
 
@@ -2264,6 +2336,55 @@ def admin_delete_course(course_id):
         flash('Course deleted successfully!', 'success')
     except Exception as e:
         flash(f'Error deleting course: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_courses'))
+
+@app.route('/admin/bulk-delete-courses', methods=['POST'])
+@require_admin
+def admin_bulk_delete_courses():
+    """Bulk delete multiple courses (admin only)"""
+    course_ids = request.form.getlist('course_ids')
+    
+    if not course_ids:
+        flash('No courses selected for deletion.', 'warning')
+        return redirect(url_for('admin_courses'))
+    
+    # Validate that all IDs are integers
+    try:
+        course_ids = [int(id) for id in course_ids]
+    except ValueError:
+        flash('Invalid course IDs provided.', 'error')
+        return redirect(url_for('admin_courses'))
+    
+    conn = get_db_connection()
+    deleted_count = 0
+    
+    try:
+        # Delete related records first (if user_courses table exists)
+        try:
+            for course_id in course_ids:
+                conn.execute('DELETE FROM user_courses WHERE course_id = ?', (course_id,))
+        except:
+            pass  # Table might not exist
+        
+        # Delete courses
+        for course_id in course_ids:
+            result = conn.execute('DELETE FROM courses WHERE id = ?', (course_id,))
+            if result.rowcount > 0:
+                deleted_count += 1
+        
+        conn.commit()
+        
+        if deleted_count > 0:
+            flash(f'Successfully deleted {deleted_count} course(s)!', 'success')
+        else:
+            flash('No courses were deleted. They may have already been removed.', 'warning')
+            
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error deleting courses: {str(e)}', 'error')
     finally:
         conn.close()
     
@@ -2632,53 +2753,144 @@ def admin_add_user():
 @app.route('/admin/add-course', methods=['GET', 'POST'])
 @require_admin
 def admin_add_course():
-    """Add a new course (admin only)"""
+    """Add a new course with comprehensive validation (admin only)"""
     if request.method == 'POST':
-        title = request.form.get('title')
-        description = request.form.get('description')
-        provider = request.form.get('provider')
-        source = request.form.get('source')
-        url = request.form.get('url')
-        link = request.form.get('link')
-        level = request.form.get('level')
-        category = request.form.get('category')
-        points = request.form.get('points', 0)
-        
-        if not title or not description:
-            flash('Title and description are required.', 'error')
-            return render_template('admin/add_course.html')
-        
+        # Import validator
         try:
-            points = int(points) if points else 0
-        except ValueError:
-            points = 0
+            from course_validator import CourseURLValidator
+            validator = CourseURLValidator()
+        except ImportError as e:
+            logger.error(f"Failed to import course validator: {e}")
+            flash('Course validation service is not available. Course added without URL validation.', 'warning')
+            validator = None
         
+        # Collect form data
+        course_data = {
+            'title': request.form.get('title', '').strip(),
+            'description': request.form.get('description', '').strip(),
+            'provider': request.form.get('provider', '').strip(),  # Keep for backward compatibility
+            'source': request.form.get('source', '').strip(),
+            'url': request.form.get('url', '').strip() or None,
+            'link': request.form.get('link', '').strip() or None,
+            'level': request.form.get('level', '').strip(),
+            'category': request.form.get('category', '').strip() or None,
+            'points': request.form.get('points', 0)
+        }
+        
+        # Validate with comprehensive schema validation
+        if validator:
+            course = validator.validate_schema(course_data)
+            
+            # Check for validation errors
+            if not course.is_valid:
+                for error in course.validation_errors:
+                    if error.severity == 'error':
+                        flash(f'{error.field.title()}: {error.message}', 'error')
+                    else:
+                        flash(f'{error.field.title()}: {error.message}', 'warning')
+                
+                # If there are errors, return to form with data
+                if any(e.severity == 'error' for e in course.validation_errors):
+                    return render_template('admin/add_course.html', course_data=course_data)
+            
+            # Validate URLs if provided
+            url_validation_results = {}
+            validation_warnings = []
+            
+            if course.url:
+                logger.info(f"Validating primary URL: {course.url}")
+                url_result = validator.validate_url(course.url)
+                url_validation_results['url'] = url_result
+                
+                if url_result['status'] not in ['Working']:
+                    validation_warnings.append(f"Primary URL may not be accessible: {url_result.get('error_message', 'Unknown error')}")
+                    
+            if course.link and course.link != course.url:
+                logger.info(f"Validating link URL: {course.link}")
+                link_result = validator.validate_url(course.link)
+                url_validation_results['link'] = link_result
+                
+                if link_result['status'] not in ['Working']:
+                    validation_warnings.append(f"Link URL may not be accessible: {link_result.get('error_message', 'Unknown error')}")
+            
+            # Show URL validation warnings
+            for warning in validation_warnings:
+                flash(warning, 'warning')
+                
+            # Update course data with validation results
+            if course.url and 'url' in url_validation_results:
+                course.url_status = url_validation_results['url']['status']
+                course.last_url_check = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            # Fallback validation without validator
+            if not course_data['title'] or not course_data['description']:
+                flash('Title and description are required.', 'error')
+                return render_template('admin/add_course.html', course_data=course_data)
+            
+            try:
+                course_data['points'] = int(course_data['points']) if course_data['points'] else 0
+            except ValueError:
+                course_data['points'] = 0
+                flash('Points must be a number. Set to 0.', 'warning')
+            
+            course = type('Course', (), course_data)()
+            course.url_status = 'unchecked'
+            course.last_url_check = None
+        
+        # Insert into database
         conn = get_db_connection()
         try:
+            # Determine which URL field to use for url_status tracking
+            primary_url = course.url or course.link
+            
             conn.execute('''
-                INSERT INTO courses (title, description, provider, source, url, link, level, category, points, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ''', (title, description, provider, source, url, link, level, category, points))
+                INSERT INTO courses (
+                    title, description, provider, source, url, link, level, category, points,
+                    created_at, url_status, last_url_check
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)
+            ''', (
+                course.title, course.description, course_data['provider'], course.source,
+                course.url, course.link, course.level, course.category, course.points,
+                course.url_status, course.last_url_check
+            ))
             conn.commit()
-            flash('Course added successfully!', 'success')
+            
+            # Success message with validation info
+            success_msg = 'Course added successfully!'
+            if validator and primary_url:
+                if course.url_status == 'Working':
+                    success_msg += ' URL validation passed.'
+                elif course.url_status in ['Not Working', 'Broken']:
+                    success_msg += f' Note: URL validation failed ({course.url_status}).'
+                else:
+                    success_msg += ' URL validation completed with warnings.'
+            
+            flash(success_msg, 'success')
+            logger.info(f"Course added successfully: {course.title} (URL Status: {course.url_status})")
+            
             return redirect(url_for('admin_courses'))
+            
         except Exception as e:
+            logger.error(f"Database error adding course: {e}")
             flash(f'Error adding course: {str(e)}', 'error')
+            return render_template('admin/add_course.html', course_data=course_data)
         finally:
             conn.close()
     
     return render_template('admin/add_course.html')
 
-@app.route('/admin/populate-linkedin-courses', methods=['POST'])
+@app.route('/admin/populate-ai-courses', methods=['POST'])
 @require_admin
-def admin_populate_linkedin_courses():
-    """Populate courses with dynamically fetched AI courses (admin only)"""
-    logger.info("🔍 Admin initiated dynamic AI course population")
+def admin_populate_ai_courses():
+    """Populate courses with dynamically fetched AI courses from allowed sources (admin only)"""
+    logger.info("🔍 Admin initiated dynamic AI course population from multiple sources")
     
-    # Import the dynamic course fetcher
+    # Import the dynamic course fetcher with source validation
     try:
         from dynamic_course_fetcher import get_dynamic_ai_courses
-        logger.info("✅ Dynamic course fetcher module loaded successfully")
+        from course_sources_config import get_source_description
+        logger.info("✅ Dynamic course fetcher module loaded successfully with source validation")
     except ImportError as e:
         logger.error(f"❌ Failed to import dynamic course fetcher: {str(e)}")
         flash('Error: Dynamic course fetcher module not available', 'error')
@@ -2688,8 +2900,8 @@ def admin_populate_linkedin_courses():
     try:
         logger.info("📡 Starting dynamic AI course fetching process...")
         
-        # Fetch AI courses dynamically (limit to 25 to avoid overwhelming the database)
-        ai_courses = get_dynamic_ai_courses(max_courses=25)
+        # Fetch AI courses dynamically (fetch ALL available courses)
+        ai_courses = get_dynamic_ai_courses(max_courses=200)  # Increased limit to get more courses
         
         if not ai_courses:
             logger.warning("⚠️ No AI courses were fetched")
@@ -2748,11 +2960,11 @@ def admin_populate_linkedin_courses():
         
         # Prepare success message
         if added_count > 0:
-            message = f'Successfully added {added_count} new AI courses!'
+            message = f'Successfully added {added_count} new AI courses from verified sources!'
             if skipped_count > 0:
                 message += f' ({skipped_count} courses were skipped - already exist or invalid data)'
             flash(message, 'success')
-            logger.info(f"✅ Course population completed: {added_count} added, {skipped_count} skipped")
+            logger.info(f"✅ Course population completed: {added_count} added, {skipped_count} skipped from multiple sources")
         else:
             flash('No new AI courses were added. All courses may already exist in the database.', 'info')
             logger.info("ℹ️ No new courses added - all may already exist")
@@ -2769,6 +2981,14 @@ def admin_populate_linkedin_courses():
         logger.info("🔚 Database connection closed")
     
     return redirect(url_for('admin_courses'))
+
+# Backward compatibility alias for old route name
+@app.route('/admin/populate-linkedin-courses', methods=['POST'])
+@require_admin  
+def admin_populate_linkedin_courses():
+    """Backward compatibility alias - redirects to new admin_populate_ai_courses"""
+    logger.info("⚠️ Using deprecated route - redirecting to admin_populate_ai_courses")
+    return admin_populate_ai_courses()
 
 @app.route('/setup-admin')
 def setup_admin():

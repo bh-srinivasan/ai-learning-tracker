@@ -1,5 +1,6 @@
-{% extends "base.html" %} {% block title %}Add Course - Admin Panel{% endblock
-%} {% block content %}
+{% extends "base.html" %} 
+{% block title %}Add Course - Admin Panel{% endblock %} 
+{% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
     <div class="card">
@@ -7,84 +8,139 @@
         <h4 class="mb-0"><i class="fas fa-plus"></i> Add New Course</h4>
       </div>
       <div class="card-body">
-        <form method="POST">
+        <!-- Enhanced form with validation support -->
+        <form method="POST" id="addCourseForm">
           <div class="row">
             <div class="col-md-6 mb-3">
               <label for="title" class="form-label">Course Title *</label>
               <input
                 type="text"
-                class="form-control"
+                class="form-control {% if course_data and course_data.title and not course_data.title.strip() %}is-invalid{% endif %}"
                 id="title"
                 name="title"
+                value="{{ course_data.title if course_data else '' }}"
                 required
+                maxlength="200"
+                placeholder="Enter course title (3-200 characters)"
               />
+              <div class="form-text">Required field. Must be 3-200 characters long.</div>
             </div>
             <div class="col-md-6 mb-3">
               <label for="source" class="form-label">Source *</label>
-              <select class="form-control" id="source" name="source" required>
+              <select class="form-control {% if course_data and course_data.source and not course_data.source.strip() %}is-invalid{% endif %}" id="source" name="source" required>
                 <option value="">Select Source</option>
-                <option value="LinkedIn Learning">LinkedIn Learning</option>
-                <option value="Microsoft Learn">Microsoft Learn</option>
-                <option value="Coursera">Coursera</option>
-                <option value="edX">edX</option>
-                <option value="Udemy">Udemy</option>
-                <option value="Other">Other</option>
+                <option value="LinkedIn Learning" {% if course_data and course_data.source == 'LinkedIn Learning' %}selected{% endif %}>LinkedIn Learning</option>
+                <option value="Microsoft Learn" {% if course_data and course_data.source == 'Microsoft Learn' %}selected{% endif %}>Microsoft Learn</option>
+                <option value="Coursera" {% if course_data and course_data.source == 'Coursera' %}selected{% endif %}>Coursera</option>
+                <option value="edX" {% if course_data and course_data.source == 'edX' %}selected{% endif %}>edX</option>
+                <option value="Udemy" {% if course_data and course_data.source == 'Udemy' %}selected{% endif %}>Udemy</option>
+                <option value="Udacity" {% if course_data and course_data.source == 'Udacity' %}selected{% endif %}>Udacity</option>
+                <option value="Khan Academy" {% if course_data and course_data.source == 'Khan Academy' %}selected{% endif %}>Khan Academy</option>
+                <option value="MIT OpenCourseWare" {% if course_data and course_data.source == 'MIT OpenCourseWare' %}selected{% endif %}>MIT OpenCourseWare</option>
+                <option value="Stanford Online" {% if course_data and course_data.source == 'Stanford Online' %}selected{% endif %}>Stanford Online</option>
+                <option value="Google AI Education" {% if course_data and course_data.source == 'Google AI Education' %}selected{% endif %}>Google AI Education</option>
+                <option value="AWS Training" {% if course_data and course_data.source == 'AWS Training' %}selected{% endif %}>AWS Training</option>
+                <option value="IBM" {% if course_data and course_data.source == 'IBM' %}selected{% endif %}>IBM</option>
+                <option value="Manual" {% if course_data and course_data.source == 'Manual' %}selected{% endif %}>Manual</option>
+                <option value="Dynamic" {% if course_data and course_data.source == 'Dynamic' %}selected{% endif %}>Dynamic</option>
               </select>
+              <div class="form-text">Choose the course platform or source.</div>
             </div>
           </div>
 
           <div class="row">
             <div class="col-md-6 mb-3">
               <label for="level" class="form-label">Level *</label>
-              <select class="form-control" id="level" name="level" required>
+              <select class="form-control {% if course_data and course_data.level and not course_data.level.strip() %}is-invalid{% endif %}" id="level" name="level" required>
                 <option value="">Select Level</option>
-                <option value="Beginner">Beginner</option>
-                <option value="Learner">Learner</option>
-                <option value="Intermediate">Intermediate</option>
-                <option value="Expert">Expert</option>
+                <option value="Beginner" {% if course_data and course_data.level == 'Beginner' %}selected{% endif %}>Beginner</option>
+                <option value="Learner" {% if course_data and course_data.level == 'Learner' %}selected{% endif %}>Learner</option>
+                <option value="Intermediate" {% if course_data and course_data.level == 'Intermediate' %}selected{% endif %}>Intermediate</option>
+                <option value="Expert" {% if course_data and course_data.level == 'Expert' %}selected{% endif %}>Expert</option>
               </select>
+              <div class="form-text">Course difficulty level for learners.</div>
             </div>
             <div class="col-md-6 mb-3">
-              <label for="points" class="form-label">Points *</label>
+              <label for="points" class="form-label">Points</label>
               <input
                 type="number"
                 class="form-control"
                 id="points"
                 name="points"
+                value="{{ course_data.points if course_data and course_data.points else '0' }}"
                 min="0"
-                max="200"
-                required
+                max="1000"
+                placeholder="0-1000 points"
               />
               <div class="form-text">
-                Points awarded upon completion (0-200)
+                Points awarded upon completion (0-1000). Leave as 0 for default.
               </div>
             </div>
           </div>
 
-          <div class="mb-3">
-            <label for="link" class="form-label">Course URL *</label>
-            <input
-              type="url"
-              class="form-control"
-              id="link"
-              name="link"
-              required
-            />
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="url" class="form-label">Primary Course URL</label>
+              <input
+                type="url"
+                class="form-control"
+                id="url"
+                name="url"
+                value="{{ course_data.url if course_data else '' }}"
+                placeholder="https://example.com/course"
+              />
+              <div class="form-text">Main course URL (will be validated).</div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="link" class="form-label">Secondary Link</label>
+              <input
+                type="url"
+                class="form-control"
+                id="link"
+                name="link"
+                value="{{ course_data.link if course_data else '' }}"
+                placeholder="https://example.com/additional-link"
+              />
+              <div class="form-text">Optional additional link or resource.</div>
+            </div>
           </div>
 
           <div class="mb-3">
-            <label for="description" class="form-label">Description</label>
-            <textarea
+            <label for="category" class="form-label">Category</label>
+            <input
+              type="text"
               class="form-control"
+              id="category"
+              name="category"
+              value="{{ course_data.category if course_data else '' }}"
+              placeholder="e.g., AI/ML, Data Science, Web Development"
+            />
+            <div class="form-text">Optional category for organization.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="description" class="form-label">Description *</label>
+            <textarea
+              class="form-control {% if course_data and course_data.description and not course_data.description.strip() %}is-invalid{% endif %}"
               id="description"
               name="description"
               rows="4"
-              placeholder="Brief description of the course content and learning objectives"
-            ></textarea>
+              required
+              maxlength="2000"
+              placeholder="Brief description of the course content and learning objectives (10-2000 characters)"
+            >{{ course_data.description if course_data else '' }}</textarea>
+            <div class="form-text">Required field. Must be 10-2000 characters long.</div>
+          </div>
+
+          <!-- URL Validation Status -->
+          <div id="urlValidationStatus" class="mb-3" style="display: none;">
+            <div class="alert alert-info">
+              <i class="fas fa-spinner fa-spin"></i> Validating URLs...
+            </div>
           </div>
 
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" id="submitBtn">
               <i class="fas fa-save"></i> Add Course
             </button>
             <a href="{{ url_for('admin_courses') }}" class="btn btn-secondary">
@@ -98,30 +154,202 @@
     <div class="card mt-4">
       <div class="card-header">
         <h6 class="mb-0">
-          <i class="fas fa-info-circle"></i> Point Guidelines
+          <i class="fas fa-info-circle"></i> Course Guidelines & Validation
         </h6>
       </div>
       <div class="card-body">
-        <ul class="mb-0">
-          <li>
-            <strong>Beginner (30-60 points):</strong> Basic concepts,
-            introductory courses
-          </li>
-          <li>
-            <strong>Learner (50-80 points):</strong> Practical applications,
-            hands-on projects
-          </li>
-          <li>
-            <strong>Intermediate (70-120 points):</strong> Advanced topics,
-            specialized skills
-          </li>
-          <li>
-            <strong>Expert (100-200 points):</strong> Cutting-edge techniques,
-            research-level content
-          </li>
-        </ul>
+        <div class="row">
+          <div class="col-md-6">
+            <h6>Point Guidelines:</h6>
+            <ul class="mb-3">
+              <li><strong>Beginner (30-60 points):</strong> Basic concepts, introductory courses</li>
+              <li><strong>Learner (50-80 points):</strong> Practical applications, hands-on projects</li>
+              <li><strong>Intermediate (70-120 points):</strong> Advanced topics, specialized skills</li>
+              <li><strong>Expert (100-200 points):</strong> Cutting-edge techniques, research-level content</li>
+            </ul>
+          </div>
+          <div class="col-md-6">
+            <h6>Validation Features:</h6>
+            <ul class="mb-3">
+              <li><strong>Schema Validation:</strong> All required fields are validated</li>
+              <li><strong>URL Validation:</strong> URLs are checked for accessibility</li>
+              <li><strong>Source Validation:</strong> Must be from approved platforms</li>
+              <li><strong>Length Limits:</strong> Title (3-200), Description (10-2000)</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Enhanced JavaScript for form validation and UX -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('addCourseForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const urlInput = document.getElementById('url');
+    const linkInput = document.getElementById('link');
+    const validationStatus = document.getElementById('urlValidationStatus');
+    
+    // Client-side validation
+    form.addEventListener('submit', function(e) {
+        let isValid = true;
+        const errors = [];
+        
+        // Title validation
+        const title = document.getElementById('title').value.trim();
+        if (!title) {
+            errors.push('Title is required');
+            isValid = false;
+        } else if (title.length < 3) {
+            errors.push('Title must be at least 3 characters long');
+            isValid = false;
+        } else if (title.length > 200) {
+            errors.push('Title must not exceed 200 characters');
+            isValid = false;
+        }
+        
+        // Description validation
+        const description = document.getElementById('description').value.trim();
+        if (!description) {
+            errors.push('Description is required');
+            isValid = false;
+        } else if (description.length < 10) {
+            errors.push('Description must be at least 10 characters long');
+            isValid = false;
+        } else if (description.length > 2000) {
+            errors.push('Description must not exceed 2000 characters');
+            isValid = false;
+        }
+        
+        // Source validation
+        const source = document.getElementById('source').value;
+        if (!source) {
+            errors.push('Source is required');
+            isValid = false;
+        }
+        
+        // Level validation
+        const level = document.getElementById('level').value;
+        if (!level) {
+            errors.push('Level is required');
+            isValid = false;
+        }
+        
+        // Points validation
+        const points = parseInt(document.getElementById('points').value) || 0;
+        if (points < 0 || points > 1000) {
+            errors.push('Points must be between 0 and 1000');
+            isValid = false;
+        }
+        
+        // URL format validation (basic)
+        const url = urlInput.value.trim();
+        const link = linkInput.value.trim();
+        
+        if (url && !isValidUrl(url)) {
+            errors.push('Primary URL format is invalid');
+            isValid = false;
+        }
+        
+        if (link && !isValidUrl(link)) {
+            errors.push('Secondary link format is invalid');
+            isValid = false;
+        }
+        
+        // Show client-side errors
+        if (!isValid) {
+            e.preventDefault();
+            alert('Please fix the following errors:\n\n' + errors.join('\n'));
+            return false;
+        }
+        
+        // Show validation status during submission
+        if (url || link) {
+            validationStatus.style.display = 'block';
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding Course & Validating URLs...';
+            submitBtn.disabled = true;
+        }
+        
+        return true;
+    });
+    
+    // Real-time character counting
+    const titleInput = document.getElementById('title');
+    const descriptionInput = document.getElementById('description');
+    
+    function addCharacterCounter(input, maxLength, helpTextSelector) {
+        const helpText = document.querySelector(helpTextSelector);
+        if (helpText) {
+            const originalText = helpText.textContent;
+            
+            function updateCounter() {
+                const remaining = maxLength - input.value.length;
+                const color = remaining < 50 ? 'text-warning' : remaining < 20 ? 'text-danger' : 'text-muted';
+                helpText.innerHTML = `${originalText} <span class="${color}">(${remaining} characters remaining)</span>`;
+            }
+            
+            input.addEventListener('input', updateCounter);
+            updateCounter();
+        }
+    }
+    
+    addCharacterCounter(titleInput, 200, '#title + .form-text');
+    addCharacterCounter(descriptionInput, 2000, '#description + .form-text');
+    
+    // URL validation helper
+    function isValidUrl(string) {
+        try {
+            const url = new URL(string);
+            return url.protocol === 'http:' || url.protocol === 'https:';
+        } catch (_) {
+            return false;
+        }
+    }
+    
+    // Real-time URL format validation
+    function addUrlValidation(input) {
+        input.addEventListener('blur', function() {
+            const value = this.value.trim();
+            if (value && !isValidUrl(value)) {
+                this.classList.add('is-invalid');
+                
+                // Add or update error message
+                let errorDiv = this.parentNode.querySelector('.invalid-feedback');
+                if (!errorDiv) {
+                    errorDiv = document.createElement('div');
+                    errorDiv.className = 'invalid-feedback';
+                    this.parentNode.appendChild(errorDiv);
+                }
+                errorDiv.textContent = 'Please enter a valid URL (must start with http:// or https://)';
+            } else {
+                this.classList.remove('is-invalid');
+                const errorDiv = this.parentNode.querySelector('.invalid-feedback');
+                if (errorDiv) {
+                    errorDiv.remove();
+                }
+            }
+        });
+        
+        input.addEventListener('input', function() {
+            if (this.classList.contains('is-invalid') && this.value.trim()) {
+                // Re-validate on input to clear error when fixed
+                setTimeout(() => {
+                    if (isValidUrl(this.value.trim())) {
+                        this.classList.remove('is-invalid');
+                        const errorDiv = this.parentNode.querySelector('.invalid-feedback');
+                        if (errorDiv) {
+                            errorDiv.remove();
+                        }
+                    }
+                }, 300);
+            }
+        });
+    }
+    
+    addUrlValidation(urlInput);
+    addUrlValidation(linkInput);
+});
+</script>
 {% endblock %}

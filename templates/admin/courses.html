@@ -18,19 +18,19 @@ endblock %} {% block content %}
       <i class="fas fa-search"></i> Search & Import
     </a>
     <a href="{{ url_for('admin_add_course') }}" class="btn btn-primary me-2">
-      <i class="fas fa-plus"></i> Add Course
+      <i class="fas fa-plus"></i> Add New Course
     </a>
     <form
       method="POST"
-      action="{{ url_for('admin_populate_linkedin_courses') }}"
+      action="{{ url_for('admin_populate_ai_courses') }}"
       class="d-inline"
     >
       <button
         type="submit"
         class="btn btn-info"
-        onclick="return confirm('Add LinkedIn Learning AI courses?')"
+        onclick="return confirm('Add AI courses from multiple verified sources (Microsoft, Coursera, edX, etc.)?')"
       >
-        <i class="fab fa-linkedin"></i> Add LinkedIn Courses
+        <i class="fas fa-plus-circle"></i> Add Courses
       </button>
     </form>
   </div>
@@ -82,6 +82,16 @@ endblock %} {% block content %}
         <div class="btn-group" role="group">
           <button
             type="button"
+            class="btn btn-outline-danger btn-sm"
+            id="bulkDeleteBtn"
+            onclick="showBulkDeleteModal()"
+            title="Delete selected courses"
+            disabled
+          >
+            <i class="fas fa-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
+          </button>
+          <button
+            type="button"
             class="btn btn-outline-secondary btn-sm"
             onclick="exportData('csv')"
             title="Export filtered data to CSV"
@@ -122,29 +132,28 @@ endblock %} {% block content %}
     <div class="row mb-3">
       <div class="col-md-3">
         <label for="sourceFilter" class="form-label">Filter by Source:</label>
-        <select id="sourceFilter" class="form-select form-select-sm">
+        <select id="sourceFilter" class="form-select form-select-sm" onchange="filterBySource()">
           <option value="">All Sources</option>
-          {% set sources = courses|map(attribute='source')|unique|list %} {% for
-          source in sources %}
-          <option value="{{ source }}">{{ source }}</option>
+          {% for source in sources %}
+          <option value="{{ source }}" {% if current_source == source %}selected{% endif %}>{{ source }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="col-md-2">
         <label for="levelFilter" class="form-label">Filter by Level:</label>
-        <select id="levelFilter" class="form-select form-select-sm">
+        <select id="levelFilter" class="form-select form-select-sm" onchange="filterByLevel()">
           <option value="">All Levels</option>
-          <option value="Beginner">Beginner</option>
-          <option value="Learner">Learner</option>
-          <option value="Intermediate">Intermediate</option>
-          <option value="Expert">Expert</option>
+          <option value="Beginner" {% if current_level == 'Beginner' %}selected{% endif %}>Beginner</option>
+          <option value="Learner" {% if current_level == 'Learner' %}selected{% endif %}>Learner</option>
+          <option value="Intermediate" {% if current_level == 'Intermediate' %}selected{% endif %}>Intermediate</option>
+          <option value="Expert" {% if current_level == 'Expert' %}selected{% endif %}>Expert</option>
         </select>
       </div>
       <div class="col-md-2">
         <label for="urlStatusFilter" class="form-label"
           >Filter by URL Status:</label
         >
-        <select id="urlStatusFilter" class="form-select form-select-sm">
+        <select id="urlStatusFilter" class="form-select form-select-sm" disabled title="URL Status filtering not available with pagination">
           <option value="">All Status</option>
           <option value="Working">✅ Working</option>
           <option value="Not Working">❌ Not Working</option>
@@ -154,7 +163,7 @@ endblock %} {% block content %}
       </div>
       <div class="col-md-2">
         <label for="pointsFilter" class="form-label">Filter by Points:</label>
-        <select id="pointsFilter" class="form-select form-select-sm">
+        <select id="pointsFilter" class="form-select form-select-sm" disabled title="Points filtering not available with pagination">
           <option value="">All Points</option>
           <option value="0-50">0-50 Points</option>
           <option value="51-100">51-100 Points</option>
@@ -162,26 +171,92 @@ endblock %} {% block content %}
         </select>
       </div>
       <div class="col-md-3">
-        <label for="searchFilter" class="form-label">Search:</label>
-        <input
-          type="text"
-          id="searchFilter"
-          class="form-control form-control-sm"
-          placeholder="Search title or description..."
-        />
+        <label for="searchInput" class="form-label">Search:</label>
+        <div class="input-group">
+          <input
+            type="text"
+            id="searchInput"
+            class="form-control form-control-sm"
+            placeholder="Search title or description..."
+            value="{{ current_search or '' }}"
+          />
+          <button class="btn btn-outline-secondary btn-sm" type="button" onclick="searchCourses()">
+            <i class="fas fa-search"></i>
+          </button>
+        </div>
       </div>
     </div>
     <div class="row mb-3">
       <div class="col-md-3">
-        <button
-          type="button"
-          class="btn btn-outline-danger btn-sm"
-          onclick="clearFilters()"
-        >
-          <i class="fas fa-times"></i> Clear Filters
-        </button>
+        <a href="{{ url_for('admin_courses') }}" class="btn btn-outline-danger btn-sm">
+          <i class="fas fa-times"></i> Clear All Filters
+        </a>
       </div>
     </div>
+
+    <!-- Pagination Info and Controls -->
+    {% if pagination %}
+    <div class="row mb-3 align-items-center">
+      <div class="col-md-6">
+        <p class="text-muted mb-0">
+          Showing {{ pagination.start_course }} to {{ pagination.end_course }} of {{ pagination.total_courses }} courses
+          {% if current_search or current_source or current_level %}
+          (filtered)
+          {% endif %}
+        </p>
+      </div>
+      <div class="col-md-6 text-end">
+        <div class="d-flex align-items-center justify-content-end">
+          <label for="perPageSelect" class="form-label me-2 mb-0">Per page:</label>
+          <select id="perPageSelect" class="form-select form-select-sm me-3" style="width: auto;" onchange="changePerPage(this.value)">
+            <option value="10" {% if pagination.per_page == 10 %}selected{% endif %}>10</option>
+            <option value="25" {% if pagination.per_page == 25 %}selected{% endif %}>25</option>
+            <option value="50" {% if pagination.per_page == 50 %}selected{% endif %}>50</option>
+            <option value="100" {% if pagination.per_page == 100 %}selected{% endif %}>100</option>
+          </select>
+          
+          <!-- Pagination Navigation -->
+          <nav aria-label="Course pagination">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('admin_courses', page=1, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="First">
+                  <span aria-hidden="true">&laquo;&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('admin_courses', page=pagination.prev_page, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="Previous">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              
+              {% for page_num in range([1, pagination.page - 2] | max, [pagination.total_pages, pagination.page + 2] | min + 1) %}
+                {% if page_num == pagination.page %}
+                  <li class="page-item active">
+                    <span class="page-link">{{ page_num }}</span>
+                  </li>
+                {% else %}
+                  <li class="page-item">
+                    <a class="page-link" href="{{ url_for('admin_courses', page=page_num, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}">{{ page_num }}</a>
+                  </li>
+                {% endif %}
+              {% endfor %}
+              
+              <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('admin_courses', page=pagination.next_page, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="Next">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+              <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('admin_courses', page=pagination.total_pages, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="Last">
+                  <span aria-hidden="true">&raquo;&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <div class="table-responsive">
       <div id="tableLoading" class="text-center py-4" style="display: none">
@@ -196,23 +271,51 @@ endblock %} {% block content %}
       >
         <thead class="table-dark">
           <tr>
-            <th class="sortable" data-column="0" data-type="text">Title</th>
-            <th class="sortable" data-column="1" data-type="text">Source</th>
-            <th class="sortable" data-column="2" data-type="level">Level</th>
-            <th class="sortable" data-column="3" data-type="number">Points</th>
-            <th class="sortable" data-column="4" data-type="text">
+            <th class="no-sort" style="width: 50px;">
+              <div class="form-check">
+                <input 
+                  class="form-check-input" 
+                  type="checkbox" 
+                  id="selectAllCourses"
+                  title="Select all courses"
+                  aria-label="Select all courses"
+                >
+                <label class="form-check-label visually-hidden" for="selectAllCourses">
+                  Select all courses
+                </label>
+              </div>
+            </th>
+            <th class="sortable" data-column="1" data-type="text">Title</th>
+            <th class="sortable" data-column="2" data-type="text">Source</th>
+            <th class="sortable" data-column="3" data-type="level">Level</th>
+            <th class="sortable" data-column="4" data-type="number">Points</th>
+            <th class="sortable" data-column="5" data-type="text">
               Description
             </th>
-            <th class="sortable" data-column="5" data-type="text">
+            <th class="sortable" data-column="6" data-type="text">
               URL Status
             </th>
-            <th class="sortable" data-column="6" data-type="date">Created</th>
+            <th class="sortable" data-column="7" data-type="date">Created</th>
             <th class="no-sort">Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for course in courses %}
           <tr data-course-id="{{ course.id }}">
+            <td>
+              <div class="form-check">
+                <input 
+                  class="form-check-input course-checkbox" 
+                  type="checkbox" 
+                  value="{{ course.id }}"
+                  id="course-{{ course.id }}"
+                  aria-label="Select course: {{ course.title }}"
+                >
+                <label class="form-check-label visually-hidden" for="course-{{ course.id }}">
+                  Select {{ course.title }}
+                </label>
+              </div>
+            </td>
             <td>
               <div>
                 <strong>{{ course.title }}</strong>
@@ -330,11 +433,11 @@ endblock %} {% block content %}
         </a>
         <form
           method="POST"
-          action="{{ url_for('admin_populate_linkedin_courses') }}"
+          action="{{ url_for('admin_populate_ai_courses') }}"
           class="d-inline"
         >
           <button type="submit" class="btn btn-info btn-lg">
-            <i class="fab fa-linkedin"></i> Import LinkedIn Courses
+            <i class="fas fa-plus-circle"></i> Import Courses
           </button>
         </form>
       </div>
@@ -342,6 +445,47 @@ endblock %} {% block content %}
     {% endif %}
   </div>
 </div>
+
+<!-- Bulk Delete Confirmation Modal -->
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-labelledby="bulkDeleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="bulkDeleteModalLabel">
+          <i class="fas fa-exclamation-triangle"></i> Confirm Bulk Deletion
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="fas fa-warning"></i>
+          <strong>Warning:</strong> This action cannot be undone!
+        </div>
+        <p>Are you sure you want to delete <strong id="deleteCourseCount">0</strong> selected course(s)?</p>
+        <div id="courseListPreview" class="small text-muted mb-3" style="max-height: 150px; overflow-y: auto;">
+          <!-- Course titles will be populated here -->
+        </div>
+        <p class="text-muted small">
+          <i class="fas fa-info-circle"></i>
+          This will permanently remove the courses from the catalog. Any user progress for these courses will also be deleted.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times"></i> Cancel
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmBulkDelete">
+          <i class="fas fa-trash"></i> Delete Courses
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden form for bulk delete -->
+<form id="bulkDeleteForm" method="POST" action="{{ url_for('admin_bulk_delete_courses') }}" style="display: none;">
+  <!-- Course IDs will be populated here as hidden inputs -->
+</form>
 
 {% endblock %} {% block scripts %}
 <!-- Native JavaScript sorting - no external dependencies -->
@@ -661,22 +805,102 @@ endblock %} {% block content %}
     height: 1px;
     overflow: hidden;
   }
+
+  /* Bulk delete functionality styles */
+  .course-checkbox {
+    cursor: pointer;
+  }
+
+  .course-checkbox:checked {
+    accent-color: #dc3545;
+  }
+
+  #selectAllCourses {
+    cursor: pointer;
+  }
+
+  #bulkDeleteBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  #bulkDeleteBtn:not(:disabled) {
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
+  }
+
+  /* Selected row highlighting */
+  tr:has(.course-checkbox:checked) {
+    background-color: #fff5f5 !important;
+  }
+
+  tr:has(.course-checkbox:checked):hover {
+    background-color: #fed7d7 !important;
+  }
+
+  /* Modal enhancements */
+  #courseListPreview {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    background-color: #f8f9fa;
+  }
+
+  #courseListPreview ul {
+    margin-bottom: 0;
+  }
+
+  #courseListPreview li {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  #courseListPreview li:last-child {
+    border-bottom: none;
+  }
+
+  /* Responsive design for bulk delete button */
+  @media (max-width: 768px) {
+    #bulkDeleteBtn {
+      margin-bottom: 0.5rem;
+      width: 100%;
+    }
+    
+    .btn-group {
+      flex-direction: column;
+    }
+    
+    .btn-group .btn {
+      border-radius: 0.375rem !important;
+      margin-bottom: 0.25rem;
+    }
+  }
+
+  /* Keyboard navigation highlight */
+  .course-checkbox:focus {
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+  }
+
+  #selectAllCourses:focus {
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+  }
 </style>
 
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    console.log(
-      "DOM loaded - Native sorting implementation with Unicode arrows"
-    );
+    console.log("DOM loaded - Pagination-based course management");
 
-    // Initialize native table sorting
+    // Initialize native table sorting (only for display, not filtering)
     initializeNativeSorting();
 
-    // Initialize filters
-    initializeFilters();
+    // Initialize bulk delete functionality
+    initializeBulkDelete();
 
     function initializeNativeSorting() {
       const table = document.getElementById("coursesTable");
+      if (!table) return;
+      
       const tbody = table.querySelector("tbody");
       const headers = table.querySelectorAll("th.sortable");
 
@@ -704,16 +928,19 @@ endblock %} {% block content %}
           // Update visual indicators
           updateSortIndicators(headers, header, currentSort.direction);
 
-          // Sort the table
+          // Sort the table (client-side for current page only)
           sortTable(tbody, column, type, currentSort.direction);
         });
       });
 
-      // Initial sort by Title (column 0)
+      // Initial sort by Title (column 1, accounting for checkbox column)
       if (headers.length > 0) {
-        updateSortIndicators(headers, headers[0], "asc");
-        sortTable(tbody, 0, "text", "asc");
-        currentSort = { column: 0, direction: "asc" };
+        const titleHeader = Array.from(headers).find(h => h.getAttribute("data-column") === "1");
+        if (titleHeader) {
+          updateSortIndicators(headers, titleHeader, "asc");
+          sortTable(tbody, 1, "text", "asc");
+          currentSort = { column: 1, direction: "asc" };
+        }
       }
     }
 
@@ -799,440 +1026,6 @@ endblock %} {% block content %}
       };
       return levelOrder[level] || 5;
     }
-
-    function initializeFilters() {
-      // Add filter event listeners
-      const sourceFilter = document.getElementById("sourceFilter");
-      const levelFilter = document.getElementById("levelFilter");
-      const urlStatusFilter = document.getElementById("urlStatusFilter");
-      const pointsFilter = document.getElementById("pointsFilter");
-      const searchFilter = document.getElementById("searchFilter");
-
-      if (sourceFilter) {
-        sourceFilter.addEventListener("change", filterTable);
-      }
-
-      if (levelFilter) {
-        levelFilter.addEventListener("change", filterTable);
-      }
-
-      if (urlStatusFilter) {
-        urlStatusFilter.addEventListener("change", filterTable);
-      }
-
-      if (pointsFilter) {
-        pointsFilter.addEventListener("change", filterTable);
-      }
-
-      if (searchFilter) {
-        searchFilter.addEventListener("input", filterTable);
-      }
-    }
-
-    // Native filtering function
-    function filterTable() {
-      const sourceFilter = document
-        .getElementById("sourceFilter")
-        .value.toLowerCase();
-      const levelFilter = document
-        .getElementById("levelFilter")
-        .value.toLowerCase();
-      const urlStatusFilter = document
-        .getElementById("urlStatusFilter")
-        .value.toLowerCase();
-      const pointsFilter = document.getElementById("pointsFilter").value;
-      const searchFilter = document
-        .getElementById("searchFilter")
-        .value.toLowerCase();
-      const table = document.getElementById("coursesTable");
-      const rows = table.querySelectorAll("tbody tr");
-
-      // Debug logging
-      if (urlStatusFilter) {
-        console.log(`🔍 URL Status Filter: "${urlStatusFilter}"`);
-      }
-
-      let visibleCount = 0;
-      let urlStatusMatchCount = 0;
-
-      rows.forEach((row, index) => {
-        const cells = row.querySelectorAll("td");
-        const title = cells[0]?.textContent.toLowerCase() || "";
-        const source = cells[1]?.textContent.toLowerCase() || "";
-        const level = cells[2]?.textContent.toLowerCase() || "";
-        const pointsText = cells[3]?.textContent || "";
-        const points = parseInt(pointsText.replace(/[^\d]/g, "")) || 0;
-        const description = cells[4]?.textContent.toLowerCase() || "";
-        const urlStatusCell = cells[5];
-        let urlStatus = "";
-        if (urlStatusCell) {
-          // Get the text content and clean it up
-          const fullText = urlStatusCell.textContent || "";
-          // Remove all non-letter characters except spaces, then trim
-          urlStatus = fullText
-            .replace(/[^\w\s]/g, "")
-            .trim()
-            .toLowerCase();
-          // Handle the specific cases we know about
-          if (urlStatus.includes("working") && !urlStatus.includes("not")) {
-            urlStatus = "working";
-          } else if (
-            urlStatus.includes("not") &&
-            urlStatus.includes("working")
-          ) {
-            urlStatus = "not working";
-          } else if (urlStatus.includes("broken")) {
-            urlStatus = "broken";
-          } else if (urlStatus.includes("unchecked")) {
-            urlStatus = "unchecked";
-          }
-        }
-
-        const matchesSource = !sourceFilter || source.includes(sourceFilter);
-        const matchesLevel = !levelFilter || level.includes(levelFilter);
-        const matchesUrlStatus =
-          !urlStatusFilter || urlStatus === urlStatusFilter.toLowerCase();
-        const matchesPoints =
-          !pointsFilter ||
-          (pointsFilter === "0-50" && points >= 0 && points <= 50) ||
-          (pointsFilter === "51-100" && points >= 51 && points <= 100) ||
-          (pointsFilter === "101+" && points >= 101);
-        const matchesSearch =
-          !searchFilter ||
-          title.includes(searchFilter) ||
-          description.includes(searchFilter);
-
-        if (urlStatusFilter && matchesUrlStatus) {
-          urlStatusMatchCount++;
-        }
-
-        if (
-          matchesSource &&
-          matchesLevel &&
-          matchesUrlStatus &&
-          matchesPoints &&
-          matchesSearch
-        ) {
-          row.style.display = "";
-          visibleCount++;
-        } else {
-          row.style.display = "none";
-        }
-      });
-
-      // Debug summary
-      if (urlStatusFilter) {
-        console.log(
-          `📊 URL Status "${urlStatusFilter}": ${urlStatusMatchCount} matches, ${visibleCount} visible after all filters`
-        );
-      }
-    }
-
-    // Clear filters function
-    window.clearFilters = function () {
-      document.getElementById("sourceFilter").value = "";
-      document.getElementById("levelFilter").value = "";
-      document.getElementById("urlStatusFilter").value = "";
-      document.getElementById("pointsFilter").value = "";
-      document.getElementById("searchFilter").value = "";
-
-      // Reset table display and sorting
-      filterTable();
-      initializeNativeSorting(); // Re-apply default sorting
-    };
-
-    // Native filter functions
-    document
-      .getElementById("sourceFilter")
-      .addEventListener("change", function () {
-        filterTable();
-      });
-
-    document
-      .getElementById("levelFilter")
-      .addEventListener("change", function () {
-        filterTable();
-      });
-
-    document
-      .getElementById("pointsFilter")
-      .addEventListener("change", function () {
-        filterTable();
-      });
-
-    // Clear all filters and reset sorting
-    window.clearFilters = function () {
-      document.getElementById("sourceFilter").value = "";
-      document.getElementById("levelFilter").value = "";
-      document.getElementById("urlStatusFilter").value = "";
-      document.getElementById("pointsFilter").value = "";
-      document.getElementById("searchFilter").value = "";
-
-      // Clear all column searches
-      table.columns().search("").draw();
-
-      // Remove custom search functions
-      $.fn.dataTable.ext.search = [];
-
-      // Reset sorting to default (Title column ascending)
-      table.order([[0, "asc"]]).draw();
-
-      console.log("All filters and sorting cleared");
-    };
-
-    // Export functions
-    window.exportData = function (format) {
-      if (format === "csv") {
-        var data = table.rows({ search: "applied" }).data().toArray();
-        var headers = [
-          "Title",
-          "Source",
-          "Level",
-          "Points",
-          "Description",
-          "Course Link",
-          "Created",
-        ];
-
-        var csv = headers.join(",") + "\n";
-
-        data.forEach(function (row) {
-          var cleanRow = [];
-
-          // Clean title (remove HTML tags)
-          var titleElement = row[0];
-          var titleStrong = titleElement.querySelector("strong");
-          var title = titleStrong
-            ? titleStrong.textContent
-            : titleElement.textContent;
-          cleanRow.push('"' + title.replace(/"/g, '""') + '"');
-
-          // Clean source (extract text from badge)
-          var source = row[1].textContent.trim();
-          cleanRow.push('"' + source.replace(/"/g, '""') + '"');
-
-          // Clean level (extract text from badge)
-          var level = row[2].textContent.trim();
-          cleanRow.push('"' + level.replace(/"/g, '""') + '"');
-
-          // Clean points (extract number)
-          var points = row[3].textContent.replace(/[^\d]/g, "");
-          cleanRow.push('"' + points + '"');
-
-          // Clean description
-          var description =
-            row[4].textContent ||
-            row[4].getAttribute("title") ||
-            "No description";
-          cleanRow.push('"' + description.replace(/"/g, '""') + '"');
-
-          // Extract course link
-          var linkElement = row[0].querySelector("a");
-          var courseLink = linkElement ? linkElement.getAttribute("href") : "";
-          cleanRow.push('"' + courseLink.replace(/"/g, '""') + '"');
-
-          // Clean date
-          var date = row[5].textContent.trim();
-          cleanRow.push('"' + date.replace(/"/g, '""') + '"');
-
-          csv += cleanRow.join(",") + "\n";
-        });
-
-        var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        var link = document.createElement("a");
-        var url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute(
-          "download",
-          "courses_" + new Date().toISOString().split("T")[0] + ".csv"
-        );
-        link.style.visibility = "hidden";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-    };
-
-    // Print function
-    window.printTable = function () {
-      var printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        alert("Please allow popups for this site to use the print function.");
-        return;
-      }
-
-      // Get filtered data from current table display
-      var tbody = table.querySelector("tbody");
-      var rows = Array.from(tbody.querySelectorAll("tr")).filter(
-        (row) => row.style.display !== "none"
-      );
-
-      var tableHtml = '<table class="table table-striped table-bordered">';
-      tableHtml +=
-        "<thead><tr><th>Title</th><th>Source</th><th>Level</th><th>Points</th><th>Description</th><th>Created</th></tr></thead>";
-      tableHtml += "<tbody>";
-
-      rows.forEach(function (row) {
-        var cells = row.querySelectorAll("td");
-        if (cells.length >= 6) {
-          tableHtml += "<tr>";
-
-          // Title
-          var titleElement = cells[0].querySelector("strong") || cells[0];
-          tableHtml += "<td>" + titleElement.textContent + "</td>";
-
-          // Source, Level, Points, Description, Date
-          tableHtml += "<td>" + cells[1].textContent.trim() + "</td>";
-          tableHtml += "<td>" + cells[2].textContent.trim() + "</td>";
-          tableHtml +=
-            "<td>" + cells[3].textContent.replace(/[^\d]/g, "") + " pts</td>";
-          tableHtml +=
-            "<td>" + (cells[4].textContent || "No description") + "</td>";
-          tableHtml += "<td>" + cells[5].textContent.trim() + "</td>";
-          tableHtml += "</tr>";
-        }
-      });
-
-      tableHtml += "</tbody></table>";
-
-      printWindow.document.write(`
-              <html>
-              <head>
-                  <title>Courses Report</title>
-                  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-                  <style>
-                      body { font-family: Arial, sans-serif; margin: 20px; }
-                      h1 { color: #333; margin-bottom: 20px; }
-                      .table { font-size: 12px; }
-                      @media print {
-                          body { margin: 0; }
-                          h1 { margin-bottom: 10px; }
-                      }
-                  </style>
-              </head>
-              <body>
-                  <h1>Course Catalog Report</h1>
-                  <p>Generated on: ${new Date().toLocaleDateString()}</p>
-                  <p>Total courses: ${data.length}</p>
-                  ${tableHtml}
-              </body>
-              </html>
-          `);
-
-      printWindow.document.close();
-
-      // Wait for content to load before printing
-      setTimeout(function () {
-        printWindow.focus();
-        printWindow.print();
-      }, 500);
-    };
-
-    // Show detailed statistics
-    window.showTableStats = function () {
-      var tbody = table.querySelector("tbody");
-      var visibleRows = Array.from(tbody.querySelectorAll("tr")).filter(
-        (row) => row.style.display !== "none"
-      );
-
-      // Calculate statistics
-      var totalPoints = 0;
-      var levelCounts = {};
-      var sourceCounts = {};
-
-      visibleRows.forEach(function (row) {
-        var cells = row.querySelectorAll("td");
-        if (cells.length >= 6) {
-          var pointsText = cells[3].textContent.match(/\d+/);
-          var points = pointsText ? parseInt(pointsText[0]) : 0;
-          totalPoints += points;
-
-          var level = cells[2].textContent.trim();
-          var source = cells[1].textContent.trim();
-
-          levelCounts[level] = (levelCounts[level] || 0) + 1;
-          sourceCounts[source] = (sourceCounts[source] || 0) + 1;
-        }
-      });
-
-      var avgPoints =
-        visibleRows.length > 0
-          ? (totalPoints / visibleRows.length).toFixed(1)
-          : 0;
-
-      var statsHtml = `
-              <div class="row">
-                  <div class="col-md-6">
-                      <h6>General Statistics</h6>
-                      <ul class="list-unstyled">
-                          <li><strong>Filtered Courses:</strong> ${
-                            info.recordsDisplay
-                          }</li>
-                          <li><strong>Total Points:</strong> ${totalPoints}</li>
-                          <li><strong>Average Points:</strong> ${avgPoints}</li>
-                      </ul>
-                  </div>
-                  <div class="col-md-6">
-                      <h6>Level Distribution</h6>
-                      <ul class="list-unstyled">
-                          ${Object.entries(levelCounts)
-                            .map(
-                              ([level, count]) =>
-                                `<li><strong>${level}:</strong> ${count}</li>`
-                            )
-                            .join("")}
-                      </ul>
-                  </div>
-              </div>
-              <div class="row mt-3">
-                  <div class="col-md-12">
-                      <h6>Source Distribution</h6>
-                      <ul class="list-unstyled">
-                          ${Object.entries(sourceCounts)
-                            .map(
-                              ([source, count]) =>
-                                `<li><strong>${source}:</strong> ${count}</li>`
-                            )
-                            .join("")}
-                      </ul>
-                  </div>
-              </div>
-          `;
-
-      // Create modal or alert with stats
-      var modal = document.createElement("div");
-      modal.innerHTML = `
-              <div class="modal fade" id="statsModal" tabindex="-1">
-                  <div class="modal-dialog">
-                      <div class="modal-content">
-                          <div class="modal-header">
-                              <h5 class="modal-title">Course Statistics</h5>
-                              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                          </div>
-                          <div class="modal-body">
-                              ${statsHtml}
-                          </div>
-                          <div class="modal-footer">
-                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          `;
-      document.body.appendChild(modal);
-
-      var bootstrapModal = new bootstrap.Modal(
-        document.getElementById("statsModal")
-      );
-      bootstrapModal.show();
-
-      // Clean up modal after hiding
-      document
-        .getElementById("statsModal")
-        .addEventListener("hidden.bs.modal", function () {
-          document.body.removeChild(modal);
-        });
-    };
 
     // Keyboard shortcuts
     document.addEventListener("keydown", function (e) {
@@ -1364,7 +1157,143 @@ endblock %} {% block content %}
         }
       }
     });
+
+    // Initialize bulk delete functionality
+    initializeBulkDelete();
+    
   }); // End of DOMContentLoaded
+
+  // Bulk Delete Functions
+  function initializeBulkDelete() {
+    // Handle select all checkbox
+    const selectAllCheckbox = document.getElementById('selectAllCourses');
+    const courseCheckboxes = document.querySelectorAll('.course-checkbox');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    const selectedCount = document.getElementById('selectedCount');
+
+    // Select/deselect all functionality
+    selectAllCheckbox.addEventListener('change', function() {
+      const isChecked = this.checked;
+      courseCheckboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+      });
+      updateBulkDeleteButton();
+    });
+
+    // Handle individual checkbox changes
+    courseCheckboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', function() {
+        updateSelectAllCheckbox();
+        updateBulkDeleteButton();
+      });
+    });
+
+    // Update the select all checkbox state based on individual selections
+    function updateSelectAllCheckbox() {
+      const checkedBoxes = document.querySelectorAll('.course-checkbox:checked');
+      const totalBoxes = courseCheckboxes.length;
+      
+      if (checkedBoxes.length === 0) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = false;
+      } else if (checkedBoxes.length === totalBoxes) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = true;
+      } else {
+        selectAllCheckbox.indeterminate = true;
+        selectAllCheckbox.checked = false;
+      }
+    }
+
+    // Update bulk delete button state
+    function updateBulkDeleteButton() {
+      const checkedBoxes = document.querySelectorAll('.course-checkbox:checked');
+      const count = checkedBoxes.length;
+      
+      selectedCount.textContent = count;
+      bulkDeleteBtn.disabled = count === 0;
+      
+      if (count > 0) {
+        bulkDeleteBtn.classList.remove('btn-outline-danger');
+        bulkDeleteBtn.classList.add('btn-danger');
+      } else {
+        bulkDeleteBtn.classList.remove('btn-danger');
+        bulkDeleteBtn.classList.add('btn-outline-danger');
+      }
+    }
+
+    // Keyboard shortcut for bulk delete (Ctrl+Delete)
+    document.addEventListener('keydown', function(e) {
+      if (e.ctrlKey && e.key === 'Delete') {
+        e.preventDefault();
+        const checkedBoxes = document.querySelectorAll('.course-checkbox:checked');
+        if (checkedBoxes.length > 0) {
+          showBulkDeleteModal();
+        }
+      }
+    });
+  }
+
+  // Show bulk delete confirmation modal
+  function showBulkDeleteModal() {
+    const checkedBoxes = document.querySelectorAll('.course-checkbox:checked');
+    
+    if (checkedBoxes.length === 0) {
+      alert('Please select at least one course to delete.');
+      return;
+    }
+
+    // Update modal content
+    const deleteCountElement = document.getElementById('deleteCourseCount');
+    const courseListPreview = document.getElementById('courseListPreview');
+    
+    deleteCountElement.textContent = checkedBoxes.length;
+    
+    // Build preview list
+    let previewHtml = '<ul class="list-unstyled mb-0">';
+    checkedBoxes.forEach((checkbox, index) => {
+      if (index < 10) { // Limit preview to first 10
+        const row = checkbox.closest('tr');
+        const titleCell = row.querySelector('td:nth-child(2)'); // Second column (after checkbox)
+        const title = titleCell.querySelector('strong').textContent;
+        previewHtml += `<li class="mb-1"><i class="fas fa-graduation-cap text-muted me-2"></i>${title}</li>`;
+      }
+    });
+    
+    if (checkedBoxes.length > 10) {
+      previewHtml += `<li class="text-muted"><i class="fas fa-ellipsis-h me-2"></i>...and ${checkedBoxes.length - 10} more course(s)</li>`;
+    }
+    
+    previewHtml += '</ul>';
+    courseListPreview.innerHTML = previewHtml;
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('bulkDeleteModal'));
+    modal.show();
+  }
+
+  // Handle bulk delete confirmation
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('confirmBulkDelete').addEventListener('click', function() {
+      const checkedBoxes = document.querySelectorAll('.course-checkbox:checked');
+      const form = document.getElementById('bulkDeleteForm');
+      
+      // Clear existing inputs
+      form.innerHTML = '';
+      
+      // Add selected course IDs as hidden inputs
+      checkedBoxes.forEach(checkbox => {
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'course_ids';
+        hiddenInput.value = checkbox.value;
+        form.appendChild(hiddenInput);
+      });
+      
+      // Submit the form
+      form.submit();
+    });
+  });
 
   // Export data function
   function exportData(format) {
@@ -1374,12 +1303,12 @@ endblock %} {% block content %}
     let csv = [];
     const headers = Array.from(table.querySelectorAll("thead th"))
       .map((th) => th.textContent.trim())
-      .filter((h) => h !== "Actions");
+      .filter((h) => h !== "Actions" && h !== ""); // Filter out checkbox column (empty header) and Actions
     csv.push(headers.join(","));
 
     const rows = table.querySelectorAll('tbody tr:not([style*="none"])');
     rows.forEach((row) => {
-      const cells = Array.from(row.querySelectorAll("td")).slice(0, -1);
+      const cells = Array.from(row.querySelectorAll("td")).slice(1, -1); // Skip first (checkbox) and last (actions) columns
       const rowData = cells.map((cell) => {
         let text = cell.textContent.trim().replace(/\s+/g, " ");
         if (text.includes(",")) text = `"${text}"`;
@@ -1402,11 +1331,31 @@ endblock %} {% block content %}
     const table = document.getElementById("coursesTable");
     if (!table) return;
 
-    const printContents = table.outerHTML;
+    // Clone table to modify for printing
+    const printTable = table.cloneNode(true);
+    
+    // Remove checkbox column from header
+    const headerCheckbox = printTable.querySelector("thead th:first-child");
+    if (headerCheckbox) headerCheckbox.remove();
+    
+    // Remove action column from header  
+    const headerAction = printTable.querySelector("thead th:last-child");
+    if (headerAction) headerAction.remove();
+    
+    // Remove checkbox and action columns from all rows
+    const allRows = printTable.querySelectorAll("tbody tr");
+    allRows.forEach(row => {
+      const firstCell = row.querySelector("td:first-child");
+      const lastCell = row.querySelector("td:last-child");
+      if (firstCell) firstCell.remove();
+      if (lastCell) lastCell.remove();
+    });
+
+    const printContents = printTable.outerHTML;
     const originalContents = document.body.innerHTML;
 
     document.body.innerHTML =
-      "<html><head><title>Courses</title><style>table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background-color:#f2f2f2;}</style></head><body>" +
+      "<html><head><title>Course Management Report</title><style>table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:12px;}th{background-color:#f2f2f2;font-weight:bold;}.badge{background:#ddd;padding:2px 6px;border-radius:3px;}</style></head><body><h1>Course Management Report</h1>" +
       printContents +
       "</body></html>";
     window.print();
@@ -1456,102 +1405,199 @@ Sorting:
 • Click header again to reverse sort order`);
   }
 
-  // Clear filters function (fallback for manual filtering)
-  function clearFilters() {
-    document.getElementById("sourceFilter").value = "";
-    document.getElementById("levelFilter").value = "";
-    document.getElementById("urlStatusFilter").value = "";
-    document.getElementById("pointsFilter").value = "";
-    document.getElementById("searchFilter").value = "";
+  // Pagination functions
+  function changePerPage(perPage) {
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.set('per_page', perPage);
+    urlParams.delete('page'); // Reset to first page when changing per_page
+    window.location.search = urlParams.toString();
+  }
 
-    // Clear filters and reset sorting
-    filterTable();
+  // Updated filter functions to handle pagination
+  function filterBySource() {
+    const source = document.getElementById('sourceFilter').value;
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    if (source) {
+      urlParams.set('source', source);
+    } else {
+      urlParams.delete('source');
+    }
+    urlParams.delete('page'); // Reset to first page when filtering
+    
+    window.location.search = urlParams.toString();
+  }
 
-    // Reset to default sorting
-    var table = document.getElementById("coursesTable");
-    if (table) {
-      var headers = table.querySelectorAll("th.sortable");
-      headers.forEach(function (header) {
-        header.classList.remove("sort-asc", "sort-desc");
-        header.classList.add("sort-default");
+  function filterByLevel() {
+    const level = document.getElementById('levelFilter').value;
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    if (level) {
+      urlParams.set('level', level);
+    } else {
+      urlParams.delete('level');
+    }
+    urlParams.delete('page'); // Reset to first page when filtering
+    
+    window.location.search = urlParams.toString();
+  }
+
+  function searchCourses() {
+    const search = document.getElementById('searchInput').value.trim();
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    if (search) {
+      urlParams.set('search', search);
+    } else {
+      urlParams.delete('search');
+    }
+    urlParams.delete('page'); // Reset to first page when searching
+    
+    window.location.search = urlParams.toString();
+  }
+
+  // Bulk operations functions
+  function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('selectAllCourses');
+    const courseCheckboxes = document.querySelectorAll('.course-checkbox');
+    
+    courseCheckboxes.forEach(checkbox => {
+      checkbox.checked = selectAllCheckbox.checked;
+    });
+    
+    updateBulkDeleteButton();
+  }
+
+  function updateBulkDeleteButton() {
+    const selectedCourses = document.querySelectorAll('.course-checkbox:checked');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    const selectAllCheckbox = document.getElementById('selectAllCourses');
+    
+    if (bulkDeleteBtn && selectedCourses.length > 0) {
+      bulkDeleteBtn.disabled = false;
+      bulkDeleteBtn.textContent = `Delete ${selectedCourses.length} Course${selectedCourses.length > 1 ? 's' : ''}`;
+    } else if (bulkDeleteBtn) {
+      bulkDeleteBtn.disabled = true;
+      bulkDeleteBtn.textContent = 'Delete Selected';
+    }
+    
+    // Update select all checkbox state
+    const courseCheckboxes = document.querySelectorAll('.course-checkbox');
+    const checkedBoxes = document.querySelectorAll('.course-checkbox:checked');
+    
+    if (selectAllCheckbox) {
+      if (checkedBoxes.length === 0) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = false;
+      } else if (checkedBoxes.length === courseCheckboxes.length) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = true;
+      } else {
+        selectAllCheckbox.indeterminate = true;
+      }
+    }
+  }
+
+  function bulkDeleteCourses() {
+    const selectedCourses = document.querySelectorAll('.course-checkbox:checked');
+    const courseIds = Array.from(selectedCourses).map(cb => cb.value);
+    
+    if (courseIds.length === 0) {
+      alert('Please select courses to delete.');
+      return;
+    }
+    
+    if (confirm(`Are you sure you want to delete ${courseIds.length} course${courseIds.length > 1 ? 's' : ''}? This action cannot be undone.`)) {
+      fetch('/admin/bulk-delete-courses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ course_ids: courseIds })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('Error deleting courses: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Error deleting courses. Please try again.');
       });
     }
   }
 
-  // Filter table function
-  function filterTable() {
-    const sourceFilter = document
-      .getElementById("sourceFilter")
-      .value.toLowerCase();
-    const levelFilter = document
-      .getElementById("levelFilter")
-      .value.toLowerCase();
-    const urlStatusFilter = document
-      .getElementById("urlStatusFilter")
-      .value.toLowerCase();
-    const pointsFilter = document.getElementById("pointsFilter").value;
-    const searchFilter = document
-      .getElementById("searchFilter")
-      .value.toLowerCase();
-    const table = document.getElementById("coursesTable");
-    const rows = table.querySelectorAll("tbody tr");
-
-    rows.forEach((row) => {
-      const cells = row.querySelectorAll("td");
-      const title = cells[0]?.textContent.toLowerCase() || "";
-      const source = cells[1]?.textContent.toLowerCase() || "";
-      const level = cells[2]?.textContent.toLowerCase() || "";
-      const pointsText = cells[3]?.textContent || "";
-      const points = parseInt(pointsText.replace(/[^\d]/g, "")) || 0;
-      const description = cells[4]?.textContent.toLowerCase() || "";
-      const urlStatusCell = cells[5];
-      let urlStatus = "";
-      if (urlStatusCell) {
-        // Get the text content and clean it up
-        const fullText = urlStatusCell.textContent || "";
-        // Remove all non-letter characters except spaces, then trim
-        urlStatus = fullText
-          .replace(/[^\w\s]/g, "")
-          .trim()
-          .toLowerCase();
-        // Handle the specific cases we know about
-        if (urlStatus.includes("working") && !urlStatus.includes("not")) {
-          urlStatus = "working";
-        } else if (urlStatus.includes("not") && urlStatus.includes("working")) {
-          urlStatus = "not working";
-        } else if (urlStatus.includes("broken")) {
-          urlStatus = "broken";
-        } else if (urlStatus.includes("unchecked")) {
-          urlStatus = "unchecked";
-        }
+  // Course management functions
+  function generateCourses() {
+    const button = document.querySelector('.btn-success');
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Generating...';
+    
+    fetch('/admin/generate_courses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       }
-
-      const matchesSource = !sourceFilter || source.includes(sourceFilter);
-      const matchesLevel = !levelFilter || level.includes(levelFilter);
-      const matchesUrlStatus =
-        !urlStatusFilter || urlStatus === urlStatusFilter.toLowerCase();
-      const matchesPoints =
-        !pointsFilter ||
-        (pointsFilter === "0-50" && points >= 0 && points <= 50) ||
-        (pointsFilter === "51-100" && points >= 51 && points <= 100) ||
-        (pointsFilter === "101+" && points >= 101);
-      const matchesSearch =
-        !searchFilter ||
-        title.includes(searchFilter) ||
-        description.includes(searchFilter);
-
-      if (
-        matchesSource &&
-        matchesLevel &&
-        matchesUrlStatus &&
-        matchesPoints &&
-        matchesSearch
-      ) {
-        row.style.display = "";
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        location.reload();
       } else {
-        row.style.display = "none";
+        alert('Error generating courses: ' + (data.error || 'Unknown error'));
+        button.disabled = false;
+        button.innerHTML = originalText;
       }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error generating courses. Please try again.');
+      button.disabled = false;
+      button.innerHTML = originalText;
     });
+  }
+
+  function editCourse(courseId) {
+    // Implement edit functionality
+    console.log('Edit course:', courseId);
+  }
+
+  function deleteCourse(courseId, courseName) {
+    if (confirm(`Are you sure you want to delete "${courseName}"?`)) {
+      fetch(`/admin/courses/${courseId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('Error deleting course: ' + (data.error || 'Unknown error'));
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Error deleting course. Please try again.');
+      });
+    }
+  }
+
+  // Clear filters function (now redirects to clear all server-side filters)
+  function clearFilters() {
+    window.location.href = '{{ url_for("admin_courses") }}';
+  }
+
+  // Filter table function (disabled for pagination mode - use server-side filtering)
+  function filterTable() {
+    console.log("Client-side filtering disabled. Use server-side filters instead.");
   }
 
   // URL Validation functionality
@@ -1760,6 +1806,20 @@ Sorting:
         validationStartTime = Date.now();
       });
     }
+
+    // Initialize bulk operations
+    const selectAllCheckbox = document.getElementById('selectAllCourses');
+    if (selectAllCheckbox) {
+      selectAllCheckbox.addEventListener('change', toggleSelectAll);
+    }
+
+    const courseCheckboxes = document.querySelectorAll('.course-checkbox');
+    courseCheckboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', updateBulkDeleteButton);
+    });
+
+    // Initialize bulk delete button state
+    updateBulkDeleteButton();
   });
 </script>
 {% endblock %}

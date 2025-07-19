@@ -77,15 +77,15 @@ Tracker{% endblock %} {% block content %}
           <div class="col-md-3 mb-2">
             <form
               method="POST"
-              action="{{ url_for('admin_populate_linkedin_courses') }}"
+              action="{{ url_for('admin_populate_ai_courses') }}"
               class="d-inline w-100"
             >
               <button
                 type="submit"
                 class="btn btn-info w-100"
-                onclick="return confirm('Add LinkedIn Learning AI courses?')"
+                onclick="return confirm('Add AI courses from multiple verified sources (Microsoft, Coursera, edX, etc.)?')"
               >
-                <i class="fab fa-linkedin"></i> Add LinkedIn Courses
+                <i class="fas fa-plus-circle"></i> Add Courses
               </button>
             </form>
           </div>
