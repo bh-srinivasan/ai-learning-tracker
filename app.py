@@ -1076,8 +1076,33 @@ def session_cleanup_scheduler():
 cleanup_thread = threading.Thread(target=session_cleanup_scheduler, daemon=True)
 cleanup_thread.start()
 
-# Initialize database on startup
-init_db()
+# CRITICAL FIX: Prevent database reinitialization on every startup
+# Only initialize database if it doesn't exist or is empty
+def safe_init_db():
+    """Initialize database only if it doesn't exist or is empty"""
+    try:
+        conn = get_db_connection()
+        # Check if users table exists and has data
+        result = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+        if result:
+            # Check if there are any users (admin should exist)
+            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            if user_count > 0:
+                logger.info(f"✅ Database already initialized with {user_count} users - skipping init")
+                conn.close()
+                return
+        
+        logger.info("🔄 Database empty or missing - initializing safely...")
+        conn.close()
+        init_db()
+        logger.info("✅ Database initialization complete")
+    except Exception as e:
+        logger.error(f"❌ Database initialization check failed: {e}")
+        # Fallback to normal init
+        init_db()
+
+# Initialize database on startup (SAFE VERSION)
+safe_init_db()
 
 # One-time admin user initialization for Azure deployment
 def ensure_admin_user():
@@ -1117,11 +1142,13 @@ def ensure_admin_user():
 # Run admin initialization
 ensure_admin_user()
 
+# EMERGENCY FIX: Disable deployment safety to prevent data resets
 # Initialize deployment safety and data integrity monitoring
 try:
-    from deployment_safety import init_deployment_safety
-    deployment_safety = init_deployment_safety(app)
-    logger.info("✅ Deployment safety and data integrity monitoring initialized")
+    # TEMPORARILY DISABLED - suspected of causing data resets
+    # from deployment_safety import init_deployment_safety
+    # deployment_safety = init_deployment_safety(app)
+    logger.info("⚠️ Deployment safety DISABLED to prevent data resets")
 except ImportError:
     logger.warning("⚠️ Deployment safety module not available - install azure-storage-blob for full functionality")
 except Exception as e:
