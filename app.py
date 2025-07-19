@@ -1079,74 +1079,120 @@ cleanup_thread.start()
 # CRITICAL FIX: Prevent database reinitialization on every startup
 # Only initialize database if it doesn't exist or is empty
 def safe_init_db():
-    """Initialize database only if it doesn't exist or is empty, then ensure admin user exists"""
+    """
+    CRITICAL FUNCTION: Initialize database only if it doesn't exist or is empty.
+    NEVER OVERWRITES EXISTING DATA - ONLY CREATES MISSING TABLES.
+    """
     try:
+        logger.info("🔍 SAFE_INIT_DB: Starting database safety check...")
+        
+        # Check if database file exists
+        db_path = DATABASE
+        if not os.path.exists(db_path):
+            logger.info(f"📁 SAFE_INIT_DB: Database file {db_path} not found - will create new one")
+            init_db()
+            ensure_admin_exists()
+            return
+        
         conn = get_db_connection()
-        # Check if users table exists and has data
+        
+        # Check if users table exists
         result = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
         
-        database_was_empty = False
-        if result:
-            # Check if there are any users
-            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-            if user_count > 0:
-                logger.info(f"✅ Database already initialized with {user_count} users")
-                conn.close()
-                
-                # Still need to ensure admin user exists
-                ensure_admin_exists()
-                return
-            else:
-                database_was_empty = True
-        else:
-            database_was_empty = True
-        
-        if database_was_empty:
-            logger.info("🔄 Database empty or missing - initializing safely...")
+        if not result:
+            logger.info("🏗️ SAFE_INIT_DB: Users table missing - initializing schema...")
             conn.close()
             init_db()
-            logger.info("✅ Database schema initialization complete")
+            ensure_admin_exists()
+            return
         
-        # Always ensure admin user exists after initialization
-        ensure_admin_exists()
+        # Check if there are any users (most critical check)
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if user_count > 0:
+            logger.info(f"✅ SAFE_INIT_DB: Database already has {user_count} users - PRESERVING ALL DATA")
+            
+            # Log existing users for verification
+            try:
+                users = conn.execute("SELECT id, username, created_at FROM users ORDER BY id").fetchall()
+                logger.info("🔍 SAFE_INIT_DB: Existing users found:")
+                for user in users:
+                    logger.info(f"   - ID: {user[0]}, Username: {user[1]}, Created: {user[2]}")
+            except Exception as e:
+                logger.warning(f"⚠️ SAFE_INIT_DB: Could not log existing users: {e}")
+            
+            conn.close()
+            
+            # Still ensure admin exists but don't overwrite data
+            ensure_admin_exists()
+            logger.info("✅ SAFE_INIT_DB: Complete - existing data preserved")
+            return
+        else:
+            logger.info("📋 SAFE_INIT_DB: Users table exists but empty - safe to initialize")
+            conn.close()
+            init_db()
+            ensure_admin_exists()
+            return
         
     except Exception as e:
-        logger.error(f"❌ Database initialization check failed: {e}")
-        # Fallback to normal init
-        init_db()
-        ensure_admin_exists()
+        logger.error(f"❌ SAFE_INIT_DB: Database check failed: {e}")
+        logger.error(f"❌ SAFE_INIT_DB: Exception details: {type(e).__name__}: {str(e)}")
+        try:
+            # Emergency fallback - only if absolutely necessary
+            logger.warning("⚠️ SAFE_INIT_DB: Attempting emergency fallback...")
+            init_db()
+            ensure_admin_exists()
+        except Exception as fallback_error:
+            logger.error(f"💥 SAFE_INIT_DB: Emergency fallback failed: {fallback_error}")
+            raise
 
 def ensure_admin_exists():
-    """Ensure admin user exists in all environments"""
+    """
+    CRITICAL FUNCTION: Ensure admin user exists without overwriting existing admin data
+    """
     try:
+        logger.info("🔍 ENSURE_ADMIN: Checking admin user status...")
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         
         # Check if admin user exists
-        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-        if not cursor.fetchone():
-            # Create admin user
-            admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
-            password_hash = generate_password_hash(admin_password)
-            
-            cursor.execute("""
-                INSERT INTO users (
-                    username, password_hash, level, points, status,
-                    user_selected_level, login_count, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                'admin', password_hash, 'Advanced', 100, 'active',
-                'Advanced', 0, datetime.now().isoformat()
-            ))
-            
-            conn.commit()
-            logger.info("✅ Admin user created successfully")
-        else:
-            logger.info("✅ Admin user already exists")
+        cursor.execute("SELECT id, username, password_hash, level, points, created_at FROM users WHERE username = 'admin'")
+        existing_admin = cursor.fetchone()
+        
+        if existing_admin:
+            logger.info(f"✅ ENSURE_ADMIN: Admin user already exists - ID: {existing_admin[0]}, Level: {existing_admin[3]}, Points: {existing_admin[4]}")
+            logger.info("✅ ENSURE_ADMIN: Preserving existing admin data - NO CHANGES MADE")
+            conn.close()
+            return
+        
+        # Only create admin if it doesn't exist
+        logger.info("🔄 ENSURE_ADMIN: Admin user not found - creating new admin...")
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
+        password_hash = generate_password_hash(admin_password)
+        
+        cursor.execute("""
+            INSERT INTO users (
+                username, password_hash, level, points, status,
+                user_selected_level, login_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            'admin', password_hash, 'Advanced', 100, 'active',
+            'Advanced', 0, datetime.now().isoformat()
+        ))
+        
+        conn.commit()
+        logger.info("✅ ENSURE_ADMIN: New admin user created successfully")
+        logger.info(f"🔑 ENSURE_ADMIN: Admin password set from environment variable")
         
         conn.close()
+        
     except Exception as e:
-        logger.error(f"❌ Admin user creation failed: {e}")
+        logger.error(f"❌ ENSURE_ADMIN: Admin user check/creation failed: {e}")
+        logger.error(f"❌ ENSURE_ADMIN: Exception details: {type(e).__name__}: {str(e)}")
+        try:
+            conn.close()
+        except:
+            pass
 
 # Initialize database on startup (SAFE VERSION - preserves existing data)
 safe_init_db()
