@@ -9,12 +9,12 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
-    from app import app, init_db
+    from app import app, safe_init_db
     
-    # Initialize database on startup
-    print("Initializing database...")
-    init_db()
-    print("Database initialized successfully!")
+    # Initialize database on startup (safely)
+    print("Initializing database safely...")
+    safe_init_db()
+    print("Database initialized safely!")
     
     # Check if we can import all blueprints
     print("Testing blueprint imports...")

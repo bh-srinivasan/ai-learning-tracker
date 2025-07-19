@@ -16,11 +16,11 @@ try:
     # Import app first
     from app import app
     
-    # Try to initialize database safely
+    # CRITICAL FIX: Use safe database initialization
     try:
-        from app import init_db
-        init_db()
-        print("Database initialized successfully!")
+        from app import safe_init_db
+        safe_init_db()
+        print("Database safely initialized - existing data preserved!")
     except Exception as e:
         print(f"Database initialization warning: {e}")
         # Continue even if DB init fails - it might already exist
