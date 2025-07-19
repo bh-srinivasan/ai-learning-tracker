@@ -2672,89 +2672,101 @@ def admin_add_course():
 @app.route('/admin/populate-linkedin-courses', methods=['POST'])
 @require_admin
 def admin_populate_linkedin_courses():
-    """Populate courses with LinkedIn Learning AI courses (admin only)"""
-    # Sample LinkedIn Learning AI courses
-    linkedin_courses = [
-        {
-            'title': 'Introduction to Artificial Intelligence',
-            'description': 'Learn the fundamentals of AI and machine learning',
-            'source': 'LinkedIn Learning',
-            'url': 'https://www.linkedin.com/learning/introduction-to-artificial-intelligence',
-            'link': 'https://www.linkedin.com/learning/introduction-to-artificial-intelligence',
-            'level': 'Beginner',
-            'points': 50
-        },
-        {
-            'title': 'Machine Learning with Python',
-            'description': 'Master machine learning using Python libraries',
-            'source': 'LinkedIn Learning',
-            'url': 'https://www.linkedin.com/learning/machine-learning-with-python',
-            'link': 'https://www.linkedin.com/learning/machine-learning-with-python',
-            'level': 'Intermediate',
-            'points': 100
-        },
-        {
-            'title': 'Deep Learning Foundations',
-            'description': 'Understanding deep learning and neural networks',
-            'source': 'LinkedIn Learning',
-            'url': 'https://www.linkedin.com/learning/deep-learning-foundations',
-            'link': 'https://www.linkedin.com/learning/deep-learning-foundations',
-            'level': 'Expert',
-            'points': 150
-        },
-        {
-            'title': 'Microsoft Copilot for Developers',
-            'description': 'Learn to use Microsoft Copilot effectively in development',
-            'source': 'LinkedIn Learning',
-            'url': 'https://www.linkedin.com/learning/microsoft-copilot-for-developers',
-            'link': 'https://www.linkedin.com/learning/microsoft-copilot-for-developers',
-            'level': 'Learner',
-            'points': 75
-        },
-        {
-            'title': 'Azure AI Fundamentals',
-            'description': 'Introduction to Azure AI services and capabilities',
-            'source': 'LinkedIn Learning',
-            'url': 'https://www.linkedin.com/learning/azure-ai-fundamentals',
-            'link': 'https://www.linkedin.com/learning/azure-ai-fundamentals',
-            'level': 'Beginner',
-            'points': 80
-        },
-        {
-            'title': 'Python for Data Science',
-            'description': 'Using Python for data analysis and machine learning',
-            'source': 'LinkedIn Learning',
-            'url': 'https://www.linkedin.com/learning/python-for-data-science',
-            'link': 'https://www.linkedin.com/learning/python-for-data-science',
-            'level': 'Intermediate',
-            'points': 90
-        }
-    ]
+    """Populate courses with dynamically fetched AI courses (admin only)"""
+    logger.info("🔍 Admin initiated dynamic AI course population")
+    
+    # Import the dynamic course fetcher
+    try:
+        from dynamic_course_fetcher import get_dynamic_ai_courses
+        logger.info("✅ Dynamic course fetcher module loaded successfully")
+    except ImportError as e:
+        logger.error(f"❌ Failed to import dynamic course fetcher: {str(e)}")
+        flash('Error: Dynamic course fetcher module not available', 'error')
+        return redirect(url_for('admin_courses'))
     
     conn = get_db_connection()
     try:
+        logger.info("📡 Starting dynamic AI course fetching process...")
+        
+        # Fetch AI courses dynamically (limit to 25 to avoid overwhelming the database)
+        ai_courses = get_dynamic_ai_courses(max_courses=25)
+        
+        if not ai_courses:
+            logger.warning("⚠️ No AI courses were fetched")
+            flash('No AI courses could be fetched at this time. Please try again later.', 'warning')
+            return redirect(url_for('admin_courses'))
+        
+        logger.info(f"📚 Fetched {len(ai_courses)} AI courses for processing")
+        
         added_count = 0
-        for course in linkedin_courses:
-            # Check if course already exists
-            existing = conn.execute(
-                'SELECT id FROM courses WHERE title = ? AND source = ?',
-                (course['title'], course['source'])
-            ).fetchone()
-            
-            if not existing:
+        skipped_count = 0
+        
+        for course in ai_courses:
+            try:
+                # Validate required course data
+                if not all(key in course for key in ['title', 'description', 'source', 'url', 'level', 'points']):
+                    logger.warning(f"⚠️ Skipping course with missing data: {course.get('title', 'Unknown')}")
+                    skipped_count += 1
+                    continue
+                
+                # Check if course already exists (prevent duplicates)
+                existing = conn.execute(
+                    'SELECT id FROM courses WHERE title = ? AND source = ?',
+                    (course['title'], course['source'])
+                ).fetchone()
+                
+                if existing:
+                    logger.info(f"⏭️ Course already exists, skipping: {course['title']}")
+                    skipped_count += 1
+                    continue
+                
+                # Insert new course with timestamp
                 conn.execute('''
                     INSERT INTO courses (title, description, source, url, link, level, points, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                ''', (course['title'], course['description'], course['source'],
-                     course['url'], course['link'], course['level'], course['points']))
+                ''', (
+                    course['title'],
+                    course['description'], 
+                    course['source'],
+                    course['url'],
+                    course.get('link', course['url']),  # Use link if available, fallback to url
+                    course['level'],
+                    course['points']
+                ))
+                
                 added_count += 1
+                logger.info(f"✅ Added course: {course['title']} ({course['level']}, {course['points']} pts)")
+                
+            except Exception as course_error:
+                logger.error(f"❌ Error processing course {course.get('title', 'Unknown')}: {str(course_error)}")
+                skipped_count += 1
+                continue
         
+        # Commit transaction (either all courses added successfully or rollback on error)
         conn.commit()
-        flash(f'Added {added_count} LinkedIn Learning courses!', 'success')
+        logger.info(f"💾 Transaction committed successfully - {added_count} courses added")
+        
+        # Prepare success message
+        if added_count > 0:
+            message = f'Successfully added {added_count} new AI courses!'
+            if skipped_count > 0:
+                message += f' ({skipped_count} courses were skipped - already exist or invalid data)'
+            flash(message, 'success')
+            logger.info(f"✅ Course population completed: {added_count} added, {skipped_count} skipped")
+        else:
+            flash('No new AI courses were added. All courses may already exist in the database.', 'info')
+            logger.info("ℹ️ No new courses added - all may already exist")
+            
     except Exception as e:
-        flash(f'Error adding LinkedIn courses: {str(e)}', 'error')
+        # Rollback transaction on error
+        conn.rollback()
+        error_msg = f'Error fetching AI courses: {str(e)}'
+        logger.error(f"❌ Course population failed: {error_msg}")
+        flash(error_msg, 'error')
+        
     finally:
         conn.close()
+        logger.info("🔚 Database connection closed")
     
     return redirect(url_for('admin_courses'))
 

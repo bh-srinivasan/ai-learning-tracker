@@ -159,16 +159,23 @@ The Azure data loss issue was caused by multiple entry points calling the danger
 
 ## 🎨 ADMIN UI CLEANUP COMPLETED ✅
 
-### Latest Change (Commit: `b65e180`):
+### Latest Change (Commit: `2907f4e`):
+- **🗑️ Removed**: 'Global Learnings' stats card from admin dashboard top-right area
+- **🧹 Clean UI**: Streamlined admin dashboard with 2 stats cards instead of 3  
+- **⚡ Functionality Preserved**: All global learning management features remain unchanged
+- **🔍 Backend Intact**: Backend still calculates `total_global_learnings` (no functional changes)
+
+### Previous Changes (Commit: `b65e180`):
 - **🗑️ Removed**: 'Add Global Learning' menu item from admin navigation sidebar
 - **🧹 Clean UI**: Streamlined admin interface for better user experience  
 - **⚡ Functionality Preserved**: Admin can still create global learning via `/learnings/add`
 - **🔗 Direct Access**: All learning functionality remains fully accessible
 
 ### UI Improvements:
+- ✅ **Cleaner Dashboard**: Removed Global Learnings count display from stats section
+- ✅ **Better Visual Balance**: Two-card layout instead of three for cleaner appearance
 - ✅ **Cleaner Navigation**: Removed redundant menu option from admin sidebar
-- ✅ **Maintained Functionality**: Admin global learning creation still works
-- ✅ **Better UX**: Less cluttered interface, more intuitive navigation
-- ✅ **No Broken Links**: All existing functionality preserved
+- ✅ **Maintained Functionality**: All admin global learning management fully operational
+- ✅ **No Broken Features**: All existing functionality preserved
 
 **Admin Global Learning Access**: Still available via "Add Learning" button (auto-converts to global for admin users)
