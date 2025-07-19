@@ -18,7 +18,7 @@ endblock %} {% block content %}
       <i class="fas fa-search"></i> Search & Import
     </a>
     <a href="{{ url_for('admin_add_course') }}" class="btn btn-primary me-2">
-      <i class="fas fa-plus"></i> Add New Course
+      <i class="fas fa-plus"></i> Add Custom Course
     </a>
     <form
       method="POST"
@@ -48,16 +48,7 @@ endblock %} {% block content %}
               <small class="text-muted">Total Courses</small>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="stat-card text-center">
-              <h5 class="text-success">
-                {{ courses|selectattr('source', 'equalto', 'LinkedIn
-                Learning')|list|length }}
-              </h5>
-              <small class="text-muted">LinkedIn Learning</small>
-            </div>
-          </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <div class="stat-card text-center">
               <h5 class="text-warning">
                 {{ courses|selectattr('source', 'equalto', 'Manual')|list|length
@@ -153,21 +144,21 @@ endblock %} {% block content %}
         <label for="urlStatusFilter" class="form-label"
           >Filter by URL Status:</label
         >
-        <select id="urlStatusFilter" class="form-select form-select-sm" disabled title="URL Status filtering not available with pagination">
+        <select id="urlStatusFilter" class="form-select form-select-sm" onchange="filterByUrlStatus()">
           <option value="">All Status</option>
-          <option value="Working">✅ Working</option>
-          <option value="Not Working">❌ Not Working</option>
-          <option value="Broken">🔗 Broken</option>
-          <option value="unchecked">⏸️ Unchecked</option>
+          <option value="Working" {% if current_url_status == 'Working' %}selected{% endif %}>✅ Working</option>
+          <option value="Not Working" {% if current_url_status == 'Not Working' %}selected{% endif %}>❌ Not Working</option>
+          <option value="Broken" {% if current_url_status == 'Broken' %}selected{% endif %}>🔗 Broken</option>
+          <option value="unchecked" {% if current_url_status == 'unchecked' %}selected{% endif %}>⏸️ Unchecked</option>
         </select>
       </div>
       <div class="col-md-2">
         <label for="pointsFilter" class="form-label">Filter by Points:</label>
-        <select id="pointsFilter" class="form-select form-select-sm" disabled title="Points filtering not available with pagination">
+        <select id="pointsFilter" class="form-select form-select-sm" onchange="filterByPoints()">
           <option value="">All Points</option>
-          <option value="0-50">0-50 Points</option>
-          <option value="51-100">51-100 Points</option>
-          <option value="101+">101+ Points</option>
+          <option value="0-50" {% if current_points == '0-50' %}selected{% endif %}>0-50 Points</option>
+          <option value="51-100" {% if current_points == '51-100' %}selected{% endif %}>51-100 Points</option>
+          <option value="101+" {% if current_points == '101+' %}selected{% endif %}>101+ Points</option>
         </select>
       </div>
       <div class="col-md-3">
@@ -1452,6 +1443,34 @@ Sorting:
       urlParams.delete('search');
     }
     urlParams.delete('page'); // Reset to first page when searching
+    
+    window.location.search = urlParams.toString();
+  }
+
+  function filterByUrlStatus() {
+    const urlStatus = document.getElementById('urlStatusFilter').value;
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    if (urlStatus) {
+      urlParams.set('url_status', urlStatus);
+    } else {
+      urlParams.delete('url_status');
+    }
+    urlParams.delete('page'); // Reset to first page when filtering
+    
+    window.location.search = urlParams.toString();
+  }
+
+  function filterByPoints() {
+    const points = document.getElementById('pointsFilter').value;
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    if (points) {
+      urlParams.set('points', points);
+    } else {
+      urlParams.delete('points');
+    }
+    urlParams.delete('page'); // Reset to first page when filtering
     
     window.location.search = urlParams.toString();
   }

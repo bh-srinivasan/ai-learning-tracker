@@ -2022,6 +2022,8 @@ def admin_courses():
     search = request.args.get('search', '', type=str)
     source_filter = request.args.get('source', '', type=str)
     level_filter = request.args.get('level', '', type=str)
+    url_status_filter = request.args.get('url_status', '', type=str)
+    points_filter = request.args.get('points', '', type=str)
     
     # Ensure per_page is within reasonable bounds
     per_page = max(10, min(100, per_page))
@@ -2044,6 +2046,18 @@ def admin_courses():
         if level_filter:
             where_conditions.append("level = ?")
             params.append(level_filter)
+            
+        if url_status_filter:
+            where_conditions.append("url_status = ?")
+            params.append(url_status_filter)
+            
+        if points_filter:
+            if points_filter == "0-50":
+                where_conditions.append("CAST(points_required as INTEGER) BETWEEN 0 AND 50")
+            elif points_filter == "51-100":
+                where_conditions.append("CAST(points_required as INTEGER) BETWEEN 51 AND 100")
+            elif points_filter == "101+":
+                where_conditions.append("CAST(points_required as INTEGER) > 100")
         
         where_clause = ""
         if where_conditions:
@@ -2092,7 +2106,9 @@ def admin_courses():
                              levels=[row['level'] for row in levels],
                              current_search=search,
                              current_source=source_filter,
-                             current_level=level_filter)
+                             current_level=level_filter,
+                             current_url_status=url_status_filter,
+                             current_points=points_filter)
     finally:
         conn.close()
 
