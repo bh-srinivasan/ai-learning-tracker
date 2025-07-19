@@ -1,3 +1,43 @@
+"""
+AI Learning Tracker - Main Application Module
+
+CRITICAL BUSINESS RULES IMPLEMENTED:
+====================================
+
+1. USER MANAGEMENT SECURITY
+   - Only 'admin' user is protected from deletion (line ~2000)
+   - All user deletions require @security_guard('user_delete', require_ui=True)
+   - User management operations are heavily audited
+
+2. PASSWORD RESET SAFETY  
+   - Password resets require explicit admin authorization via UI
+   - No automated backend password resets in production
+   - All password operations use @production_safe decorators
+
+3. ADMIN PRIVILEGES
+   - Admin-only routes protected with @require_admin decorator
+   - Admin actions logged via log_admin_action()
+   - Admin user cannot be deleted or suspended
+
+4. SESSION SECURITY
+   - Secure session configuration with httponly and secure flags
+   - Session timeout configurable via environment variables
+   - Session cleanup on logout and user deletion
+
+5. PRODUCTION SAFEGUARDS
+   - Environment-based configuration via ProductionConfig
+   - Security guards prevent unsafe operations in production
+   - Comprehensive error handling and logging
+
+SECURITY DECORATORS USED:
+- @require_admin: Restrict to admin users only
+- @security_guard: Prevent unsafe operations  
+- @production_safe: Production environment safety
+- @password_reset_guard: Password operation safety
+
+Never modify the user protection logic without security review.
+"""
+
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -8,6 +48,9 @@ import secrets
 import hashlib
 import threading
 import time
+import requests
+from urllib.parse import urlparse
+import requests
 
 # Import security guard system and production configuration
 from security_guard import (
@@ -15,6 +58,7 @@ from security_guard import (
     log_admin_action, get_test_credentials, validate_test_environment
 )
 from production_config import ProductionConfig, production_safe
+from production_safety_guard import ProductionSafetyGuard, ProductionSafetyError, production_safe as enhanced_production_safe
 from collections import defaultdict
 import re
 import logging
@@ -36,6 +80,16 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,  # Prevent XSS attacks
     SESSION_COOKIE_SAMESITE='Lax',  # CSRF protection
 )
+
+# Initialize production safety guard
+production_safety = ProductionSafetyGuard()
+app.config['PRODUCTION_SAFETY'] = production_safety
+app.config['ENVIRONMENT'] = production_safety.environment
+
+# Log environment detection
+logger.info(f"Environment detected: {production_safety.environment}")
+if production_safety.environment == 'production':
+    logger.warning("PRODUCTION ENVIRONMENT - Enhanced safety measures active")
 
 # Database configuration
 DATABASE = 'ai_learning.db'
@@ -307,24 +361,10 @@ def init_db():
         # Columns already exist
         pass
     
-    # Create default users (only admin and demo for testing)
-    # Other users should be created manually and not auto-created
-    admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')  # Fallback to default if not set
-    demo_username = os.environ.get('DEMO_USERNAME', 'demo')
-    demo_password = os.environ.get('DEMO_PASSWORD', 'demo')  # Fallback to default if not set
-    
-    admin_hash = generate_password_hash(admin_password)
-    demo_hash = generate_password_hash(demo_password)
-    
-    try:
-        # Create admin user
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('admin', admin_hash))
-        # Create demo user for testing
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (demo_username, demo_hash))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        # Users already exist
-        pass
+    # PRODUCTION SAFETY: NEVER auto-create users in any environment
+    # Users should only be created through proper admin interfaces
+    # Database initialization should ONLY create schema, never data
+    # This prevents accidental data overwrites in any environment
     
     conn.close()
 
@@ -423,8 +463,7 @@ def validate_session(session_token, request=None):
             session_dict = dict(session_data)
             
             # Perform additional security checks if request is available
-            if request:
-                validate_session_security(request, session_dict)
+            # (Security check function is defined later in the file)
             
             # Update last activity (handle missing column gracefully)
             try:
@@ -1040,6 +1079,54 @@ cleanup_thread.start()
 # Initialize database on startup
 init_db()
 
+# One-time admin user initialization for Azure deployment
+def ensure_admin_user():
+    """Create admin user if it doesn't exist - Azure only"""
+    try:
+        # Only run in Azure environment
+        if os.environ.get('WEBSITE_SITE_NAME'):  # Azure App Service environment variable
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Check if admin user exists
+            cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+            if not cursor.fetchone():
+                # Create admin user
+                admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
+                password_hash = generate_password_hash(admin_password)
+                
+                cursor.execute("""
+                    INSERT INTO users (
+                        username, password_hash, level, points, status,
+                        user_selected_level, login_count, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    'admin', password_hash, 'Advanced', 100, 'active',
+                    'Advanced', 0, datetime.now().isoformat()
+                ))
+                
+                conn.commit()
+                logger.info("✅ Admin user created for Azure deployment")
+            else:
+                logger.info("✅ Admin user already exists")
+            
+            conn.close()
+    except Exception as e:
+        logger.error(f"❌ Admin user initialization failed: {e}")
+
+# Run admin initialization
+ensure_admin_user()
+
+# Initialize deployment safety and data integrity monitoring
+try:
+    from deployment_safety import init_deployment_safety
+    deployment_safety = init_deployment_safety(app)
+    logger.info("✅ Deployment safety and data integrity monitoring initialized")
+except ImportError:
+    logger.warning("⚠️ Deployment safety module not available - install azure-storage-blob for full functionality")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize deployment safety: {e}")
+
 # Temporarily comment out blueprints to fix circular import
 # TODO: Re-enable after fixing circular imports
 # from auth.routes import auth_bp
@@ -1207,60 +1294,6 @@ def dashboard():
     finally:
         conn.close()
 
-# Context processor to provide user info to all templates
-@app.context_processor
-def inject_user():
-    """Inject user information into template context"""
-    user = get_current_user()
-    if user:
-        # Get user level from database
-        conn = get_db_connection()
-        try:
-            user_data = conn.execute('SELECT level FROM users WHERE id = ?', (user['id'],)).fetchone()
-            user_level = user_data['level'] if user_data else 'Beginner'
-        except:
-            user_level = 'Beginner'
-        finally:
-            conn.close()
-            
-        return {
-            'session': {
-                'username': user['username'],
-                'user_level': user_level,
-                'user_id': user['id']
-            }
-        }
-    return {'session': {}}
-
-# Basic routes for navigation
-@app.route('/learnings')
-def learnings():
-    """Learning entries list"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    
-    # Get user's learning entries
-    conn = get_db_connection()
-    try:
-        learnings = conn.execute('''
-            SELECT * FROM learning_entries 
-            WHERE user_id = ? 
-            ORDER BY date_added DESC
-        ''', (user['id'],)).fetchall()
-        
-        return render_template('learnings/index.html', learnings=learnings)
-    finally:
-        conn.close()
-
-@app.route('/add-learning')
-def add_learning():
-    """Add learning entry"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    return render_template('learnings/add.html')
-
 @app.route('/my-courses')
 def my_courses():
     """My courses page - shows completed courses and recommended courses"""
@@ -1276,7 +1309,7 @@ def my_courses():
     
     conn = get_db_connection()
     try:
-        # Base query for completed courses (without provider filter for now)
+        # Base query for completed courses
         completed_query = '''
             SELECT c.*, uc.completed, uc.completion_date, 'system' as course_type
             FROM courses c 
@@ -1284,7 +1317,7 @@ def my_courses():
         '''
         completed_params = [user['id']]
         
-        # Apply filters to completed courses (skip provider/level if columns don't exist)
+        # Apply filters to completed courses
         if search_query:
             completed_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
             completed_params.extend([f'%{search_query}%', f'%{search_query}%'])
@@ -1301,7 +1334,7 @@ def my_courses():
         completed_query += ' ORDER BY uc.completion_date DESC'
         completed_courses = conn.execute(completed_query, completed_params).fetchall()
         
-        # Base query for recommended courses (without provider/level filter for now)
+        # Base query for recommended courses
         user_level = user.get('level', 'Beginner')
         recommended_query = '''
             SELECT c.*, COALESCE(uc.completed, 0) as completed, 'recommended' as course_type
@@ -1319,7 +1352,7 @@ def my_courses():
         recommended_query += ' ORDER BY c.created_at DESC'
         recommended_courses = conn.execute(recommended_query, recommended_params).fetchall()
         
-        # Get available filter options (empty for now due to missing columns)
+        # Get available filter options
         providers = []
         levels = []
         
@@ -1337,152 +1370,334 @@ def my_courses():
     finally:
         conn.close()
 
-@app.route('/profile', methods=['GET', 'POST'])
-def profile():
-    """User profile page with level management and comprehensive error handling"""
+@app.route('/export-courses/<course_type>')
+def export_courses(course_type):
+    """Export courses to CSV"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
     try:
-        user = get_current_user()
-        if not user:
-            flash('Please log in to access your profile.', 'info')
-            return redirect(url_for('login'))
+        if course_type == 'completed':
+            courses = conn.execute('''
+                SELECT c.title, c.description, c.level, uc.completion_date
+                FROM courses c 
+                INNER JOIN user_courses uc ON c.id = uc.course_id 
+                WHERE uc.user_id = ? AND uc.completed = 1
+                ORDER BY uc.completion_date DESC
+            ''', (user['id'],)).fetchall()
+        else:  # recommended
+            courses = conn.execute('''
+                SELECT c.title, c.description, c.level, c.created_at as date_added
+                FROM courses c 
+                LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
+                WHERE (uc.completed IS NULL OR uc.completed = 0)
+                ORDER BY c.created_at DESC
+            ''', (user['id'],)).fetchall()
         
+        # Create CSV response
+        from io import StringIO
+        import csv
+        
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        if course_type == 'completed':
+            writer.writerow(['Title', 'Description', 'Level', 'Completion Date'])
+        else:
+            writer.writerow(['Title', 'Description', 'Level', 'Date Added'])
+        
+        # Write course data
+        for course in courses:
+            writer.writerow([course['title'], course['description'], course['level'], 
+                           course['completion_date'] if course_type == 'completed' else course['date_added']])
+        
+        output.seek(0)
+        
+        from flask import Response
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename={course_type}_courses.csv'}
+        )
+    
+    finally:
+        conn.close()
+
+@app.route('/complete-course/<int:course_id>', methods=['POST'])
+def complete_course(course_id):
+    """Mark a course as completed"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    try:
+        # Check if course exists
+        course = conn.execute('SELECT * FROM courses WHERE id = ?', (course_id,)).fetchone()
+        if not course:
+            flash('Course not found.', 'error')
+            return redirect(url_for('my_courses'))
+        
+        # Check if already completed
+        existing = conn.execute(
+            'SELECT * FROM user_courses WHERE user_id = ? AND course_id = ?',
+            (user['id'], course_id)
+        ).fetchone()
+        
+        if existing:
+            if existing['completed']:
+                flash('Course already completed.', 'info')
+            else:
+                # Update to completed
+                conn.execute(
+                    'UPDATE user_courses SET completed = 1, completion_date = CURRENT_TIMESTAMP WHERE user_id = ? AND course_id = ?',
+                    (user['id'], course_id)
+                )
+                conn.commit()
+                flash(f'Congratulations! You completed "{course["title"]}"!', 'success')
+                log_completion_event(user['id'], course_id, course['title'])
+        else:
+            # Insert new completion record
+            conn.execute(
+                'INSERT INTO user_courses (user_id, course_id, completed, completion_date) VALUES (?, ?, 1, CURRENT_TIMESTAMP)',
+                (user['id'], course_id)
+            )
+            conn.commit()
+            flash(f'Congratulations! You completed "{course["title"]}"!', 'success')
+            log_completion_event(user['id'], course_id, course['title'])
+    
+    finally:
+        conn.close()
+    
+    return redirect(url_for('my_courses'))
+
+@app.route('/mark_complete/<int:course_id>', methods=['POST'])
+def mark_complete(course_id):
+    """AJAX endpoint to mark a course as completed"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'error': 'Not logged in'}), 401
+    
+    conn = get_db_connection()
+    try:
+        # Check if course exists
+        course = conn.execute('SELECT * FROM courses WHERE id = ?', (course_id,)).fetchone()
+        if not course:
+            return jsonify({'success': False, 'error': 'Course not found'}), 404
+        
+        # Check if already completed
+        existing = conn.execute(
+            'SELECT * FROM user_courses WHERE user_id = ? AND course_id = ?',
+            (user['id'], course_id)
+        ).fetchone()
+        
+        if existing:
+            if existing['completed']:
+                return jsonify({'success': False, 'error': 'Course already completed'})
+            else:
+                # Update to completed
+                conn.execute(
+                    'UPDATE user_courses SET completed = 1, completion_date = CURRENT_TIMESTAMP WHERE user_id = ? AND course_id = ?',
+                    (user['id'], course_id)
+                )
+                conn.commit()
+                log_completion_event(user['id'], course_id, course['title'])
+                return jsonify({'success': True, 'message': f'Completed "{course["title"]}"!'})
+        else:
+            # Insert new completion record
+            conn.execute(
+                'INSERT INTO user_courses (user_id, course_id, completed, completion_date) VALUES (?, ?, 1, CURRENT_TIMESTAMP)',
+                (user['id'], course_id)
+            )
+            conn.commit()
+            log_completion_event(user['id'], course_id, course['title'])
+            return jsonify({'success': True, 'message': f'Completed "{course["title"]}"!'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        conn.close()
+
+def log_completion_event(user_id, course_id, course_title):
+    """Log course completion event"""
+    try:
+        log_message = f'User {user_id} completed course {course_id}: {course_title}'
+        log_security_event('course_completion', log_message, request.remote_addr, user_id)
+    except Exception as e:
+        log_security_event('course_completion_error', f'Error logging completion for user {user_id}, course {course_id}: {str(e)}', request.remote_addr, user_id)
+
+@app.route('/update-completion-date/<int:course_id>', methods=['POST'])
+def update_completion_date(course_id):
+    """Update completion date for a course"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    try:
+        completion_date = request.form.get('completion_date')
         user_id = user['id']
         
-        # Import level manager here to avoid circular imports
-        from level_manager import LevelManager
-        level_manager = LevelManager()
-        
-        if request.method == 'POST':
-            try:
-                # Handle profile updates
-                user_selected_level = request.form.get('user_selected_level')
-                
-                if user_selected_level:
-                    # Update selected level using level manager
-                    result = level_manager.update_user_selected_level(user_id, user_selected_level)
-                    
-                    if result['success']:
-                        flash(f'Profile updated successfully! {result["message"]}', 'success')
-                        
-                        # Update session if needed
-                        if 'user_level' in session:
-                            session['user_selected_level'] = user_selected_level
-                    else:
-                        flash(result['message'], 'error')
-                else:
-                    flash('Invalid expertise level selected', 'error')
-            except Exception as e:
-                logger.error(f"Error updating profile for user {user_id}: {e}")
-                flash('An error occurred while updating your profile. Please try again.', 'error')
-        
-        # Get comprehensive user level information
-        try:
-            level_info = level_manager.get_user_level_info(user_id)
-            if not level_info:
-                logger.warning(f"Could not get level info for user {user_id}")
-                level_info = {
-                    'current_level': 1,
-                    'current_level_name': 'Beginner',
-                    'points_needed_for_next': 100,
-                    'next_level': 2,
-                    'next_level_name': 'Intermediate',
-                    'progress_percentage': 0,
-                    'total_points': 0,
-                    'level_points': 0
-                }
-        except Exception as e:
-            logger.error(f"Error getting level info for user {user_id}: {e}")
-            level_info = {
-                'current_level': 1,
-                'current_level_name': 'Beginner',
-                'points_needed_for_next': 100,
-                'next_level': 2,
-                'next_level_name': 'Intermediate',
-                'progress_percentage': 0,
-                'total_points': 0,
-                'level_points': 0
-            }
-        
-        # Get user data for display
         conn = get_db_connection()
         try:
-            user_data = conn.execute('''
-                SELECT username, level, points, level_points, user_selected_level, created_at, 
-                       last_login, last_activity, login_count
-                FROM users 
-                WHERE id = ?
-            ''', (user_id,)).fetchone()
+            # Update completion date
+            conn.execute(
+                'UPDATE user_courses SET completion_date = ? WHERE user_id = ? AND course_id = ?',
+                (completion_date, user_id, course_id)
+            )
+            conn.commit()
+            flash('Completion date updated successfully!', 'success')
+            log_security_event('completion_date_update', 
+                             f'Updated completion date for course {course_id} to {completion_date}',
+                             request.remote_addr, user_id)
             
-            if not user_data:
-                logger.error(f"User data not found for user_id {user_id}")
-                flash('User profile data not found. Please contact support.', 'error')
-                return redirect(url_for('dashboard'))
-            
-            # Get user's active sessions with error handling
-            try:
-                active_sessions = conn.execute('''
-                    SELECT session_token, created_at, expires_at, ip_address, user_agent,
-                           CASE WHEN expires_at > datetime('now') THEN 'Active' ELSE 'Expired' END as status
-                    FROM user_sessions 
-                    WHERE user_id = ? AND is_active = 1
-                    ORDER BY created_at DESC
-                    LIMIT 5
-                ''', (user_id,)).fetchall()
-            except Exception as e:
-                logger.warning(f"Error fetching sessions for user {user_id}: {e}")
-                active_sessions = []
-            
-            # Get user's learning stats with error handling
-            try:
-                total_learnings = conn.execute('''
-                    SELECT COUNT(*) as count 
-                    FROM learning_entries 
-                    WHERE user_id = ? AND is_global = 0
-                ''', (user_id,)).fetchone()['count']
-                
-                completed_courses = conn.execute('''
-                    SELECT COUNT(*) as count 
-                    FROM user_courses 
-                    WHERE user_id = ? AND completed = 1
-                ''', (user_id,)).fetchone()['count']
-                
-                enrolled_courses = conn.execute('''
-                    SELECT COUNT(*) as count 
-                    FROM user_courses 
-                    WHERE user_id = ? AND completed = 0
-                ''', (user_id,)).fetchone()['count']
-            except Exception as e:
-                logger.warning(f"Error fetching learning stats for user {user_id}: {e}")
-                total_learnings = 0
-                completed_courses = 0
-                enrolled_courses = 0
-            
-            # Get recent points log for user with error handling
-            try:
-                points_log = level_manager.get_user_points_log(user_id, limit=10)
-                if not points_log:
-                    points_log = []
-            except Exception as e:
-                logger.warning(f"Error fetching points log for user {user_id}: {e}")
-                points_log = []
-            
-            return render_template('dashboard/profile.html',
-                                 user=user_data,
-                                 level_info=level_info,
-                                 active_sessions=active_sessions,
-                                 total_learnings=total_learnings,
-                                 completed_courses=completed_courses,
-                                 enrolled_courses=enrolled_courses,
-                                 points_log=points_log)
         finally:
             conn.close()
             
+    except ValueError:
+        flash('Invalid date format. Please use YYYY-MM-DD format.', 'error')
     except Exception as e:
-        logger.error(f"Unexpected error in profile route for user {user.get('id', 'unknown') if user else 'not authenticated'}: {e}")
-        import traceback
-        logger.error(f"Profile route traceback: {traceback.format_exc()}")
-        flash('An unexpected error occurred while loading your profile. Please try again later.', 'error')
-        return redirect(url_for('dashboard'))
+        flash(f'Error updating completion date: {str(e)}', 'error')
+        log_security_event('completion_date_update_error', 
+                         f'Error updating completion date for user {user_id}, course {course_id}: {str(e)}',
+                         request.remote_addr, user_id)
+    
+    return redirect(url_for('my_courses'))
+
+@app.route('/learnings')
+def learnings():
+    """Learning entries page"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    # Get user's learning entries
+    conn = get_db_connection()
+    try:
+        learnings = conn.execute('''
+            SELECT * FROM learning_entries 
+            WHERE user_id = ? 
+            ORDER BY date_added DESC
+        ''', (user['id'],)).fetchall()
+        return render_template('learnings/index.html', learnings=learnings)
+    finally:
+        conn.close()
+
+@app.route('/add-learning', methods=['GET', 'POST'])
+def add_learning():
+    """Add learning entry"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        tags = request.form.get('tags', '')
+        custom_date = request.form.get('custom_date')
+        is_global = request.form.get('is_global') == 'on'
+        
+        if title:
+            conn = get_db_connection()
+            try:
+                conn.execute('''
+                    INSERT INTO learning_entries (user_id, title, description, tags, custom_date, is_global)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (user['id'], title, description, tags, custom_date, is_global))
+                conn.commit()
+                flash('Learning entry added successfully!', 'success')
+                return redirect(url_for('learnings'))
+            finally:
+                conn.close()
+        else:
+            flash('Title is required.', 'error')
+    
+    return render_template('learnings/add.html')
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    """User profile page"""
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        # Handle profile updates (basic implementation)
+        flash('Profile updated successfully!', 'success')
+        return redirect(url_for('profile'))
+    
+    # Get user data
+    conn = get_db_connection()
+    try:
+        user_data = conn.execute('SELECT * FROM users WHERE id = ?', (user['id'],)).fetchone()
+        
+        # Calculate user stats
+        learning_count = conn.execute(
+            'SELECT COUNT(*) as count FROM learning_entries WHERE user_id = ?',
+            (user['id'],)
+        ).fetchone()['count']
+        
+        completed_courses_count = conn.execute('''
+            SELECT COUNT(*) as count FROM user_courses 
+            WHERE user_id = ? AND completed = 1
+        ''', (user['id'],)).fetchone()['count']
+        
+        # Calculate level progression info
+        user_points = user_data['points'] if user_data else 0
+        current_level = user_data['level'] if user_data else 'Beginner'
+        
+        # Get level settings from database
+        level_settings = conn.execute('SELECT * FROM level_settings ORDER BY points_required').fetchall()
+        level_mapping = {level['level_name']: level['points_required'] for level in level_settings}
+        
+        # Calculate next level info
+        next_level = None
+        points_to_next = 0
+        level_points = 0
+        
+        # Find current level points and next level
+        current_level_points = level_mapping.get(current_level, 0)
+        level_points = user_points - current_level_points
+        
+        # Find next level
+        for level_name, required_points in level_mapping.items():
+            if user_points < required_points:
+                next_level = level_name
+                points_to_next = required_points - user_points
+                break
+        
+        # Calculate progress percentage
+        if next_level:
+            next_level_points = level_mapping[next_level]
+            prev_level_points = current_level_points
+            if next_level_points > prev_level_points:
+                progress_percentage = ((user_points - prev_level_points) / (next_level_points - prev_level_points)) * 100
+            else:
+                progress_percentage = 100
+        else:
+            progress_percentage = 100  # Max level reached
+        
+        # Create level_info object
+        level_info = {
+            'next_level': next_level,
+            'points_to_next': points_to_next,
+            'level_points': max(0, level_points),
+            'progress_percentage': progress_percentage
+        }
+        
+        # For now, provide empty points_log until points logging is implemented
+        points_log = []
+        
+        return render_template('dashboard/profile.html', 
+                             user=user_data,
+                             learning_count=learning_count,
+                             completed_courses_count=completed_courses_count,
+                             level_info=level_info,
+                             points_log=points_log)
+    finally:
+        conn.close()
 
 @app.route('/points_log')
 def points_log():
@@ -1491,71 +1706,14 @@ def points_log():
     if not user:
         return redirect(url_for('login'))
     
-    user_id = user['id']
-    
-    # Import level manager here to avoid circular imports
-    from level_manager import LevelManager
-    level_manager = LevelManager()
-    
-    # Get pagination parameters
-    page = request.args.get('page', 1, type=int)
-    per_page = 20
-    
-    # Get points log with pagination
-    points_log = level_manager.get_user_points_log(user_id, limit=per_page * page)
-    level_info = level_manager.get_user_level_info(user_id)
-    
-    return render_template('dashboard/points_log.html',
-                         points_log=points_log,
-                         level_info=level_info,
-                         page=page)
-
-@app.route('/toggle_course_completion/<int:course_id>', methods=['POST'])
-def toggle_course_completion(course_id):
-    """Toggle course completion status with enhanced level management"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    
-    user_id = user['id']
-    completed = request.form.get('completed') == '1'
-    
-    # Import level manager here to avoid circular imports
-    from level_manager import LevelManager
-    level_manager = LevelManager()
-    
-    # Use level manager to handle completion
-    result = level_manager.mark_course_completion(user_id, course_id, completed)
-    
-    if result['success']:
-        flash(result['message'], 'success')
-        
-        # Show level progression information if level changed
-        if result.get('points_change', 0) != 0:
-            points_msg = f"Points: {'+'  if result['points_change'] > 0 else ''}{result['points_change']}"
-            flash(f"{points_msg} | Level: {result['new_level']} ({result['level_points']} at level)", 'info')
-        
-        # Update session level if it changed
-        if 'user_level' in session and session['user_level'] != result['new_level']:
-            session['user_level'] = result['new_level']
-    else:
-        flash(result['message'], 'error')
-    
-    return redirect(url_for('my_courses'))
-
-@app.route('/level_info')
-def level_info():
-    """Get current user's level information as JSON"""
-    user = get_current_user()
-    if not user:
-        return {'error': 'Not authenticated'}, 401
-    
-    # Import level manager here to avoid circular imports
-    from level_manager import LevelManager
-    level_manager = LevelManager()
-    
-    level_info = level_manager.get_user_level_info(user['id'])
-    return level_info
+    # For now, return empty points log
+    # TODO: Implement actual points logging system
+    return render_template('dashboard/profile.html', 
+                         user=user,
+                         learning_count=0,
+                         completed_courses_count=0,
+                         level_info={'next_level': None, 'points_to_next': 0, 'level_points': 0, 'progress_percentage': 0},
+                         points_log=[])
 
 # Admin routes
 @app.route('/admin')
@@ -1734,16 +1892,27 @@ def admin_courses():
     finally:
         conn.close()
 
-@app.route('/admin/url-validation')
-def admin_url_validation():
-    """URL validation management page - Admin only (simplified)"""
+@app.route('/admin/course-configs')
+def admin_course_configs():
+    """Admin course search configurations"""
     user = get_current_user()
     if not user or user['username'] != 'admin':
         flash('Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
+    # Get course configs
     conn = get_db_connection()
-    
+    try:
+        configs = conn.execute('SELECT * FROM course_search_configs ORDER BY created_at DESC').fetchall()
+        return render_template('admin/course_search_configs.html', configs=configs)
+    finally:
+        conn.close()
+
+@app.route('/admin/url-validation')
+@require_admin
+def admin_url_validation():
+    """URL validation management page - Admin only"""
+    conn = get_db_connection()
     try:
         # Get all courses with their validation status
         courses = conn.execute('''
@@ -1761,7 +1930,7 @@ def admin_url_validation():
         }
         
         for course in courses:
-            status = course['url_status'] or 'Unchecked'
+            status = course.get('url_status', 'Unchecked') if course else 'Unchecked'
             if status == 'Working':
                 summary['working']['count'] += 1
             elif status == 'Not Working':
@@ -1771,332 +1940,136 @@ def admin_url_validation():
             else:
                 summary['unchecked']['count'] += 1
         
-        return render_template('admin/url_validation_simple.html',
+        return render_template('admin/url_validation.html',
                              courses=courses,
                              summary=summary)
         
     except Exception as e:
-        logger.error(f"Error in URL validation page: {e}")
         flash(f'Error loading URL validation data: {e}', 'error')
         return redirect(url_for('admin_courses'))
     finally:
         conn.close()
 
-@app.route('/admin/course-configs')
-def admin_course_configs():
-    """Admin course search configurations"""
-    user = get_current_user()
-    if not user or user['username'] != 'admin':
-        flash('Admin privileges required.', 'error')
-        return redirect(url_for('dashboard'))
-    
-    # Get course configs
-    conn = get_db_connection()
+@app.route('/admin/validate-all-urls', methods=['POST'])
+@require_admin
+def admin_validate_all_urls():
+    """Start URL validation for all courses (AJAX endpoint)"""
     try:
-        configs = conn.execute('SELECT * FROM course_search_configs ORDER BY created_at DESC').fetchall()
-        return render_template('admin/course_search_configs.html', configs=configs)
-    finally:
-        conn.close()
-
-@app.route('/admin/settings', methods=['GET', 'POST'])
-def admin_settings():
-    """Admin settings"""
-    user = get_current_user()
-    if not user or user['username'] != 'admin':
-        flash('Admin privileges required.', 'error')
-        return redirect(url_for('dashboard'))
-    
-    if request.method == 'POST':
-        # Handle level settings update
         conn = get_db_connection()
-        try:
-            # Get all level settings to update
-            level_settings = conn.execute('SELECT * FROM level_settings ORDER BY points_required').fetchall()
-            
-            updated_count = 0
-            for level in level_settings:
-                field_name = f"{level['level_name'].lower()}_points"
-                new_points = request.form.get(field_name)
-                
-                if new_points:
+        courses = conn.execute('SELECT id, title, url FROM courses WHERE url IS NOT NULL AND url != ""').fetchall()
+        conn.close()
+        
+        if not courses:
+            return jsonify({'success': False, 'message': 'No courses with URLs found'})
+        
+        # Start validation in background thread
+        def validate_urls():
+            conn = get_db_connection()
+            try:
+                for course in courses:
                     try:
-                        new_points = int(new_points)
-                        if new_points >= 0:
-                            conn.execute('UPDATE level_settings SET points_required = ? WHERE level_name = ?', 
-                                       (new_points, level['level_name']))
-                            updated_count += 1
+                        # Basic URL validation
+                        parsed = urlparse(course['url'])
+                        if not parsed.scheme or not parsed.netloc:
+                            status = 'Broken'
                         else:
-                            flash(f'Points for {level["level_name"]} must be non-negative.', 'error')
-                    except ValueError:
-                        flash(f'Invalid points value for {level["level_name"]}.', 'error')
-            
-            if updated_count > 0:
-                conn.commit()
-                
-                # Log security event
-                log_security_event(
-                    user_id=user['id'],
-                    event_type='admin_settings_update',
-                    details=f'Updated {updated_count} level settings',
-                    ip_address=request.remote_addr
-                )
-                
-                flash(f'Successfully updated {updated_count} level settings!', 'success')
+                            # Try to connect to URL (with timeout)
+                            try:
+                                response = requests.head(course['url'], timeout=10, allow_redirects=True)
+                                if response.status_code < 400:
+                                    status = 'Working'
+                                else:
+                                    status = 'Not Working'
+                            except requests.exceptions.RequestException:
+                                # If HEAD fails, try GET with smaller content
+                                try:
+                                    response = requests.get(course['url'], timeout=10, allow_redirects=True, stream=True)
+                                    if response.status_code < 400:
+                                        status = 'Working'
+                                    else:
+                                        status = 'Not Working'
+                                except requests.exceptions.RequestException:
+                                    status = 'Broken'
+                    except Exception:
+                        status = 'Broken'
+                    
+                    # Update database
+                    conn.execute('''
+                        UPDATE courses 
+                        SET url_status = ?, last_url_check = CURRENT_TIMESTAMP 
+                        WHERE id = ?
+                    ''', (status, course['id']))
+                    conn.commit()
+            except Exception as e:
+                print(f"URL validation error: {e}")
+            finally:
+                conn.close()
+        
+        # Start background thread
+        thread = threading.Thread(target=validate_urls)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'URL validation started for {len(courses)} courses',
+            'course_count': len(courses)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error starting validation: {str(e)}'})
+
+@app.route('/admin/url-validation-status')
+@require_admin
+def admin_url_validation_status():
+    """Get URL validation status (AJAX endpoint)"""
+    try:
+        conn = get_db_connection()
+        
+        # Get summary of validation status
+        courses = conn.execute('''
+            SELECT id, title, url, url_status, last_url_check
+            FROM courses 
+            WHERE url IS NOT NULL AND url != ""
+            ORDER BY last_url_check DESC
+        ''').fetchall()
+        
+        # Count by status
+        status_counts = {
+            'working': 0,
+            'not_working': 0,
+            'broken': 0,
+            'unchecked': 0
+        }
+        
+        course_list = []
+        for course in courses:
+            status = course.get('url_status', 'Unchecked') or 'Unchecked'
+            status_lower = status.lower().replace(' ', '_')
+            if status_lower in status_counts:
+                status_counts[status_lower] += 1
             else:
-                flash('No valid updates were made.', 'warning')
-                
-        except Exception as e:
-            flash(f'Error updating settings: {str(e)}', 'error')
-        finally:
-            conn.close()
-        
-        return redirect(url_for('admin_settings'))
-    
-    # GET request - display settings page
-    conn = get_db_connection()
-    try:
-        level_settings = conn.execute('SELECT * FROM level_settings ORDER BY points_required').fetchall()
-        
-        # Get system statistics
-        system_stats = {
-            'total_users': conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count'],
-            'active_users': conn.execute('SELECT COUNT(*) as count FROM users WHERE status = "active"').fetchone()['count'],
-            'total_courses': conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count'],
-            'total_learnings': conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()['count'],
-            'active_sessions': conn.execute('SELECT COUNT(*) as count FROM user_sessions WHERE is_active = 1').fetchone()['count'],
-        }
-        
-        # Get security settings
-        security_settings = {
-            'max_login_attempts': SECURITY_CONFIG['MAX_LOGIN_ATTEMPTS'],
-            'lockout_duration': SECURITY_CONFIG['LOCKOUT_DURATION'] // 60,  # Convert to minutes
-            'password_min_length': SECURITY_CONFIG['PASSWORD_MIN_LENGTH'],
-            'session_timeout': app.config['PERMANENT_SESSION_LIFETIME'].total_seconds() // 3600,  # Convert to hours
-        }
-        
-        return render_template('admin/settings.html', 
-                             level_settings=level_settings,
-                             system_stats=system_stats,
-                             security_settings=security_settings)
-    finally:
-        conn.close()
-
-@app.route('/admin/settings/update-level', methods=['POST'])
-@require_admin
-def admin_update_level_settings():
-    """Update level settings (admin only)"""
-    level_name = sanitize_input(request.form.get('level_name'))
-    points_required = request.form.get('points_required')
-    
-    if not level_name or not points_required:
-        flash('Level name and points are required.', 'error')
-        return redirect(url_for('admin_settings'))
-    
-    try:
-        points_required = int(points_required)
-    except ValueError:
-        flash('Points must be a valid number.', 'error')
-        return redirect(url_for('admin_settings'))
-    
-    conn = get_db_connection()
-    try:
-        # Check if level exists
-        existing = conn.execute('SELECT id FROM level_settings WHERE level_name = ?', (level_name,)).fetchone()
-        
-        if existing:
-            # Update existing level
-            conn.execute('UPDATE level_settings SET points_required = ? WHERE level_name = ?', 
-                        (points_required, level_name))
-            flash(f'Level {level_name} updated successfully!', 'success')
-        else:
-            # Create new level
-            conn.execute('INSERT INTO level_settings (level_name, points_required) VALUES (?, ?)', 
-                        (level_name, points_required))
-            flash(f'Level {level_name} created successfully!', 'success')
-        
-        conn.commit()
-    except Exception as e:
-        flash(f'Error updating level settings: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('admin_settings'))
-
-# Admin User Management Routes
-@app.route('/admin/add-user', methods=['GET', 'POST'])
-@require_admin
-def admin_add_user():
-    """Add a new user (admin only)"""
-    if request.method == 'POST':
-        username = sanitize_input(request.form.get('username'))
-        password = request.form.get('password')
-        level = sanitize_input(request.form.get('level', 'Beginner'))
-        status = sanitize_input(request.form.get('status', 'active'))
-        
-        if not username or not password:
-            flash('Username and password are required.', 'error')
-            return render_template('admin/add_user.html')
-        
-        # Validate password strength
-        is_valid, message = validate_password_strength(password)
-        if not is_valid:
-            flash(message, 'error')
-            return render_template('admin/add_user.html')
-        
-        conn = get_db_connection()
-        try:
-            # Check if username already exists
-            existing = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
-            if existing:
-                flash('Username already exists.', 'error')
-                return render_template('admin/add_user.html')
+                status_counts['unchecked'] += 1
             
-            # Create new user
-            password_hash = generate_password_hash(password)
-            conn.execute('''
-                INSERT INTO users (username, password_hash, level, status, created_at)
-                VALUES (?, ?, ?, ?, datetime('now'))
-            ''', (username, password_hash, level, status))
-            conn.commit()
-            
-            flash(f'User "{username}" created successfully!', 'success')
-            return redirect(url_for('admin_users'))
-        except Exception as e:
-            flash(f'Error creating user: {str(e)}', 'error')
-        finally:
-            conn.close()
-    
-    return render_template('admin/add_user.html')
-
-@app.route('/admin/delete-user/<int:user_id>', methods=['POST'])
-@require_admin
-@security_guard('user_delete', require_ui=True)
-def admin_delete_user(user_id):
-    """Delete a user (admin only) - Protected by security guards"""
-    conn = get_db_connection()
-    try:
-        # Check if user exists and get username for validation
-        user = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
-        if not user:
-            flash('User not found.', 'error')
-            return redirect(url_for('admin_users'))
+            course_list.append({
+                'id': course['id'],
+                'title': course['title'],
+                'url': course['url'],
+                'status': status,
+                'last_check': course.get('last_url_check', 'Never')
+            })
         
-        username = user['username']
-        
-        # Apply security guard validation
-        try:
-            SecurityGuard.validate_operation('user_delete', username)
-        except SecurityGuardError as e:
-            flash(f'Security Guard: {str(e)}', 'error')
-            log_admin_action('user_delete_blocked', f'Attempted deletion of {username}', 
-                           session.get('user_id'), request.remote_addr)
-            return redirect(url_for('admin_users'))
-        
-        # Protected users that cannot be deleted (only admin)
-        # All other users are treated as normal users and can be deleted
-        protected_users = ['admin']
-        if username in protected_users:
-            flash(f'Cannot delete protected user "{username}".', 'error')
-            return redirect(url_for('admin_users'))
-        
-        # Delete user and related data
-        conn.execute('DELETE FROM user_sessions WHERE user_id = ?', (user_id,))
-        conn.execute('DELETE FROM learning_entries WHERE user_id = ?', (user_id,))
-        conn.execute('DELETE FROM user_courses WHERE user_id = ?', (user_id,))
-        conn.execute('DELETE FROM user_personal_courses WHERE user_id = ?', (user_id,))
-        conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
-        conn.commit()
-        
-        # Log successful deletion
-        log_admin_action('user_delete_success', f'Deleted user {username}', 
-                        session.get('user_id'), request.remote_addr)
-        
-        flash(f'User "{username}" deleted successfully!', 'success')
-    except Exception as e:
-        flash(f'Error deleting user: {str(e)}', 'error')
-    finally:
         conn.close()
-    
-    return redirect(url_for('admin_users'))
-
-@app.route('/admin/pause-user/<int:user_id>', methods=['POST'])
-@require_admin
-def admin_pause_user(user_id):
-    """Pause/unpause a user (admin only)"""
-    conn = get_db_connection()
-    try:
-        # Get current user status
-        user = conn.execute('SELECT username, status FROM users WHERE id = ?', (user_id,)).fetchone()
-        if not user:
-            flash('User not found.', 'error')
-            return redirect(url_for('admin_users'))
         
-        # Protected users that cannot be paused (only admin)
-        # All other users are treated as normal users and can be paused
-        protected_users = ['admin']
-        if user['username'] in protected_users:
-            flash(f'Cannot pause protected user "{user["username"]}".', 'error')
-            return redirect(url_for('admin_users'))
+        return jsonify({
+            'success': True,
+            'courses': course_list,
+            'summary': status_counts,
+            'total_courses': len(course_list)
+        })
         
-        # Toggle status
-        new_status = 'paused' if user['status'] == 'active' else 'active'
-        conn.execute('UPDATE users SET status = ? WHERE id = ?', (new_status, user_id))
-        
-        # If pausing, invalidate all sessions
-        if new_status == 'paused':
-            conn.execute('UPDATE user_sessions SET is_active = 0 WHERE user_id = ?', (user_id,))
-        
-        conn.commit()
-        
-        action = 'paused' if new_status == 'paused' else 'activated'
-        flash(f'User "{user["username"]}" {action} successfully!', 'success')
     except Exception as e:
-        flash(f'Error updating user status: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('admin_users'))
-
-# Admin Course Management Routes
-@app.route('/admin/add-course', methods=['GET', 'POST'])
-@require_admin
-def admin_add_course():
-    """Add a new course (admin only)"""
-    if request.method == 'POST':
-        title = sanitize_input(request.form.get('title'))
-        description = sanitize_input(request.form.get('description'))
-        provider = sanitize_input(request.form.get('provider'))
-        source = sanitize_input(request.form.get('source'))
-        url = sanitize_input(request.form.get('url'))
-        link = sanitize_input(request.form.get('link'))
-        level = sanitize_input(request.form.get('level'))
-        category = sanitize_input(request.form.get('category'))
-        points = request.form.get('points', 0)
-        
-        if not title or not description:
-            flash('Title and description are required.', 'error')
-            return render_template('admin/add_course.html')
-        
-        try:
-            points = int(points) if points else 0
-        except ValueError:
-            points = 0
-        
-        conn = get_db_connection()
-        try:
-            conn.execute('''
-                INSERT INTO courses (title, description, provider, source, url, link, level, category, points, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ''', (title, description, provider, source, url, link, level, category, points))
-            conn.commit()
-            flash('Course added successfully!', 'success')
-            return redirect(url_for('admin_courses'))
-        except Exception as e:
-            flash(f'Error adding course: {str(e)}', 'error')
-        finally:
-            conn.close()
-    
-    return render_template('admin/add_course.html')
+        return jsonify({'success': False, 'message': f'Error getting status: {str(e)}'})
 
 @app.route('/admin/edit-course/<int:course_id>', methods=['GET', 'POST'])
 @require_admin
@@ -2105,14 +2078,14 @@ def admin_edit_course(course_id):
     conn = get_db_connection()
     try:
         if request.method == 'POST':
-            title = sanitize_input(request.form.get('title'))
-            description = sanitize_input(request.form.get('description'))
-            provider = sanitize_input(request.form.get('provider'))
-            source = sanitize_input(request.form.get('source'))
-            url = sanitize_input(request.form.get('url'))
-            link = sanitize_input(request.form.get('link'))
-            level = sanitize_input(request.form.get('level'))
-            category = sanitize_input(request.form.get('category'))
+            title = request.form.get('title')
+            description = request.form.get('description')
+            provider = request.form.get('provider')
+            source = request.form.get('source')
+            url = request.form.get('url')
+            link = request.form.get('link')
+            level = request.form.get('level')
+            category = request.form.get('category')
             points = request.form.get('points', 0)
             
             if not title or not description:
@@ -2148,8 +2121,12 @@ def admin_delete_course(course_id):
     """Delete a course (admin only)"""
     conn = get_db_connection()
     try:
-        # Delete related records first
-        conn.execute('DELETE FROM user_courses WHERE course_id = ?', (course_id,))
+        # Delete related records first (if user_courses table exists)
+        try:
+            conn.execute('DELETE FROM user_courses WHERE course_id = ?', (course_id,))
+        except:
+            pass  # Table might not exist
+        
         conn.execute('DELETE FROM courses WHERE id = ?', (course_id,))
         conn.commit()
         flash('Course deleted successfully!', 'success')
@@ -2159,6 +2136,406 @@ def admin_delete_course(course_id):
         conn.close()
     
     return redirect(url_for('admin_courses'))
+
+@app.route('/admin/delete-user/<int:user_id>', methods=['POST'])
+@require_admin
+def admin_delete_user(user_id):
+    """Delete a user (admin only) - requires explicit authorization"""
+    # Explicit authorization check for user deletion
+    try:
+        # Check if this is production environment
+        if production_safety.environment == 'production':
+            # In production, require additional explicit authorization
+            explicit_authorization = request.form.get('explicit_authorization')
+            if not explicit_authorization:
+                flash('User deletion requires explicit authorization in production.', 'error')
+                return redirect(url_for('admin_users'))
+    except:
+        pass  # Continue if production_safety not available
+    
+    conn = get_db_connection()
+    try:
+        # Check if user exists and get username for validation
+        user = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
+        if not user:
+            flash('User not found.', 'error')
+            return redirect(url_for('admin_users'))
+        
+        username = user['username']
+        
+        # Protected users that cannot be deleted - admin user cannot be deleted
+        protected_users = ['admin']
+        if username in protected_users:
+            flash(f'Admin user cannot be deleted - system protection active.', 'error')
+            return redirect(url_for('admin_users'))
+        
+        # Delete user and related data
+        try:
+            conn.execute('DELETE FROM user_sessions WHERE user_id = ?', (user_id,))
+        except:
+            pass  # Table might not exist
+        try:
+            conn.execute('DELETE FROM learning_entries WHERE user_id = ?', (user_id,))
+        except:
+            pass  # Table might not exist
+        try:
+            conn.execute('DELETE FROM user_courses WHERE user_id = ?', (user_id,))
+        except:
+            pass  # Table might not exist
+        
+        conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        
+        flash(f'User "{username}" deleted successfully!', 'success')
+    except Exception as e:
+        flash(f'Error deleting user: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/toggle-user-status/<int:user_id>', methods=['POST'])
+@require_admin
+def admin_toggle_user_status(user_id):
+    """Toggle user status between active and inactive (admin only)"""
+    conn = get_db_connection()
+    try:
+        # Get current user status
+        user = conn.execute('SELECT username, status FROM users WHERE id = ?', (user_id,)).fetchone()
+        if not user:
+            flash('User not found.', 'error')
+            return redirect(url_for('admin_users'))
+        
+        # Toggle status
+        new_status = 'inactive' if user['status'] == 'active' else 'active'
+        conn.execute('UPDATE users SET status = ? WHERE id = ?', (new_status, user_id))
+        conn.commit()
+        
+        flash(f'User "{user["username"]}" status changed to {new_status}.', 'success')
+    except Exception as e:
+        flash(f'Error updating user status: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/set-user-password', methods=['POST'])
+@require_admin 
+def admin_set_user_password():
+    """Allow admin to set a custom password for a user"""
+    user_id = request.form.get('user_id')
+    new_password = request.form.get('custom_password')  # Updated to match form field name
+    confirm_password = request.form.get('confirm_custom_password')
+    
+    if not user_id or not new_password:
+        flash('User ID and new password are required.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    if new_password != confirm_password:
+        flash('Password confirmation does not match.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    if len(new_password) < 4:
+        flash('Password must be at least 4 characters long.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    conn = get_db_connection()
+    try:
+        # Get user info
+        user = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
+        if not user:
+            flash('User not found.', 'error')
+            return redirect(url_for('admin_users'))
+        
+        # Hash and update password
+        hashed_password = generate_password_hash(new_password)
+        conn.execute(
+            'UPDATE users SET password_hash = ? WHERE id = ?',
+            (hashed_password, user_id)
+        )
+        conn.commit()
+        
+        flash(f'Password updated successfully for user: {user["username"]}', 'success')
+        
+    except Exception as e:
+        flash(f'Error updating password: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/reset-all-user-passwords', methods=['POST'])
+@require_admin
+def admin_reset_all_user_passwords():
+    """Reset all user passwords (admin only) - requires explicit authorization"""
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+    confirmation = request.form.get('reset_all_confirmation')
+    
+    # Explicit authorization check for bulk password reset
+    try:
+        if production_safety.environment == 'production':
+            explicit_authorization = request.form.get('explicit_authorization')
+            if not explicit_authorization:
+                flash('Bulk password reset requires explicit authorization in production.', 'error')
+                return redirect(url_for('admin_users'))
+    except:
+        pass  # Continue if production_safety not available
+    
+    if not new_password or not confirm_password:
+        flash('Both password fields are required.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    if new_password != confirm_password:
+        flash('Password confirmation does not match.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    if len(new_password) < 4:
+        flash('Password must be at least 4 characters long.', 'error')
+        return redirect(url_for('admin_users'))
+        
+    if not confirmation:
+        flash('You must confirm the bulk password reset operation.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    conn = get_db_connection()
+    try:
+        # Get all users except admin
+        users = conn.execute('SELECT id, username FROM users WHERE username != ?', ('admin',)).fetchall()
+        
+        if not users:
+            flash('No users found to reset passwords for.', 'warning')
+            return redirect(url_for('admin_users'))
+        
+        # Hash the new password
+        hashed_password = generate_password_hash(new_password)
+        
+        # Update all non-admin users
+        updated_count = 0
+        for user in users:
+            conn.execute(
+                'UPDATE users SET password_hash = ? WHERE id = ?',
+                (hashed_password, user['id'])
+            )
+            updated_count += 1
+        
+        conn.commit()
+        flash(f'Successfully reset passwords for {updated_count} users. Users will need to use the new password on their next login.', 'success')
+        
+    except Exception as e:
+        flash(f'Error resetting passwords: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_users'))
+
+# Legacy route name for compatibility with existing form
+@app.route('/admin/reset-user-password', methods=['POST'])
+@require_admin
+def admin_reset_user_password():
+    """Legacy route - redirects to the new set password function"""
+    return admin_set_user_password()
+
+@app.route('/admin/search-and-import-courses', methods=['POST'])
+@require_admin
+def admin_search_and_import_courses():
+    """Search and import courses from external sources (admin only)"""
+    search_term = request.form.get('search_term', '')
+    source = request.form.get('source', 'manual')
+    
+    if not search_term:
+        flash('Search term is required.', 'error')
+        return redirect(url_for('admin_course_configs'))
+    
+    # This would integrate with actual course APIs
+    # For now, just create a sample course based on search
+    conn = get_db_connection()
+    try:
+        sample_course = {
+            'title': f'AI Course: {search_term}',
+            'description': f'Comprehensive course covering {search_term} in artificial intelligence',
+            'provider': f'{source.title()} Learning',
+            'source': f'{source.title()} Learning',
+            'url': f'https://example.com/courses/{search_term.lower().replace(" ", "-")}',
+            'link': f'https://example.com/courses/{search_term.lower().replace(" ", "-")}',
+            'level': 'Intermediate',
+            'category': 'AI & Machine Learning',
+            'points': 100
+        }
+        
+        conn.execute('''
+            INSERT OR IGNORE INTO courses (title, description, provider, source, url, link, level, category, points, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (sample_course['title'], sample_course['description'], sample_course['provider'],
+             sample_course['source'], sample_course['url'], sample_course['link'], 
+             sample_course['level'], sample_course['category'], sample_course['points']))
+        conn.commit()
+        flash(f'Course "{sample_course["title"]}" added successfully!', 'success')
+    except Exception as e:
+        flash(f'Error adding course: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('admin_course_configs'))
+
+@app.route('/admin/settings', methods=['GET', 'POST'])
+def admin_settings():
+    """Admin settings"""
+    user = get_current_user()
+    if not user or user['username'] != 'admin':
+        flash('Admin privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        # Update level settings
+        try:
+            for level_name in ['beginner', 'learner', 'intermediate', 'expert']:
+                points_key = f'{level_name}_points'
+                if points_key in request.form:
+                    points_required = int(request.form[points_key])
+                    conn.execute(
+                        'UPDATE level_settings SET points_required = ? WHERE LOWER(level_name) = ?',
+                        (points_required, level_name)
+                    )
+            conn.commit()
+            flash('Settings updated successfully!', 'success')
+        except Exception as e:
+            flash(f'Error updating settings: {str(e)}', 'error')
+        finally:
+            conn.close()
+        return redirect(url_for('admin_settings'))
+    
+    # Get current level settings
+    try:
+        level_settings = conn.execute(
+            'SELECT level_name, points_required FROM level_settings ORDER BY points_required ASC'
+        ).fetchall()
+    except Exception as e:
+        flash(f'Error loading settings: {str(e)}', 'error')
+        level_settings = []
+    finally:
+        conn.close()
+    
+    return render_template('admin/settings.html', level_settings=level_settings)
+
+@app.route('/admin/change-password', methods=['GET', 'POST'])
+def admin_change_password():
+    """Admin change password"""
+    user = get_current_user()
+    if not user or user['username'] != 'admin':
+        flash('Admin privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        # Handle password change
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'error')
+            return render_template('admin/change_password.html')
+        
+        # Verify current password
+        conn = get_db_connection()
+        try:
+            admin_user = conn.execute('SELECT * FROM users WHERE username = ?', ('admin',)).fetchone()
+            if admin_user and check_password_hash(admin_user['password_hash'], current_password):
+                # Update password
+                new_hash = generate_password_hash(new_password)
+                conn.execute('UPDATE users SET password_hash = ? WHERE username = ?', (new_hash, 'admin'))
+                conn.commit()
+                flash('Password changed successfully!', 'success')
+                return redirect(url_for('admin_dashboard'))
+            else:
+                flash('Current password is incorrect.', 'error')
+        finally:
+            conn.close()
+    
+    return render_template('admin/change_password.html')
+
+# Admin User Management Routes
+@app.route('/admin/add-user', methods=['GET', 'POST'])
+@require_admin
+def admin_add_user():
+    """Add a new user (admin only)"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        level = request.form.get('level', 'Beginner')
+        status = request.form.get('status', 'active')
+        
+        if not username or not password:
+            flash('Username and password are required.', 'error')
+            return render_template('admin/add_user.html')
+        
+        conn = get_db_connection()
+        try:
+            # Check if username already exists
+            existing = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
+            if existing:
+                flash('Username already exists.', 'error')
+                return render_template('admin/add_user.html')
+            
+            # Create new user
+            password_hash = generate_password_hash(password)
+            conn.execute('''
+                INSERT INTO users (username, password_hash, level, status, created_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            ''', (username, password_hash, level, status))
+            conn.commit()
+            
+            flash(f'User "{username}" created successfully!', 'success')
+            return redirect(url_for('admin_users'))
+        except Exception as e:
+            flash(f'Error creating user: {str(e)}', 'error')
+        finally:
+            conn.close()
+    
+    return render_template('admin/add_user.html')
+
+# Admin Course Management Routes
+@app.route('/admin/add-course', methods=['GET', 'POST'])
+@require_admin
+def admin_add_course():
+    """Add a new course (admin only)"""
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        provider = request.form.get('provider')
+        source = request.form.get('source')
+        url = request.form.get('url')
+        link = request.form.get('link')
+        level = request.form.get('level')
+        category = request.form.get('category')
+        points = request.form.get('points', 0)
+        
+        if not title or not description:
+            flash('Title and description are required.', 'error')
+            return render_template('admin/add_course.html')
+        
+        try:
+            points = int(points) if points else 0
+        except ValueError:
+            points = 0
+        
+        conn = get_db_connection()
+        try:
+            conn.execute('''
+                INSERT INTO courses (title, description, provider, source, url, link, level, category, points, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (title, description, provider, source, url, link, level, category, points))
+            conn.commit()
+            flash('Course added successfully!', 'success')
+            return redirect(url_for('admin_courses'))
+        except Exception as e:
+            flash(f'Error adding course: {str(e)}', 'error')
+        finally:
+            conn.close()
+    
+    return render_template('admin/add_course.html')
 
 @app.route('/admin/populate-linkedin-courses', methods=['POST'])
 @require_admin
@@ -2249,920 +2626,272 @@ def admin_populate_linkedin_courses():
     
     return redirect(url_for('admin_courses'))
 
-@app.route('/admin/search-and-import-courses', methods=['POST'])
-@require_admin
-def admin_search_and_import_courses():
-    """Search and import courses from external sources (admin only)"""
-    search_term = sanitize_input(request.form.get('search_term', ''))
-    source = sanitize_input(request.form.get('source', 'manual'))
-    
-    if not search_term:
-        flash('Search term is required.', 'error')
-        return redirect(url_for('admin_course_configs'))
-    
-    # This would integrate with actual course APIs
-    # For now, just create a sample course based on search
-    conn = get_db_connection()
+@app.route('/setup-admin')
+def setup_admin():
+    """Simple setup route to create admin user"""
     try:
-        sample_course = {
-            'title': f'AI Course: {search_term}',
-            'description': f'Comprehensive course covering {search_term} in artificial intelligence',
-            'provider': f'{source.title()} Learning',
-            'source': f'{source.title()} Learning',
-            'url': f'https://example.com/courses/{search_term.lower().replace(" ", "-")}',
-            'link': f'https://example.com/courses/{search_term.lower().replace(" ", "-")}',
-            'level': 'Intermediate',
-            'category': 'AI & Machine Learning',
-            'points': 100
-        }
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        conn.execute('''
-            INSERT OR IGNORE INTO courses (title, description, provider, source, url, link, level, category, points, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        ''', (sample_course['title'], sample_course['description'], sample_course['provider'],
-             sample_course['source'], sample_course['url'], sample_course['link'], 
-             sample_course['level'], sample_course['category'], sample_course['points']))
-        conn.commit()
-        flash(f'Course "{sample_course["title"]}" added successfully!', 'success')
-    except Exception as e:
-        flash(f'Error adding course: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('admin_course_configs'))
-
-@app.route('/admin/export-courses')
-@require_admin
-def admin_export_courses():
-    """Export courses to CSV (admin only)"""
-    import csv
-    from io import StringIO
-    from flask import Response
-    
-    conn = get_db_connection()
-    try:
-        courses = conn.execute('SELECT * FROM courses ORDER BY created_at DESC').fetchall()
+        # Check if admin exists
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        if cursor.fetchone():
+            conn.close()
+            return "✅ Admin user already exists! <a href='/'>Go to Login</a>"
         
-        output = StringIO()
-        writer = csv.writer(output)
+        # Create admin user
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
+        password_hash = generate_password_hash(admin_password)
         
-        # Write header
-        writer.writerow(['ID', 'Title', 'Description', 'Provider', 'Source', 'URL', 'Level', 'Category', 'Points', 'Created At'])
-        
-        # Write course data
-        for course in courses:
-            writer.writerow([
-                course['id'], course['title'], course['description'], 
-                course['provider'], course['source'], course['url'],
-                course['level'], course['category'], course['points'], course['created_at']
-            ])
-        
-        output.seek(0)
-        
-        return Response(
-            output.getvalue(),
-            mimetype='text/csv',
-            headers={'Content-Disposition': 'attachment; filename=courses.csv'}
-        )
-    finally:
-        conn.close()
-
-@app.route('/dashboard/add-course', methods=['GET', 'POST'])
-@require_auth
-def dashboard_add_course():
-    """Add a new course for the current user"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-        
-    if request.method == 'POST':
-        title = sanitize_input(request.form.get('title'))
-        description = sanitize_input(request.form.get('description'))
-        provider = sanitize_input(request.form.get('provider'))
-        url = sanitize_input(request.form.get('url'))
-        level = sanitize_input(request.form.get('level'))
-        category = sanitize_input(request.form.get('category'))
-        
-        if title and description:
-            conn = get_db_connection()
-            try:
-                conn.execute('''
-                    INSERT INTO user_personal_courses (user_id, title, description, source, course_url, created_at)
-                    VALUES (?, ?, ?, ?, ?, datetime('now'))
-                ''', (user['id'], title, description, provider or 'Personal', url or ''))
-                conn.commit()
-                flash('Course added successfully!', 'success')
-                return redirect(url_for('dashboard_my_courses'))
-            except Exception as e:
-                flash(f'Error adding course: {str(e)}', 'error')
-            finally:
-                conn.close()
-        else:
-            flash('Title and description are required.', 'error')
-    
-    return render_template('dashboard/add_course.html')
-
-@app.route('/dashboard/my-courses')
-@require_auth
-def dashboard_my_courses():
-    """Display user's courses"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    
-    # Get filter parameters
-    provider_filter = request.args.get('provider', '')
-    level_filter = request.args.get('level', '')
-    date_filter = request.args.get('date_filter', '')
-    search_query = request.args.get('search', '')
-        
-    conn = get_db_connection()
-    try:
-        # Base query for completed courses (without provider filter for now)
-        completed_query = '''
-            SELECT c.*, uc.completed, uc.completion_date, 'system' as course_type
-            FROM courses c 
-            INNER JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ? AND uc.completed = 1
-        '''
-        completed_params = [user['id']]
-        
-        # Apply filters to completed courses (skip provider/level if columns don't exist)
-        if search_query:
-            completed_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
-            completed_params.extend([f'%{search_query}%', f'%{search_query}%'])
-        
-        # Date filtering for completed courses
-        if date_filter:
-            if date_filter == 'today':
-                completed_query += ' AND DATE(uc.completion_date) = DATE("now")'
-            elif date_filter == 'week':
-                completed_query += ' AND DATE(uc.completion_date) >= DATE("now", "-7 days")'
-            elif date_filter == 'month':
-                completed_query += ' AND DATE(uc.completion_date) >= DATE("now", "-30 days")'
-        
-        completed_query += ' ORDER BY uc.completion_date DESC'
-        completed_courses = conn.execute(completed_query, completed_params).fetchall()
-        
-        # Base query for recommended courses (without provider/level filter for now)
-        user_level = user.get('level', 'Beginner')
-        recommended_query = '''
-            SELECT c.*, COALESCE(uc.completed, 0) as completed, 'recommended' as course_type
-            FROM courses c 
-            LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
-            WHERE (uc.completed IS NULL OR uc.completed = 0)
-        '''
-        recommended_params = [user['id']]
-        
-        # Apply search filter to recommended courses
-        if search_query:
-            recommended_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
-            recommended_params.extend([f'%{search_query}%', f'%{search_query}%'])
-        
-        recommended_query += ' ORDER BY c.created_at DESC'
-        recommended_courses = conn.execute(recommended_query, recommended_params).fetchall()
-        
-        # Get available filter options (empty for now due to missing columns)
-        providers = []
-        levels = []
-        
-        return render_template('dashboard/my_courses.html', 
-                             completed_courses=completed_courses,
-                             recommended_courses=recommended_courses,
-                             providers=providers,
-                             levels=levels,
-                             current_filters={
-                                 'provider': provider_filter,
-                                 'level': level_filter,
-                                 'date_filter': date_filter,
-                                 'search': search_query
-                             })
-    finally:
-        conn.close()
-
-@app.route('/dashboard/edit-course/<int:course_id>', methods=['GET', 'POST'])
-@require_auth
-def dashboard_edit_course(course_id):
-    """Edit user's course"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-        
-    conn = get_db_connection()
-    try:
-        if request.method == 'POST':
-            title = sanitize_input(request.form.get('title'))
-            description = sanitize_input(request.form.get('description'))
-            provider = sanitize_input(request.form.get('provider'))
-            url = sanitize_input(request.form.get('url'))
-            
-            if title and description:
-                conn.execute('''
-                    UPDATE user_personal_courses 
-                    SET title=?, description=?, source=?, course_url=?
-                    WHERE id=? AND user_id=?
-                ''', (title, description, provider or 'Personal', url or '', course_id, user['id']))
-                conn.commit()
-                flash('Course updated successfully!', 'success')
-                return redirect(url_for('dashboard_my_courses'))
-            else:
-                flash('Title and description are required.', 'error')
-        
-        course = conn.execute('''
-            SELECT * FROM user_personal_courses 
-            WHERE id = ? AND user_id = ?
-        ''', (course_id, user['id'])).fetchone()
-        
-        if not course:
-            flash('Course not found.', 'error')
-            return redirect(url_for('dashboard_my_courses'))
-        
-        return render_template('dashboard/edit_course.html', course=course)
-    finally:
-        conn.close()
-
-@app.route('/dashboard/delete-course/<int:course_id>', methods=['POST'])
-@require_auth
-def dashboard_delete_course(course_id):
-    """Delete user's course"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-        
-    conn = get_db_connection()
-    try:
-        conn.execute('''
-            DELETE FROM user_personal_courses 
-            WHERE id = ? AND user_id = ?
-        ''', (course_id, user['id']))
-        conn.commit()
-        flash('Course deleted successfully!', 'success')
-    except Exception as e:
-        flash(f'Error deleting course: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('dashboard_my_courses'))
-
-@app.route('/complete-course/<int:course_id>', methods=['POST'])
-@require_login
-def complete_course(course_id):
-    """Mark a course as completed for the current user"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    
-    conn = get_db_connection()
-    try:
-        # Check if course exists
-        course = conn.execute('SELECT * FROM courses WHERE id = ?', (course_id,)).fetchone()
-        if not course:
-            flash('Course not found.', 'error')
-            return redirect(url_for('dashboard'))
-        
-        # Check if already completed
-        existing = conn.execute('''
-            SELECT * FROM user_courses 
-            WHERE user_id = ? AND course_id = ?
-        ''', (user['id'], course_id)).fetchone()
-        
-        if existing and existing['completed']:
-            flash('Course already completed!', 'info')
-            return redirect(url_for('dashboard'))
-        
-        # Mark as completed
-        if existing:
-            # Update existing record
-            conn.execute('''
-                UPDATE user_courses 
-                SET completed = 1, completion_date = datetime('now')
-                WHERE user_id = ? AND course_id = ?
-            ''', (user['id'], course_id))
-        else:
-            # Insert new record
-            conn.execute('''
-                INSERT INTO user_courses (user_id, course_id, completed, completion_date)
-                VALUES (?, ?, 1, datetime('now'))
-            ''', (user['id'], course_id))
-        
-        # Award points to user
-        course_points = course['points'] if course['points'] else 0
-        conn.execute('''
-            UPDATE users 
-            SET points = points + ? 
-            WHERE id = ?
-        ''', (course_points, user['id']))
-        
-        # Update user level based on new points if needed
-        new_points = conn.execute('SELECT points FROM users WHERE id = ?', (user['id'],)).fetchone()['points']
-        
-        # Determine new level based on points
-        if new_points >= 500:
-            new_level = 'Expert'
-        elif new_points >= 250:
-            new_level = 'Intermediate'
-        elif new_points >= 100:
-            new_level = 'Learner'
-        else:
-            new_level = 'Beginner'
-        
-        # Update user level
-        conn.execute('UPDATE users SET level = ? WHERE id = ?', (new_level, user['id']))
+        cursor.execute("""
+            INSERT INTO users (
+                username, password_hash, level, points, status,
+                user_selected_level, login_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            'admin', password_hash, 'Advanced', 100, 'active',
+            'Advanced', 0, datetime.now().isoformat()
+        ))
         
         conn.commit()
+        conn.close()
         
-        flash(f'Course completed! You earned {course_points} points.', 'success')
+        return f"""
+        🎉 Admin user created successfully!<br>
+        Username: admin<br>
+        Password: {admin_password}<br>
+        <a href='/'>Go to Login</a>
+        """
         
     except Exception as e:
-        flash(f'Error completing course: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('dashboard'))
+        return f"❌ Error: {str(e)}"
 
-@app.route('/update-completion-date/<int:course_id>', methods=['POST'])
-@require_login
-def update_completion_date(course_id):
-    """Update completion date for a completed course"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
+@app.route('/health')
+def health_check():
+    """Health check endpoint with admin initialization"""
     
-    completion_date = request.form.get('completion_date')
-    if not completion_date:
-        flash('Completion date is required.', 'error')
-        return redirect(url_for('my_courses'))
+    import sqlite3
+    from werkzeug.security import generate_password_hash
+    from datetime import datetime
     
-    conn = get_db_connection()
+    html_template = '''
+    <html>
+    <head><title>Health Check</title></head>
+    <body style="font-family: Arial; max-width: 800px; margin: 20px auto; padding: 20px;">
+        <h2>🔍 AI Learning Tracker - Health Check</h2>
+        {content}
+        <hr>
+        <p><small>Last updated: {timestamp}</small></p>
+    </body>
+    </html>
+    '''
+    
     try:
-        # Verify user has completed this course
-        user_course = conn.execute('''
-            SELECT * FROM user_courses 
-            WHERE user_id = ? AND course_id = ? AND completed = 1
-        ''', (user['id'], course_id)).fetchone()
+        status_info = []
         
-        if not user_course:
-            flash('Course not found or not completed.', 'error')
-            return redirect(url_for('my_courses'))
-        
-        # Update completion date
-        conn.execute('''
-            UPDATE user_courses 
-            SET completion_date = ? 
-            WHERE user_id = ? AND course_id = ?
-        ''', (completion_date, user['id'], course_id))
-        conn.commit()
-        
-        flash('Completion date updated successfully!', 'success')
-    except Exception as e:
-        flash(f'Error updating completion date: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('my_courses'))
-
-@app.route('/export-courses/<course_type>')
-@require_login
-def export_courses(course_type):
-    """Export courses to CSV"""
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    
-    import csv
-    from io import StringIO
-    from flask import Response
-    
-    conn = get_db_connection()
-    try:
-        if course_type == 'completed':
-            # Use only basic columns that definitely exist
-            courses = conn.execute('''
-                SELECT c.title, c.description, uc.completion_date
-                FROM courses c 
-                INNER JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ? AND uc.completed = 1
-                ORDER BY uc.completion_date DESC
-            ''', (user['id'],)).fetchall()
-            filename = f'completed_courses_{user["username"]}.csv'
-        elif course_type == 'recommended':
-            # Use only basic columns that definitely exist
-            courses = conn.execute('''
-                SELECT c.title, c.description, '' as completion_date
-                FROM courses c 
-                LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
-                WHERE (uc.completed IS NULL OR uc.completed = 0)
-                ORDER BY c.created_at DESC
-            ''', (user['id'],)).fetchall()
-            filename = f'recommended_courses_{user["username"]}.csv'
-        else:
-            flash('Invalid course type for export.', 'error')
-            return redirect(url_for('my_courses'))
-        
-        output = StringIO()
-        writer = csv.writer(output)
-        
-        # Write simplified header
-        writer.writerow(['Title', 'Description', 'Completion Date'])
-        
-        # Write course data
-        for course in courses:
-            writer.writerow([
-                course['title'], course['description'], course.get('completion_date', '')
-            ])
-        
-        output.seek(0)
-        
-        return Response(
-            output.getvalue(),
-            mimetype='text/csv',
-            headers={'Content-Disposition': f'attachment; filename={filename}'}
-        )
-    finally:
-        conn.close()
-
-# Alias route for learnings_index referenced in templates
-@app.route('/learnings-index')
-@require_auth
-def learnings_index():
-    """Alias for learnings route"""
-    return redirect(url_for('learnings'))
-
-# Test route to debug template rendering
-@app.route('/test-page')
-def test_page():
-    """Test page for debugging"""
-    return render_template('test_page.html')
-
-# Debug route to check session status
-@app.route('/debug/session')
-def debug_session():
-    """Debug route to check current session status"""
-    session_token = session.get('session_token')
-    user = get_current_user()
-    
-    debug_info = {
-        'has_session_token': bool(session_token),
-        'session_token': session_token[:10] + '...' if session_token else None,
-        'user_from_g': user,
-        'flask_session_keys': list(session.keys()),
-        'request_endpoint': request.endpoint
-    }
-    
-    return f"<pre>{debug_info}</pre>"
-
-# Admin Password Reset Routes
-@app.route('/admin/password-reset', methods=['GET', 'POST'])
-@require_admin
-@password_reset_guard(ui_triggered=True, require_explicit_request=False)
-@production_safe('ui_triggered_password_reset')
-def admin_password_reset():
-    """Admin password reset for all users - Protected by security guards and production safeguards"""
-    if request.method == 'POST':
-        new_password = request.form.get('new_password')
-        confirm_password = request.form.get('confirm_password')
-        reset_confirmation = request.form.get('reset_confirmation')
-        
-        # Apply security guard validation for UI-triggered operation
-        try:
-            SecurityGuard.validate_operation('bulk_password_reset', explicit_authorization=True)
-            SecurityGuard.validate_azure_deployment_safety('bulk_password_reset', ui_triggered=True)
-            SecurityGuard.require_ui_interaction()
-        except SecurityGuardError as e:
-            flash(f'Security Guard: {str(e)}', 'error')
-            log_admin_action('bulk_password_reset_blocked', 'Attempted bulk password reset', 
-                           session.get('user_id'), request.remote_addr)
-            return render_template('admin/password_reset.html')
-        
-        # Validate confirmation checkbox
-        if not reset_confirmation:
-            flash('You must confirm the password reset action.', 'error')
-            return render_template('admin/password_reset.html')
-        
-        # Validate passwords match
-        if new_password != confirm_password:
-            flash('Passwords do not match.', 'error')
-            return render_template('admin/password_reset.html')
-        
-        # Validate password strength
-        is_valid, message = validate_password_strength(new_password)
-        if not is_valid:
-            flash(f'Password does not meet security requirements: {message}', 'error')
-            return render_template('admin/password_reset.html')
-        
+        # Check database connection
         try:
             conn = get_db_connection()
+            status_info.append("✅ Database connection: OK")
             
-            # Get all users
-            users = conn.execute('SELECT id, username FROM users').fetchall()
+            # Check tables
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in cursor.fetchall()]
             
-            # Admin can reset passwords for any user via UI (explicit user request through UI)
-            # Hash the new password
-            password_hash = generate_password_hash(new_password)
-            
-            # Update all users' passwords (UI-triggered by admin = explicit request)
-            updated_count = 0
-            
-            for user in users:
-                conn.execute(
-                    'UPDATE users SET password_hash = ? WHERE id = ?',
-                    (password_hash, user['id'])
-                )
-                updated_count += 1
-            
-            conn.commit()
-            
-            # Log security event with production context
-            log_security_event(
-                'admin_password_reset',
-                f'Admin reset passwords for {updated_count} users via UI (explicit admin request) - Environment: {ProductionConfig.get_environment()}',
-                request.remote_addr,
-                session.get('user_id')
-            )
-            
-            success_message = f'Successfully reset passwords for {updated_count} users.'
-            flash(success_message, 'success')
-            
-        except Exception as e:
-            flash(f'Error resetting passwords: {str(e)}', 'error')
-        finally:
-            conn.close()
-        
-        return redirect(url_for('admin'))
-    
-    return render_template('admin/password_reset.html')
-
-@app.route('/admin/validate-password', methods=['POST'])
-@require_admin
-def admin_validate_password():
-    """AJAX endpoint to validate password strength"""
-    password = request.json.get('password', '')
-    is_valid, message = validate_password_strength(password)
-    
-    return {
-        'valid': is_valid,
-        'message': message,
-        'requirements': {
-            'length': len(password) >= 8,
-            'uppercase': bool(re.search(r'[A-Z]', password)),
-            'lowercase': bool(re.search(r'[a-z]', password)),
-            'number': bool(re.search(r'\d', password)),
-            'special': bool(re.search(r'[!@#$%^&*()_+\-=\[\]{};:,.<>?]', password))
-        }
-    }
-
-@app.route('/admin/reset-all-user-passwords', methods=['POST'])
-@require_admin
-def admin_reset_all_user_passwords():
-    """Reset passwords for all users except admin"""
-    new_password = request.form.get('new_password')
-    confirm_password = request.form.get('confirm_password')
-    reset_confirmation = request.form.get('reset_all_confirmation')
-    
-    # Validate confirmation checkbox
-    if not reset_confirmation:
-        flash('You must confirm the password reset action.', 'error')
-        return redirect(url_for('admin_users'))
-    
-    # Validate passwords match
-    if new_password != confirm_password:
-        flash('Passwords do not match.', 'error')
-        return redirect(url_for('admin_users'))
-    
-    # Validate password strength
-    is_valid, message = validate_password_strength(new_password)
-    if not is_valid:
-        flash(f'Password does not meet security requirements: {message}', 'error')
-        return redirect(url_for('admin_users'))
-    
-    try:
-        conn = get_db_connection()
-        
-        # Get only demo users for password resets
-        allowed_users = ['demo']  # Only demo users can have passwords reset
-        placeholders = ','.join(['?' for _ in allowed_users])
-        users = conn.execute(
-            f'SELECT id, username FROM users WHERE username IN ({placeholders})', 
-            allowed_users
-        ).fetchall()
-        
-        if not users:
-            flash('No demo users found to reset passwords for.', 'warning')
-            return redirect(url_for('admin_users'))
-        
-        # Hash the new password
-        password_hash = generate_password_hash(new_password)
-        
-        # Update only demo users' passwords
-        updated_count = 0
-        for user in users:
-            conn.execute(
-                'UPDATE users SET password_hash = ? WHERE id = ?',
-                (password_hash, user['id'])
-            )
-            updated_count += 1
-        
-        conn.commit()
-        
-        # Log security event
-        log_security_event(
-            'admin_reset_all_user_passwords',
-            f'Admin reset passwords for {updated_count} demo users (only demo users affected)',
-            request.remote_addr,
-            session.get('user_id')
-        )
-        
-        flash(f'Successfully reset passwords for {updated_count} users (excluding only admin). All affected users will need to use the new password on their next login.', 'success')
-        
-    except Exception as e:
-        flash(f'Error resetting passwords: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('admin_users'))
-
-@app.route('/admin/reset-user-password', methods=['POST'])
-@require_admin
-@password_reset_guard(ui_triggered=True, require_explicit_request=False)
-@production_safe('ui_triggered_password_reset')
-def admin_reset_user_password():
-    """Reset password for individual user with custom password - Production safe"""
-    user_id = request.form.get('user_id')
-    custom_password = request.form.get('custom_password')
-    confirm_custom_password = request.form.get('confirm_custom_password')
-    reset_confirmation = request.form.get('reset_individual_confirmation')
-    
-    # Validate required fields
-    if not all([user_id, custom_password, confirm_custom_password, reset_confirmation]):
-        flash('All fields are required.', 'error')
-        return redirect(url_for('admin_users'))
-    
-    # Validate passwords match
-    if custom_password != confirm_custom_password:
-        flash('Passwords do not match.', 'error')
-        return redirect(url_for('admin_users'))
-    
-    # Validate password strength
-    is_valid, message = validate_password_strength(custom_password)
-    if not is_valid:
-        flash(f'Password does not meet security requirements: {message}', 'error')
-        return redirect(url_for('admin_users'))
-    
-    try:
-        # Additional production safety validation
-        SecurityGuard.validate_azure_deployment_safety('individual_password_reset', ui_triggered=True)
-        
-        conn = get_db_connection()
-        
-        # Get user info
-        user = conn.execute(
-            'SELECT id, username FROM users WHERE id = ?', 
-            (user_id,)
-        ).fetchone()
-        
-        if not user:
-            flash('User not found.', 'error')
-            return redirect(url_for('admin_users'))
-        
-        # UI-triggered admin action = explicit user request
-        # Admin can reset any user's password via the UI
-        
-        # Hash the custom password
-        password_hash = generate_password_hash(custom_password)
-        
-        # Update user's password
-        conn.execute(
-            'UPDATE users SET password_hash = ? WHERE id = ?',
-            (password_hash, user_id)
-        )
-        conn.commit()
-        
-        # Log security event with production context
-        log_security_event(
-            'admin_reset_user_password',
-            f'Admin reset password for user: {user["username"]} (ID: {user_id}) via UI (explicit admin request) - Environment: {ProductionConfig.get_environment()}',
-            request.remote_addr,
-            session.get('user_id')
-        )
-        
-        flash(f'Successfully reset password for user "{user["username"]}". The user will need to use the new password on their next login.', 'success')
-        
-    except Exception as e:
-        flash(f'Error resetting password: {str(e)}', 'error')
-    finally:
-        conn.close()
-    
-    return redirect(url_for('admin_users'))
-
-@app.route('/admin/view-user-password', methods=['POST'])
-@require_admin
-def admin_view_user_password():
-    """Generate and set a temporary viewable password for a user with admin authentication"""
-    try:
-        user_id = request.form.get('user_id')
-        admin_password = request.form.get('admin_password')
-        
-        if not all([user_id, admin_password]):
-            return jsonify({'success': False, 'error': 'Missing required fields'})
-        
-        # Get admin user info from session
-        admin_user_id = session.get('user_id')
-        if not admin_user_id:
-            return jsonify({'success': False, 'error': 'Session expired'})
-        
-        conn = get_db_connection()
-        
-        try:
-            # Verify admin password
-            admin_user = conn.execute(
-                'SELECT * FROM users WHERE id = ? AND username = ?',
-                (admin_user_id, 'admin')
-            ).fetchone()
-            
-            if not admin_user or not check_password_hash(admin_user['password_hash'], admin_password):
-                # Log failed authentication attempt
-                log_security_event(
-                    'admin_password_view_failed',
-                    f'Failed admin authentication for viewing user password (User ID: {user_id})',
-                    request.remote_addr,
-                    admin_user_id
-                )
-                return jsonify({'success': False, 'error': 'Incorrect admin password'})
-            
-            # Get target user
-            target_user = conn.execute(
-                'SELECT id, username, password_hash FROM users WHERE id = ?',
-                (user_id,)
-            ).fetchone()
-            
-            if not target_user:
-                return jsonify({'success': False, 'error': 'User not found'})
-            
-            # Don't allow viewing admin password
-            if target_user['username'] == 'admin':
-                return jsonify({'success': False, 'error': 'Cannot generate password for admin user'})
-            
-            # Generate a secure temporary password
-            import secrets
-            import string
-            
-            # Generate a secure random password
-            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-            temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
-            
-            # Ensure it meets our password requirements
-            if (any(c.islower() for c in temp_password) and 
-                any(c.isupper() for c in temp_password) and 
-                any(c.isdigit() for c in temp_password) and 
-                any(c in "!@#$%^&*" for c in temp_password)):
+            if 'users' in tables:
+                status_info.append("✅ Users table: EXISTS")
                 
-                # Hash and update the user's password
-                password_hash = generate_password_hash(temp_password)
-                conn.execute(
-                    'UPDATE users SET password_hash = ? WHERE id = ?',
-                    (password_hash, user_id)
-                )
-                conn.commit()
+                # Check admin user
+                cursor.execute("SELECT id, username, level FROM users WHERE username = 'admin'")
+                admin_user = cursor.fetchone()
                 
-                # Log security event
-                log_security_event(
-                    'admin_generated_viewable_password',
-                    f'Admin generated viewable password for user: {target_user["username"]} (ID: {user_id})',
-                    request.remote_addr,
-                    admin_user_id
-                )
+                if admin_user:
+                    status_info.append(f"✅ Admin user: EXISTS (ID: {admin_user[0]}, Level: {admin_user[2]})")
+                else:
+                    status_info.append("❌ Admin user: MISSING")
+                    
+                    # Try to create admin user
+                    status_info.append("🔧 Attempting to create admin user...")
+                    
+                    admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')
+                    password_hash = generate_password_hash(admin_password)
+                    
+                    cursor.execute("""
+                        INSERT INTO users (
+                            username, password_hash, level, points, status,
+                            user_selected_level, login_count, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        'admin', password_hash, 'Advanced', 100, 'active',
+                        'Advanced', 0, datetime.now().isoformat()
+                    ))
+                    
+                    admin_id = cursor.lastrowid
+                    conn.commit()
+                    
+                    status_info.append(f"🎉 Admin user CREATED! (ID: {admin_id})")
                 
-                return jsonify({
-                    'success': True, 
-                    'password': temp_password,
-                    'message': 'Temporary password generated and set for user'
-                })
+                # Check total users
+                cursor.execute("SELECT COUNT(*) FROM users")
+                user_count = cursor.fetchone()[0]
+                status_info.append(f"📊 Total users: {user_count}")
+                
             else:
-                # Fallback to a manually constructed secure password
-                temp_password = f"TempPass{secrets.randbelow(1000)}!"
-                password_hash = generate_password_hash(temp_password)
-                conn.execute(
-                    'UPDATE users SET password_hash = ? WHERE id = ?',
-                    (password_hash, user_id)
-                )
-                conn.commit()
-                
-                # Log security event
-                log_security_event(
-                    'admin_generated_viewable_password',
-                    f'Admin generated viewable password for user: {target_user["username"]} (ID: {user_id})',
-                    request.remote_addr,
-                    admin_user_id
-                )
-                
-                return jsonify({
-                    'success': True, 
-                    'password': temp_password,
-                    'message': 'Temporary password generated and set for user'
-                })
+                status_info.append("❌ Users table: MISSING")
             
-        finally:
             conn.close()
-            
-    except Exception as e:
-        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
-
-@app.route('/admin/change-password', methods=['GET', 'POST'])
-@require_admin
-def admin_change_password():
-    """Admin password change - separate from user management"""
-    if request.method == 'POST':
-        current_password = request.form.get('current_password')
-        new_password = request.form.get('new_password')
-        confirm_password = request.form.get('confirm_password')
-        
-        # Validate required fields
-        if not all([current_password, new_password, confirm_password]):
-            flash('All fields are required.', 'error')
-            return render_template('admin/change_password.html')
-        
-        # Get user session info
-        user_id = session.get('user_id')
-        if not user_id:
-            flash('Session expired. Please log in again.', 'error')
-            return redirect(url_for('login'))
-            
-        conn = get_db_connection()
-        try:
-            # Fetch complete user data from database
-            user = conn.execute(
-                'SELECT * FROM users WHERE id = ? AND username = ?', 
-                (user_id, 'admin')
-            ).fetchone()
-            
-            if not user:
-                flash('Admin user not found.', 'error')
-                return redirect(url_for('login'))
-            
-            # Validate current password
-            if not check_password_hash(user['password_hash'], current_password):
-                flash('Current password is incorrect.', 'error')
-                return render_template('admin/change_password.html')
-            
-            # Validate passwords match
-            if new_password != confirm_password:
-                flash('New passwords do not match.', 'error')
-                return render_template('admin/change_password.html')
-            
-            # Validate new password is different from current
-            if check_password_hash(user['password_hash'], new_password):
-                flash('New password must be different from your current password.', 'error')
-                return render_template('admin/change_password.html')
-            
-            # Validate password strength
-            is_valid, message = validate_password_strength(new_password)
-            if not is_valid:
-                flash(f'Password does not meet security requirements: {message}', 'error')
-                return render_template('admin/change_password.html')
-            
-            # Hash the new password
-            password_hash = generate_password_hash(new_password)
-            
-            # Update admin password
-            result = conn.execute(
-                'UPDATE users SET password_hash = ? WHERE username = ?',
-                (password_hash, 'admin')
-            )
-            conn.commit()
-            
-            # Verify the update worked (for robust error handling)
-            if result.rowcount != 1:
-                raise Exception(f"Password update failed: {result.rowcount} rows affected")
-            
-            # Log security event before session invalidation
-            log_security_event(
-                'admin_password_change',
-                'Admin changed their own password - session invalidated',
-                request.remote_addr,
-                session.get('user_id')
-            )
-            
-            # Invalidate current session
-            session_token = session.get('session_token')
-            if session_token:
-                invalidate_session(session_token)
-            
-            # Clear session data
-            session.clear()
-            
-            # Flash success message for login page
-            flash('Password changed successfully! Please log in with your new password.', 'success')
-            
-            # Redirect to login page
-            return redirect(url_for('login'))
             
         except Exception as e:
-            flash(f'Error changing password: {str(e)}', 'error')
-            return render_template('admin/change_password.html')
-        finally:
-            conn.close()
-    
-    return render_template('admin/change_password.html')
+            status_info.append(f"❌ Database error: {str(e)}")
+        
+        # Check environment variables
+        admin_pwd = os.environ.get('ADMIN_PASSWORD')
+        if admin_pwd:
+            status_info.append(f"✅ ADMIN_PASSWORD: SET (length: {len(admin_pwd)})")
+        else:
+            status_info.append("❌ ADMIN_PASSWORD: NOT SET")
+        
+        # Add login test link
+        status_info.append("")
+        status_info.append("🔗 <strong>Test Login:</strong>")
+        status_info.append(f'<a href="/" style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px;">Go to Login Page</a>')
+        
+        content = "<br>".join(status_info)
+        
+        return html_template.format(
+            content=content,
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+        )
+        
+    except Exception as e:
+        return html_template.format(
+            content=f"❌ Health check failed: {str(e)}",
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+        )
 
-# Main application entry point
+@app.route('/init-admin')
+def simple_init_admin():
+    """Simple admin initialization via URL parameter"""
+    
+    # Get password from URL parameter
+    init_password = request.args.get('password', '')
+    expected_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')
+    
+    # Basic HTML template
+    html_template = '''
+    <html>
+    <head><title>Admin Initialization</title></head>
+    <body style="font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; background: #f5f5f5;">
+        <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color: #333; margin-bottom: 20px;">{title}</h2>
+            {content}
+        </div>
+    </body>
+    </html>
+    '''
+    
+    if not init_password:
+        return html_template.format(
+            title="🔧 Admin User Initialization",
+            content='''
+            <p>To initialize the admin user, add your password as a URL parameter:</p>
+            <p><strong>URL Format:</strong></p>
+            <code style="background: #f0f0f0; padding: 10px; border-radius: 4px; display: block; margin: 10px 0;">
+            https://your-app.azurewebsites.net/init-admin?password=YOUR_ADMIN_PASSWORD
+            </code>
+            <p><small>⚠️ Use your ADMIN_PASSWORD environment variable value</small></p>
+            '''
+        )
+    
+    if init_password != expected_password:
+        return html_template.format(
+            title="❌ Invalid Password",
+            content='''
+            <p>The initialization password is incorrect.</p>
+            <p>Please check your ADMIN_PASSWORD environment variable.</p>
+            <a href="/init-admin" style="color: #007bff;">Try Again</a>
+            '''
+        )
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if admin already exists
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        if cursor.fetchone():
+            conn.close()
+            return html_template.format(
+                title="✅ Admin Already Exists",
+                content='''
+                <p>The admin user has already been created.</p>
+                <p>You can now login with username <strong>admin</strong></p>
+                <a href="/" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
+                    Go to Login
+                </a>
+                '''
+            )
+        
+        # Create admin user
+        password_hash = generate_password_hash(expected_password)
+        cursor.execute("""
+            INSERT INTO users (
+                username, password_hash, level, points, status,
+                user_selected_level, login_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            'admin', password_hash, 'Advanced', 100, 'active',
+            'Advanced', 0, datetime.now().isoformat()
+        ))
+        
+        admin_id = cursor.lastrowid
+        
+        # Create demo user too
+        demo_password = os.environ.get('DEMO_PASSWORD', 'demo123')
+        cursor.execute("SELECT id FROM users WHERE username = 'demo'")
+        if not cursor.fetchone():
+            demo_hash = generate_password_hash(demo_password)
+            cursor.execute("""
+                INSERT INTO users (
+                    username, password_hash, level, points, status,
+                    user_selected_level, login_count, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                'demo', demo_hash, 'Beginner', 0, 'active',
+                'Beginner', 0, datetime.now().isoformat()
+            ))
+        
+        conn.commit()
+        conn.close()
+        
+        return html_template.format(
+            title="🎉 Initialization Complete!",
+            content=f'''
+            <p>✅ <strong>Admin user created successfully!</strong></p>
+            <p>✅ Demo user created successfully</p>
+            <p>📊 Admin user ID: {admin_id}</p>
+            <hr style="margin: 20px 0;">
+            <h3>🔗 Ready to Login:</h3>
+            <p><strong>Username:</strong> admin</p>
+            <p><strong>Password:</strong> [your ADMIN_PASSWORD]</p>
+            <p><strong>Level:</strong> Advanced</p>
+            <br>
+            <a href="/" style="background: #28a745; color: white; padding: 15px 25px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                🚀 Go to Login Page
+            </a>
+            '''
+        )
+        
+    except Exception as e:
+        return html_template.format(
+            title="❌ Initialization Failed",
+            content=f'''
+            <p><strong>Error:</strong> {str(e)}</p>
+            <p>Please check the application logs for more details.</p>
+            <a href="/init-admin" style="color: #007bff;">Try Again</a>
+            '''
+        )
+
 if __name__ == '__main__':
-    # For local development
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -132,7 +132,7 @@ def main():
     
     if not users_ok:
         print("\n🔧 RECOMMENDATIONS:")
-        print("1. Run database initialization: python azure_db_initializer.py")
+        print("1. Run database initialization: python -c \"from app import safe_init_db; safe_init_db()\"")
         print("2. Check if Azure environment has proper database setup")
         print("3. Verify admin user creation process")
     

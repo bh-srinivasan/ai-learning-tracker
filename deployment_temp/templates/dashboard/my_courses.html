@@ -29,7 +29,7 @@
     </div>
   </div>
   <div class="card-body collapse" id="filterSection">
-    <form method="GET" action="{{ url_for('dashboard_my_courses') }}" class="row g-3">
+    <form method="GET" action="{{ url_for('my_courses') }}" class="row g-3">
       <div class="col-md-4">
         <label for="search" class="form-label">Search</label>
         <input type="text" class="form-control" id="search" name="search" 
@@ -51,7 +51,7 @@
           <button type="submit" class="btn btn-primary">
             <i class="fas fa-search"></i> Filter
           </button>
-          <a href="{{ url_for('dashboard_my_courses') }}" class="btn btn-outline-secondary">
+          <a href="{{ url_for('my_courses') }}" class="btn btn-outline-secondary">
             <i class="fas fa-times"></i> Clear
           </a>
         </div>
@@ -79,15 +79,15 @@
     <div class="mt-3">
       <h6 class="text-muted">Quick Filters:</h6>
       <div class="btn-group flex-wrap" role="group">
-        <a href="{{ url_for('dashboard_my_courses', date_filter='today') }}" 
+        <a href="{{ url_for('my_courses', date_filter='today') }}" 
            class="btn btn-sm btn-outline-primary {% if current_filters.date_filter == 'today' %}active{% endif %}">
           <i class="fas fa-clock"></i> Today
         </a>
-        <a href="{{ url_for('dashboard_my_courses', date_filter='week') }}" 
+        <a href="{{ url_for('my_courses', date_filter='week') }}" 
            class="btn btn-sm btn-outline-primary {% if current_filters.date_filter == 'week' %}active{% endif %}">
           <i class="fas fa-calendar-week"></i> This Week
         </a>
-        <a href="{{ url_for('dashboard_my_courses', date_filter='month') }}" 
+        <a href="{{ url_for('my_courses', date_filter='month') }}" 
            class="btn btn-sm btn-outline-primary {% if current_filters.date_filter == 'month' %}active{% endif %}">
           <i class="fas fa-calendar-alt"></i> This Month
         </a>

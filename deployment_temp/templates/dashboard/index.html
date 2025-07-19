@@ -146,15 +146,15 @@ endblock %} {% block content %}
                   >
                     <i class="fas fa-external-link-alt"></i> View
                   </a>
-                  <form
-                    method="POST"
-                    action="{{ url_for('complete_course', course_id=course.id) }}"
-                    class="d-inline"
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-success complete-course-btn"
+                    data-course-id="{{ course.id }}"
+                    data-course-title="{{ course.title }}"
+                    data-course-points="{{ course.points or 0 }}"
                   >
-                    <button type="submit" class="btn btn-sm btn-success">
-                      <i class="fas fa-check"></i> Complete
-                    </button>
-                  </form>
+                    <i class="fas fa-check"></i> Complete
+                  </button>
                 </div>
               </div>
             </div>
@@ -305,6 +305,132 @@ endblock %} {% block content %}
       const width = progressBar.getAttribute("data-width");
       progressBar.style.width = width + "%";
     }
+
+    // Course completion functionality
+    document.querySelectorAll(".complete-course-btn").forEach((button) => {
+      button.addEventListener("click", function () {
+        const courseId = this.dataset.courseId;
+        const courseTitle = this.dataset.courseTitle;
+        const coursePoints = parseInt(this.dataset.coursePoints) || 0;
+
+        // Disable button and show loading
+        const originalText = this.innerHTML;
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Completing...';
+
+        // Send AJAX request
+        fetch(`/mark_complete/${courseId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              // Success - update button state
+              this.innerHTML = '<i class="fas fa-check-circle"></i> Completed!';
+              this.classList.remove("btn-success");
+              this.classList.add("btn-outline-success");
+
+              // Show success message
+              let message = data.message;
+              if (data.points_earned > 0) {
+                message += ` (+${data.points_earned} points)`;
+              }
+
+              // Show level up message if applicable
+              if (data.level_changed) {
+                message += `\n🎉 ${data.level_message}`;
+              }
+
+              // Create and show success alert
+              showAlert(message, "success");
+
+              // Update page stats if elements exist
+              updatePageStats(data);
+
+              // Keep button disabled as course is now completed
+              setTimeout(() => {
+                this.disabled = true;
+              }, 100);
+            } else {
+              // Error or already completed
+              if (data.already_completed) {
+                this.innerHTML =
+                  '<i class="fas fa-check-circle"></i> Completed';
+                this.classList.remove("btn-success");
+                this.classList.add("btn-outline-success");
+                this.disabled = true;
+              } else {
+                // Re-enable button on error
+                this.disabled = false;
+                this.innerHTML = originalText;
+              }
+
+              showAlert(
+                data.message,
+                data.already_completed ? "info" : "error"
+              );
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            // Re-enable button on error
+            this.disabled = false;
+            this.innerHTML = originalText;
+            showAlert("An error occurred. Please try again.", "error");
+          });
+      });
+    });
   });
+
+  function showAlert(message, type) {
+    // Create alert element
+    const alertDiv = document.createElement("div");
+    alertDiv.className = `alert alert-${
+      type === "error" ? "danger" : type
+    } alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+      ${message.replace(/\n/g, "<br>")}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    // Insert at top of content area
+    const container = document.querySelector(".container-fluid");
+    if (container && container.firstChild) {
+      container.insertBefore(alertDiv, container.firstChild);
+    }
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      if (alertDiv.parentNode) {
+        alertDiv.remove();
+      }
+    }, 5000);
+  }
+
+  function updatePageStats(data) {
+    // Update total points if element exists
+    const pointsElement = document.querySelector("[data-points-total]");
+    if (pointsElement && data.total_points !== undefined) {
+      pointsElement.textContent = data.total_points;
+    }
+
+    // Update level display if element exists
+    const levelElement = document.querySelector("[data-user-level]");
+    if (levelElement && data.current_level) {
+      levelElement.textContent = data.current_level;
+    }
+
+    // Update progress bar if level changed
+    if (data.level_changed) {
+      // Refresh page to update all stats properly
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    }
+  }
 </script>
 {% endblock %}
