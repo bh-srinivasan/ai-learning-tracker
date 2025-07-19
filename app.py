@@ -1101,9 +1101,6 @@ def safe_init_db():
         # Fallback to normal init
         init_db()
 
-# Initialize database on startup (SAFE VERSION)
-safe_init_db()
-
 # One-time admin user initialization for Azure deployment
 def ensure_admin_user():
     """Create admin user if it doesn't exist - Azure only"""
