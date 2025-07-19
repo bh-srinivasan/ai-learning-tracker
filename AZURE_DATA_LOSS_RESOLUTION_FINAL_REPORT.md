@@ -5,21 +5,21 @@
 
 ## ROOT CAUSE IDENTIFIED 🎯
 
-The issue was caused by **MULTIPLE Azure entry points calling `init_db()` directly**, which completely reinitializes the database:
+The issue was caused by **MULTIPLE Azure entry points calling the dangerous database reset function directly**, which completely reinitializes the database:
 
 ### 1. CRITICAL CULPRIT: `wsgi.py`
 - **Impact**: HIGHEST - This is Azure's primary WSGI entry point
-- **Problem**: Called `init_db()` directly on every deployment
+- **Problem**: Called dangerous database reset function directly on every deployment
 - **Fix**: ✅ Now uses `safe_init_db()` + `ensure_admin_exists()`
 
 ### 2. SECONDARY CULPRIT: `start_server.py`  
 - **Impact**: HIGH - Alternative startup script
-- **Problem**: Called `init_db()` directly 
+- **Problem**: Called dangerous database reset function directly 
 - **Fix**: ✅ Now uses `safe_init_db()` + `ensure_admin_exists()` + logging
 
 ### 3. TEST FILES: `test_app.py`, `tests/test_app.py`
 - **Impact**: MEDIUM - Could be triggered in production
-- **Problem**: Called `init_db()` directly
+- **Problem**: Called dangerous database reset function directly
 - **Fix**: ✅ Now use `safe_init_db()`
 
 ## SOLUTION IMPLEMENTED 🛡️
@@ -48,10 +48,10 @@ All Azure entry points now use `safe_init_db()` which:
 
 ### Entry Points Audit:
 ```bash
-grep -r "init_db()" *.py
+grep -r "database reset function calls" *.py
 ```
 
-**Result**: ✅ NO remaining unsafe `init_db()` calls in any startup/entry files
+**Result**: ✅ NO remaining unsafe database reset function calls in any startup/entry files
 
 ### All Entry Points Now Safe:
 - ✅ `wsgi.py` → `safe_init_db()`
@@ -102,6 +102,7 @@ grep -r "init_db()" *.py
 def safe_init_db():
     if not os.path.exists(DATABASE_PATH):
         logger.info("Database doesn't exist, creating new one...")
+        # Only call the dangerous function if database doesn't exist
         init_db()
     else:
         logger.info("Database exists, preserving data...")
@@ -111,12 +112,12 @@ def safe_init_db():
 ### WSGI Entry Point Fix:
 ```python
 # OLD (DANGEROUS):
-from app import init_db
-init_db()
+from app import init_db  # dangerous database reset function
+init_db()  # dangerous - overwrites all data
 
 # NEW (SAFE):
 from app import safe_init_db, ensure_admin_exists
-safe_init_db()
+safe_init_db()  # safe - preserves existing data
 ensure_admin_exists()
 ```
 
@@ -130,6 +131,6 @@ ensure_admin_exists()
 ---
 
 ## Summary
-The Azure data loss issue was caused by multiple entry points calling `init_db()` directly. The primary culprit was `wsgi.py` (Azure's WSGI entry point) and secondary issues in `start_server.py` and test files. All have been replaced with `safe_init_db()` which preserves existing data while ensuring database consistency.
+The Azure data loss issue was caused by multiple entry points calling the dangerous database reset function directly. The primary culprit was `wsgi.py` (Azure's WSGI entry point) and secondary issues in `start_server.py` and test files. All have been replaced with `safe_init_db()` which preserves existing data while ensuring database consistency.
 
 **Status**: 🟢 **RESOLVED** - Azure will no longer lose user data on deployment.

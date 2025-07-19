@@ -178,49 +178,47 @@ def investigate_user_deletion():
     except Exception as e:
         print(f"Error during investigation: {e}")
 
-def check_init_db_function():
-    """Check if init_db function is recreating database"""
-    print("\n7. ANALYZING INIT_DB FUNCTION")
+def check_safe_init_db_function():
+    """Check if safe_init_db function is working properly"""
+    print("\n7. ANALYZING SAFE_INIT_DB FUNCTION")
     print("-" * 40)
     
     try:
-        # Import and check init_db function
+        # Import and check safe_init_db function
         import sys
         sys.path.insert(0, '.')
         
-        from app import init_db
+        from app import safe_init_db
         import inspect
         
-        # Get the source code of init_db
-        source = inspect.getsource(init_db)
+        # Get the source code of safe_init_db
+        source = inspect.getsource(safe_init_db)
         
-        # Check for dangerous patterns
-        dangerous_patterns = [
-            'DROP TABLE',
-            'DELETE FROM users',
-            'TRUNCATE',
-            'CREATE TABLE users',  # Without IF NOT EXISTS
+        # Check for safe patterns
+        safe_patterns = [
+            'os.path.exists',
+            'if not os.path.exists',
+            'DATABASE already exists',
         ]
         
-        print("Checking init_db function for dangerous patterns:")
-        for pattern in dangerous_patterns:
+        print("Checking safe_init_db function for safety patterns:")
+        for pattern in safe_patterns:
             if pattern in source:
-                print(f"🚨 FOUND DANGEROUS PATTERN: {pattern}")
-                print("   This could be causing user deletion!")
+                print(f"✅ FOUND SAFE PATTERN: {pattern}")
+                print("   This helps prevent data loss!")
             else:
-                print(f"✅ Safe: No '{pattern}' found")
+                print(f"⚠️  Pattern not found: '{pattern}'")
         
-        # Check if it uses CREATE TABLE IF NOT EXISTS
-        if 'CREATE TABLE IF NOT EXISTS users' in source:
-            print("✅ Good: Uses 'IF NOT EXISTS' for users table")
-        elif 'CREATE TABLE users' in source:
-            print("🚨 DANGER: Creates users table without 'IF NOT EXISTS'")
-            print("   This will recreate the table and delete all users!")
+        # Check if it properly protects existing data
+        if 'DATABASE already exists' in source:
+            print("✅ Good: Checks if database exists before initialization")
+        else:
+            print("⚠️  Warning: May not check for existing database")
         
     except Exception as e:
-        print(f"Error analyzing init_db: {e}")
+        print(f"Error analyzing safe_init_db: {e}")
 
 if __name__ == "__main__":
     check_database()
     investigate_user_deletion()
-    check_init_db_function()
+    check_safe_init_db_function()

@@ -109,7 +109,7 @@ ALTER TABLE courses ADD COLUMN last_url_check TIMESTAMP;
 ```
 
 ### Migration Support
-- Automatic column creation via `init_db()`
+- Automatic column creation via `safe_init_db()`
 - Manual migration script: `migrate_url_validation.py`
 - Backward compatibility maintained
 

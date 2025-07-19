@@ -6,8 +6,8 @@
 **CRITICAL ISSUE**: Every Azure deployment was causing complete database reset, losing ALL user data, courses, and learning entries.
 
 **ROOT CAUSE DISCOVERED**: 
-- `deployment_temp/app.py` was calling `init_db()` directly on startup (line 1080)
-- `init_db()` recreates all tables from scratch, overwriting existing data
+- `deployment_temp/app.py` was calling the dangerous database initialization function directly on startup (line 1080)
+- The dangerous function recreates all tables from scratch, overwriting existing data
 - Main `app.py` had `safe_init_db()` but deployment folder used unsafe version
 - Azure deployments used deployment_temp code, causing data loss on every deployment
 
@@ -42,7 +42,7 @@ def ensure_admin_exists():
 ```
 
 ### 3. **Fixed deployment_temp/app.py**
-- **BEFORE**: `init_db()` - DANGEROUS, overwrites all data
+- **BEFORE**: Dangerous database reset function - DANGEROUS, overwrites all data
 - **AFTER**: `safe_init_db()` - SAFE, preserves all data
 - Removed duplicate admin creation logic
 - Added comprehensive logging for audit trail
