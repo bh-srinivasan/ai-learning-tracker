@@ -38,10 +38,10 @@ try:
     import app
     print("✓ app.py imported successfully")
     
-    # Test database initialization
-    print("Testing database initialization...")
-    app.init_db()
-    print("✓ Database initialized successfully")
+    # Test database initialization - SAFE VERSION
+    print("Testing SAFE database initialization...")
+    app.safe_init_db()
+    print("✓ Database initialized SAFELY (preserving existing data)")
     
     # Test Flask app creation
     print("Testing Flask app...")
