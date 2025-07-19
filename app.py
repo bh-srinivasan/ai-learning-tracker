@@ -91,11 +91,29 @@ logger.info(f"Environment detected: {production_safety.environment}")
 if production_safety.environment == 'production':
     logger.warning("PRODUCTION ENVIRONMENT - Enhanced safety measures active")
 
-# Database configuration
-DATABASE = 'ai_learning.db'
+# Database configuration - dynamic based on environment
+def get_database_path():
+    """Get database path from environment configuration"""
+    database_url = os.getenv('DATABASE_URL', 'sqlite:///ai_learning.db')
+    if database_url.startswith('sqlite:///'):
+        return database_url.replace('sqlite:///', '')
+    elif database_url.startswith('sqlite://'):
+        return database_url.replace('sqlite://', '')
+    return 'ai_learning.db'
 
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
+    """Get database connection with environment-aware logging"""
+    database_path = get_database_path()
+    
+    # Log database connection details for debugging
+    logger.info(f"📂 Connecting to database: {os.path.abspath(database_path)}")
+    logger.info(f"🌍 Environment: {production_safety.environment}")
+    logger.info(f"💾 Database exists: {os.path.exists(database_path)}")
+    
+    if os.path.exists(database_path):
+        logger.info(f"📊 Database size: {os.path.getsize(database_path)} bytes")
+    
+    conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1110,7 +1128,7 @@ def safe_init_db():
         azure_db_sync.sync_from_azure_on_startup()
         
         # Check if database file exists (may have been downloaded from Azure)
-        db_path = DATABASE
+        db_path = get_database_path()
         if not os.path.exists(db_path):
             logger.info(f"📁 SAFE_INIT_DB: Database file {db_path} not found - will create new one")
             init_db()
