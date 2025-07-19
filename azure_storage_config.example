@@ -1,0 +1,24 @@
+# Azure Storage Configuration for Database Persistence
+# 
+# To enable Azure Storage database sync, you need to set these environment variables
+# in your Azure App Service Configuration:
+#
+# 1. Go to Azure Portal → Your App Service → Configuration → Application Settings
+# 2. Add these settings:
+
+# REQUIRED: Azure Storage Connection String
+# Get this from: Azure Portal → Storage Account → Access Keys → Connection String
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=YOUR_STORAGE_ACCOUNT;AccountKey=YOUR_ACCESS_KEY;EndpointSuffix=core.windows.net
+
+# OPTIONAL: Container name for database backups (default: database-backup)
+AZURE_STORAGE_CONTAINER=database-backup
+
+# LOCAL DEVELOPMENT: For testing locally, you can create a .env file with:
+# AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true  # For Azure Storage Emulator
+# Or use your actual Azure Storage connection string
+
+# SECURITY NOTES:
+# - Never commit actual connection strings to version control
+# - Use Azure Key Vault for production secrets
+# - Rotate storage keys regularly
+# - Consider using Managed Identity for authentication

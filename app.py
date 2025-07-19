@@ -1072,9 +1072,27 @@ def session_cleanup_scheduler():
             print(f"Session cleanup error: {e}")
             time.sleep(3600)  # Continue after error
 
-# Start session cleanup thread
+# Azure database backup scheduler
+def azure_backup_scheduler():
+    """Background thread to periodically backup database to Azure Storage"""
+    import time
+    time.sleep(300)  # Wait 5 minutes before first backup
+    
+    while True:
+        try:
+            from azure_database_sync import azure_db_sync
+            azure_db_sync.sync_to_azure_periodically()
+            time.sleep(1800)  # Backup every 30 minutes
+        except Exception as e:
+            logger.error(f"Azure backup scheduler error: {e}")
+            time.sleep(1800)  # Continue after error
+
+# Start background threads
 cleanup_thread = threading.Thread(target=session_cleanup_scheduler, daemon=True)
 cleanup_thread.start()
+
+backup_thread = threading.Thread(target=azure_backup_scheduler, daemon=True)
+backup_thread.start()
 
 # CRITICAL FIX: Prevent database reinitialization on every startup
 # Only initialize database if it doesn't exist or is empty
@@ -1082,16 +1100,23 @@ def safe_init_db():
     """
     CRITICAL FUNCTION: Initialize database only if it doesn't exist or is empty.
     NEVER OVERWRITES EXISTING DATA - ONLY CREATES MISSING TABLES.
+    Now includes Azure Storage sync for data persistence.
     """
     try:
         logger.info("🔍 SAFE_INIT_DB: Starting database safety check...")
         
-        # Check if database file exists
+        # AZURE STORAGE INTEGRATION: Sync from Azure on startup
+        from azure_database_sync import azure_db_sync
+        azure_db_sync.sync_from_azure_on_startup()
+        
+        # Check if database file exists (may have been downloaded from Azure)
         db_path = DATABASE
         if not os.path.exists(db_path):
             logger.info(f"📁 SAFE_INIT_DB: Database file {db_path} not found - will create new one")
             init_db()
             ensure_admin_exists()
+            # Upload new database to Azure Storage
+            azure_db_sync.upload_database_to_azure()
             return
         
         conn = get_db_connection()
@@ -1125,12 +1150,19 @@ def safe_init_db():
             # Still ensure admin exists but don't overwrite data
             ensure_admin_exists()
             logger.info("✅ SAFE_INIT_DB: Complete - existing data preserved")
+            
+            # AZURE STORAGE INTEGRATION: Upload database after successful verification
+            from azure_database_sync import azure_db_sync
+            azure_db_sync.upload_database_to_azure()
             return
         else:
             logger.info("📋 SAFE_INIT_DB: Users table exists but empty - safe to initialize")
             conn.close()
             init_db()
             ensure_admin_exists()
+            # Upload new database to Azure Storage
+            from azure_database_sync import azure_db_sync
+            azure_db_sync.upload_database_to_azure()
             return
         
     except Exception as e:

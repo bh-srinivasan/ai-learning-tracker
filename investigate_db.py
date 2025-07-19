@@ -1,19 +1,44 @@
 #!/usr/bin/env python3
 """
-Database investigation script for password reset issue
+Database investigation script with environment detection
+Automatically detects LOCAL vs AZURE and analyzes appropriately
 """
 import sqlite3
 import os
+import platform
 from datetime import datetime
 
+def detect_environment():
+    """Detect if running locally or on Azure"""
+    azure_indicators = [
+        'WEBSITE_SITE_NAME',
+        'WEBSITE_RESOURCE_GROUP',
+        'SCM_REPOSITORY_PATH',
+    ]
+    
+    for indicator in azure_indicators:
+        if os.getenv(indicator):
+            return 'AZURE'
+            
+    return 'LOCAL'
+
 def check_database():
+    env = detect_environment()
     db_path = 'ai_learning.db'
     
+    print(f"🌍 ENVIRONMENT: {env}")
+    print(f"🖥️  Platform: {platform.platform()}")
+    print(f"📁 Working Directory: {os.getcwd()}")
+    print("=" * 60)
+    
     if not os.path.exists(db_path):
-        print(f"Database file {db_path} not found!")
+        print(f"❌ Database file {db_path} not found!")
+        if env == 'AZURE':
+            print("🚨 CRITICAL: On Azure, this means database gets recreated on each deployment!")
+            print("   This explains why users keep getting deleted!")
         return
     
-    print(f"Database file {db_path} exists. Size: {os.path.getsize(db_path)} bytes")
+    print(f"✅ Database file {db_path} exists. Size: {os.path.getsize(db_path)} bytes")
     
     try:
         conn = sqlite3.connect(db_path)
