@@ -36,25 +36,24 @@ endblock %} {% block content %}
   </div>
 </div>
 
-<!-- Quick Stats and Filters -->
+<!-- Quick Stats Dashboard -->
 <div class="row mb-4">
-  <div class="col-md-12">
-    <div class="card">
-      <div class="card-body">
-        <div class="row">
-          <div class="col-md-4">
-            <div class="stat-card text-center">
-              <h5 class="text-primary">{{ courses|length }}</h5>
-              <small class="text-muted">Total Courses</small>
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body py-3">
+        <div class="row g-3 align-items-center justify-content-center">
+          <div class="col-md-6 col-lg-4">
+            <div class="stat-card text-center p-3 rounded bg-light border">
+              <h4 class="text-primary mb-1 fw-bold">{{ courses|length }}</h4>
+              <small class="text-muted fw-medium">Total Courses</small>
             </div>
           </div>
-          <div class="col-md-6">
-            <div class="stat-card text-center">
-              <h5 class="text-warning">
-                {{ courses|selectattr('source', 'equalto', 'Manual')|list|length
-                }}
-              </h5>
-              <small class="text-muted">Manual Entries</small>
+          <div class="col-md-6 col-lg-4">
+            <div class="stat-card text-center p-3 rounded bg-light border">
+              <h4 class="text-warning mb-1 fw-bold">
+                {{ courses|selectattr('source', 'equalto', 'Manual')|list|length }}
+              </h4>
+              <small class="text-muted fw-medium">Manual Entries</small>
             </div>
           </div>
         </div>
@@ -63,11 +62,11 @@ endblock %} {% block content %}
   </div>
 </div>
 
-<div class="card">
-  <div class="card-header">
+<div class="card shadow-sm">
+  <div class="card-header bg-white border-bottom">
     <div class="row align-items-center">
       <div class="col-md-6">
-        <h5 class="mb-0"><i class="fas fa-list"></i> Course Catalog</h5>
+        <h5 class="mb-0 fw-semibold"><i class="fas fa-list me-2"></i>Course Catalog</h5>
       </div>
       <div class="col-md-6 text-end">
         <div class="btn-group" role="group">
@@ -118,7 +117,6 @@ endblock %} {% block content %}
     </div>
   </div>
   <div class="card-body">
-    {% if courses %}
     <!-- Advanced Filters -->
     <div class="row mb-3">
       <div class="col-md-3">
@@ -148,7 +146,6 @@ endblock %} {% block content %}
           <option value="">All Status</option>
           <option value="Working" {% if current_url_status == 'Working' %}selected{% endif %}>✅ Working</option>
           <option value="Not Working" {% if current_url_status == 'Not Working' %}selected{% endif %}>❌ Not Working</option>
-          <option value="Broken" {% if current_url_status == 'Broken' %}selected{% endif %}>🔗 Broken</option>
           <option value="unchecked" {% if current_url_status == 'unchecked' %}selected{% endif %}>⏸️ Unchecked</option>
         </select>
       </div>
@@ -210,12 +207,12 @@ endblock %} {% block content %}
           <nav aria-label="Course pagination">
             <ul class="pagination pagination-sm mb-0">
               <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('admin_courses', page=1, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="First">
+                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('admin_courses', page=1, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level, url_status=current_url_status, points=current_points) }}{% else %}#{% endif %}" aria-label="First">
                   <span aria-hidden="true">&laquo;&laquo;</span>
                 </a>
               </li>
               <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('admin_courses', page=pagination.prev_page, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="Previous">
+                <a class="page-link" href="{% if pagination.has_prev %}{{ url_for('admin_courses', page=pagination.prev_page, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level, url_status=current_url_status, points=current_points) }}{% else %}#{% endif %}" aria-label="Previous">
                   <span aria-hidden="true">&laquo;</span>
                 </a>
               </li>
@@ -227,18 +224,18 @@ endblock %} {% block content %}
                   </li>
                 {% else %}
                   <li class="page-item">
-                    <a class="page-link" href="{{ url_for('admin_courses', page=page_num, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}">{{ page_num }}</a>
+                    <a class="page-link" href="{{ url_for('admin_courses', page=page_num, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level, url_status=current_url_status, points=current_points) }}">{{ page_num }}</a>
                   </li>
                 {% endif %}
               {% endfor %}
               
               <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('admin_courses', page=pagination.next_page, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="Next">
+                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('admin_courses', page=pagination.next_page, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level, url_status=current_url_status, points=current_points) }}{% else %}#{% endif %}" aria-label="Next">
                   <span aria-hidden="true">&raquo;</span>
                 </a>
               </li>
               <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('admin_courses', page=pagination.total_pages, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level) }}{% else %}#{% endif %}" aria-label="Last">
+                <a class="page-link" href="{% if pagination.has_next %}{{ url_for('admin_courses', page=pagination.total_pages, per_page=pagination.per_page, search=current_search, source=current_source, level=current_level, url_status=current_url_status, points=current_points) }}{% else %}#{% endif %}" aria-label="Last">
                   <span aria-hidden="true">&raquo;&raquo;</span>
                 </a>
               </li>
@@ -291,6 +288,7 @@ endblock %} {% block content %}
           </tr>
         </thead>
         <tbody>
+          {% if courses %}
           {% for course in courses %}
           <tr data-course-id="{{ course.id }}">
             <td>
@@ -405,35 +403,45 @@ endblock %} {% block content %}
             </td>
           </tr>
           {% endfor %}
+          {% else %}
+          <!-- Empty State Row -->
+          <tr>
+            <td colspan="9" class="text-center py-5">
+              <div class="empty-state">
+                <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                <h4 class="text-muted mb-3">
+                  {% if current_search or current_source or current_level or current_url_status or current_points %}
+                  No courses found for selected filters
+                  {% else %}
+                  No courses available
+                  {% endif %}
+                </h4>
+                <p class="text-muted mb-4">
+                  {% if current_search or current_source or current_level or current_url_status or current_points %}
+                  Try adjusting your filters or <a href="{{ url_for('admin_courses') }}" class="text-decoration-none">clear all filters</a> to see all courses.
+                  {% else %}
+                  Start by adding your first course or importing AI courses from verified sources.
+                  {% endif %}
+                </p>
+                {% if not (current_search or current_source or current_level or current_url_status or current_points) %}
+                <div>
+                  <a href="{{ url_for('admin_add_course') }}" class="btn btn-primary me-2">
+                    <i class="fas fa-plus"></i> Add First Course
+                  </a>
+                  <form method="POST" action="{{ url_for('admin_populate_ai_courses') }}" class="d-inline">
+                    <button type="submit" class="btn btn-info" onclick="return confirm('Add AI courses from multiple verified sources?')">
+                      <i class="fas fa-plus-circle"></i> Import AI Courses
+                    </button>
+                  </form>
+                </div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endif %}
         </tbody>
       </table>
     </div>
-    {% else %}
-    <div class="text-center py-5">
-      <i class="fas fa-graduation-cap fa-4x text-muted mb-4"></i>
-      <h4 class="text-muted">No courses found</h4>
-      <p class="text-muted mb-4">
-        Start by adding your first course or importing LinkedIn courses.
-      </p>
-      <div>
-        <a
-          href="{{ url_for('admin_add_course') }}"
-          class="btn btn-primary btn-lg me-2"
-        >
-          <i class="fas fa-plus"></i> Add First Course
-        </a>
-        <form
-          method="POST"
-          action="{{ url_for('admin_populate_ai_courses') }}"
-          class="d-inline"
-        >
-          <button type="submit" class="btn btn-info btn-lg">
-            <i class="fas fa-plus-circle"></i> Import Courses
-          </button>
-        </form>
-      </div>
-    </div>
-    {% endif %}
   </div>
 </div>
 
@@ -485,6 +493,35 @@ endblock %} {% block content %}
   .stat-card {
     padding: 15px;
     border-left: 4px solid #dee2e6;
+    transition: all 0.2s ease;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .empty-state {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    padding: 3rem 2rem;
+    margin: 1rem 0;
+    text-align: center;
+    border: 2px dashed #dee2e6;
+  }
+
+  .empty-state i {
+    opacity: 0.6;
+  }
+
+  .empty-state .btn {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+  }
+
+  .empty-state .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .course-description {
