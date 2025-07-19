@@ -2053,11 +2053,11 @@ def admin_courses():
             
         if points_filter:
             if points_filter == "0-50":
-                where_conditions.append("CAST(points_required as INTEGER) BETWEEN 0 AND 50")
+                where_conditions.append("CAST(points as INTEGER) BETWEEN 0 AND 50")
             elif points_filter == "51-100":
-                where_conditions.append("CAST(points_required as INTEGER) BETWEEN 51 AND 100")
+                where_conditions.append("CAST(points as INTEGER) BETWEEN 51 AND 100")
             elif points_filter == "101+":
-                where_conditions.append("CAST(points_required as INTEGER) > 100")
+                where_conditions.append("CAST(points as INTEGER) > 100")
         
         where_clause = ""
         if where_conditions:
