@@ -24,11 +24,13 @@ endblock %} {% block content %}
       method="POST"
       action="{{ url_for('admin_populate_ai_courses') }}"
       class="d-inline"
+      onsubmit="showLoadingState(this)"
     >
       <button
         type="submit"
         class="btn btn-info"
-        onclick="return confirm('Add AI courses from multiple verified sources (Microsoft, Coursera, edX, etc.)?')"
+        id="addCoursesBtn"
+        onclick="return confirm('🚀 Discover and add AI courses from verified sources?\\n\\n📡 This will search Microsoft Learn, Coursera, edX, and other educational platforms for new AI courses.\\n\\n⏱️ Process may take 30-60 seconds.')"
       >
         <i class="fas fa-plus-circle"></i> Add Courses
       </button>
@@ -1876,6 +1878,24 @@ Sorting:
 
     // Initialize bulk delete button state
     updateBulkDeleteButton();
+
+    // Add Courses loading state function
+    window.showLoadingState = function(form) {
+      const button = form.querySelector('#addCoursesBtn');
+      const icon = button.querySelector('i');
+      const originalText = button.innerHTML;
+      
+      // Show loading state
+      button.disabled = true;
+      button.classList.remove('btn-info');
+      button.classList.add('btn-secondary');
+      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Discovering Courses...';
+      
+      // Store original content for potential restoration
+      button.setAttribute('data-original', originalText);
+      
+      return true; // Allow form submission
+    };
   });
 </script>
 {% endblock %}

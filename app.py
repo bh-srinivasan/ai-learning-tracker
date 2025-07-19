@@ -2902,22 +2902,21 @@ def admin_populate_ai_courses():
     """Populate courses with dynamically fetched AI courses from allowed sources (admin only)"""
     logger.info("🔍 Admin initiated dynamic AI course population from multiple sources")
     
-    # Import the dynamic course fetcher with source validation
+    # Import the ENHANCED course fetcher with real web scraping
     try:
-        from dynamic_course_fetcher import get_dynamic_ai_courses
-        from course_sources_config import get_source_description
-        logger.info("✅ Dynamic course fetcher module loaded successfully with source validation")
+        from enhanced_course_fetcher import get_enhanced_ai_courses
+        logger.info("✅ Enhanced course fetcher module loaded successfully with real web scraping")
     except ImportError as e:
-        logger.error(f"❌ Failed to import dynamic course fetcher: {str(e)}")
-        flash('Error: Dynamic course fetcher module not available', 'error')
+        logger.error(f"❌ Failed to import enhanced course fetcher: {str(e)}")
+        flash('Error: Enhanced course fetcher module not available', 'error')
         return redirect(url_for('admin_courses'))
     
     conn = get_db_connection()
     try:
         logger.info("📡 Starting dynamic AI course fetching process...")
         
-        # Fetch AI courses dynamically (fetch ALL available courses)
-        ai_courses = get_dynamic_ai_courses(max_courses=200)  # Increased limit to get more courses
+        # Fetch AI courses dynamically using REAL web scraping (fetch ALL available courses)
+        ai_courses = get_enhanced_ai_courses(max_courses=200)  # Increased limit to get more courses
         
         if not ai_courses:
             logger.warning("⚠️ No AI courses were fetched")
