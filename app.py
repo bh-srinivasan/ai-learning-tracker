@@ -1079,65 +1079,77 @@ cleanup_thread.start()
 # CRITICAL FIX: Prevent database reinitialization on every startup
 # Only initialize database if it doesn't exist or is empty
 def safe_init_db():
-    """Initialize database only if it doesn't exist or is empty"""
+    """Initialize database only if it doesn't exist or is empty, then ensure admin user exists"""
     try:
         conn = get_db_connection()
         # Check if users table exists and has data
         result = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+        
+        database_was_empty = False
         if result:
-            # Check if there are any users (admin should exist)
+            # Check if there are any users
             user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             if user_count > 0:
-                logger.info(f"✅ Database already initialized with {user_count} users - skipping init")
+                logger.info(f"✅ Database already initialized with {user_count} users")
                 conn.close()
+                
+                # Still need to ensure admin user exists
+                ensure_admin_exists()
                 return
+            else:
+                database_was_empty = True
+        else:
+            database_was_empty = True
         
-        logger.info("🔄 Database empty or missing - initializing safely...")
-        conn.close()
-        init_db()
-        logger.info("✅ Database initialization complete")
+        if database_was_empty:
+            logger.info("🔄 Database empty or missing - initializing safely...")
+            conn.close()
+            init_db()
+            logger.info("✅ Database schema initialization complete")
+        
+        # Always ensure admin user exists after initialization
+        ensure_admin_exists()
+        
     except Exception as e:
         logger.error(f"❌ Database initialization check failed: {e}")
         # Fallback to normal init
         init_db()
+        ensure_admin_exists()
 
-# One-time admin user initialization for Azure deployment
-def ensure_admin_user():
-    """Create admin user if it doesn't exist - Azure only"""
+def ensure_admin_exists():
+    """Ensure admin user exists in all environments"""
     try:
-        # Only run in Azure environment
-        if os.environ.get('WEBSITE_SITE_NAME'):  # Azure App Service environment variable
-            conn = get_db_connection()
-            cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if admin user exists
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        if not cursor.fetchone():
+            # Create admin user
+            admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
+            password_hash = generate_password_hash(admin_password)
             
-            # Check if admin user exists
-            cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-            if not cursor.fetchone():
-                # Create admin user
-                admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword123!')
-                password_hash = generate_password_hash(admin_password)
-                
-                cursor.execute("""
-                    INSERT INTO users (
-                        username, password_hash, level, points, status,
-                        user_selected_level, login_count, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    'admin', password_hash, 'Advanced', 100, 'active',
-                    'Advanced', 0, datetime.now().isoformat()
-                ))
-                
-                conn.commit()
-                logger.info("✅ Admin user created for Azure deployment")
-            else:
-                logger.info("✅ Admin user already exists")
+            cursor.execute("""
+                INSERT INTO users (
+                    username, password_hash, level, points, status,
+                    user_selected_level, login_count, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                'admin', password_hash, 'Advanced', 100, 'active',
+                'Advanced', 0, datetime.now().isoformat()
+            ))
             
-            conn.close()
+            conn.commit()
+            logger.info("✅ Admin user created successfully")
+        else:
+            logger.info("✅ Admin user already exists")
+        
+        conn.close()
     except Exception as e:
-        logger.error(f"❌ Admin user initialization failed: {e}")
+        logger.error(f"❌ Admin user creation failed: {e}")
 
-# Run admin initialization
-ensure_admin_user()
+# Initialize database on startup (SAFE VERSION - preserves existing data)
+safe_init_db()
 
 # EMERGENCY FIX: Disable deployment safety to prevent data resets
 # Initialize deployment safety and data integrity monitoring
