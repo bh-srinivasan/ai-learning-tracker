@@ -2915,8 +2915,8 @@ def admin_populate_ai_courses():
     try:
         logger.info("📡 Starting dynamic AI course fetching process...")
         
-        # Fetch AI courses dynamically using REAL web scraping (fetch ALL available courses)
-        ai_courses = get_enhanced_ai_courses(max_courses=200)  # Increased limit to get more courses
+        # Fetch AI courses dynamically using REAL web scraping (fetch MORE available courses)
+        ai_courses = get_enhanced_ai_courses(max_courses=50)  # Increased to get more courses per batch
         
         if not ai_courses:
             logger.warning("⚠️ No AI courses were fetched")
