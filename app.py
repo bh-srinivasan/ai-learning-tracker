@@ -1708,12 +1708,12 @@ def learnings():
     # Get user's learning entries
     conn = get_db_connection()
     try:
-        learnings = conn.execute('''
+        entries = conn.execute('''
             SELECT * FROM learning_entries 
             WHERE user_id = ? 
             ORDER BY date_added DESC
         ''', (user['id'],)).fetchall()
-        return render_template('learnings/index.html', learnings=learnings)
+        return render_template('learnings/index.html', entries=entries)
     finally:
         conn.close()
 
