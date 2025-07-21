@@ -20,21 +20,15 @@ endblock %} {% block content %}
     <a href="{{ url_for('admin_add_course') }}" class="btn btn-primary me-2">
       <i class="fas fa-plus"></i> Add Custom Course
     </a>
-    <form
-      method="POST"
-      action="{{ url_for('admin_populate_ai_courses') }}"
-      class="d-inline"
-      onsubmit="showLoadingState(this)"
+    <button
+      type="button"
+      class="btn btn-info"
+      id="addCoursesBtn"
+      onclick="startFastCourseFetching(this)"
+      title="Fetch 10 AI/Copilot courses from live APIs (Microsoft Learn, GitHub) - Real APIs only, no fallbacks"
     >
-      <button
-        type="submit"
-        class="btn btn-info"
-        id="addCoursesBtn"
-        onclick="return confirm('🚀 Discover and add AI courses from verified sources?\\n\\n📡 This will search Microsoft Learn, Coursera, edX, and other educational platforms for new AI courses.\\n\\n⏱️ Process may take 30-60 seconds.')"
-      >
-        <i class="fas fa-plus-circle"></i> Add Courses
-      </button>
-    </form>
+      <i class="fas fa-download"></i> Fetch Live AI Courses
+    </button>
   </div>
 </div>
 
@@ -46,15 +40,13 @@ endblock %} {% block content %}
         <div class="row g-3 align-items-center justify-content-center">
           <div class="col-md-6 col-lg-4">
             <div class="stat-card text-center p-3 rounded bg-light border">
-              <h4 class="text-primary mb-1 fw-bold">{{ courses|length }}</h4>
+              <h4 class="text-primary mb-1 fw-bold">{{ stats.total_courses }}</h4>
               <small class="text-muted fw-medium">Total Courses</small>
             </div>
           </div>
           <div class="col-md-6 col-lg-4">
             <div class="stat-card text-center p-3 rounded bg-light border">
-              <h4 class="text-warning mb-1 fw-bold">
-                {{ courses|selectattr('source', 'equalto', 'Manual')|list|length }}
-              </h4>
+              <h4 class="text-warning mb-1 fw-bold">{{ stats.manual_entries }}</h4>
               <small class="text-muted fw-medium">Manual Entries</small>
             </div>
           </div>
@@ -918,6 +910,175 @@ endblock %} {% block content %}
 </style>
 
 <script>
+  // Global Course Fetching Functions (must be outside DOMContentLoaded for onclick access)
+  
+  // Test function to verify button connectivity
+  console.log('Course fetching script loaded');
+  
+  // Fast AI Course Fetching with Real-time Updates
+  function startFastCourseFetching(button) {
+    console.log('startFastCourseFetching called with button:', button);
+    
+    // Disable button and show loading state
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching from APIs...';
+    
+    // Show initial toast
+    showToast('Starting fast course fetch from live APIs (no fallbacks)', 'info');
+    
+    // AJAX request to start course fetching
+    console.log('Making AJAX request to /admin/populate-ai-courses');
+    fetch('/admin/populate-ai-courses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    .then(response => {
+      console.log('Response received:', response);
+      return response.json();
+    })
+    .then(data => {
+      console.log('Data received:', data);
+      if (data.success) {
+        showToast('Course fetching started! Real-time updates below...', 'success');
+        
+        // Start polling for status updates
+        pollFetchStatus(data.fetch_id, button);
+      } else {
+        throw new Error(data.error || 'Failed to start course fetching');
+      }
+    })
+    .catch(error => {
+      console.error('Error starting course fetch:', error);
+      showToast(`Error: ${error.message}`, 'error');
+      resetButton(button);
+    });
+  }
+  
+  function pollFetchStatus(fetchId, button) {
+    const statusInterval = setInterval(() => {
+      fetch(`/admin/course-fetch-status/${fetchId}`)
+        .then(response => response.json())
+        .then(status => {
+          console.log('Fetch status:', status);
+          
+          if (status.status === 'fetching') {
+            showToast(status.message, 'info');
+            button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${status.message}`;
+          } 
+          else if (status.status === 'complete') {
+            clearInterval(statusInterval);
+            const result = status.result;
+            
+            if (result.courses_added > 0) {
+              showToast(
+                `Success! Added ${result.courses_added} courses in ${result.total_time}s from ${result.apis_used} APIs`, 
+                'success'
+              );
+              
+              // Refresh the course list
+              setTimeout(() => {
+                window.location.reload();
+              }, 2000);
+            } else {
+              showToast('No new courses found (may be duplicates or API issues)', 'warning');
+            }
+            
+            resetButton(button);
+          }
+          else if (status.status === 'error') {
+            clearInterval(statusInterval);
+            showToast(`Error: ${status.message}`, 'error');
+            resetButton(button);
+          }
+        })
+        .catch(error => {
+          clearInterval(statusInterval);
+          console.error('Error polling status:', error);
+          showToast('Lost connection to status updates', 'error');
+          resetButton(button);
+        });
+    }, 3000); // Poll every 3 seconds
+    
+    // Safety timeout after 30 seconds
+    setTimeout(() => {
+      clearInterval(statusInterval);
+      showToast('Fetch timeout - please check manually', 'warning');
+      resetButton(button);
+    }, 30000);
+  }
+  
+  function resetButton(button) {
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-download"></i> Fetch Live AI Courses';
+  }
+  
+  function showToast(message, type) {
+    // Create toast container if it doesn't exist
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+      toastContainer = document.createElement('div');
+      toastContainer.id = 'toast-container';
+      toastContainer.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        max-width: 350px;
+      `;
+      document.body.appendChild(toastContainer);
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    const bgColor = {
+      success: '#d4edda',
+      error: '#f8d7da',
+      warning: '#fff3cd',
+      info: '#d1ecf1'
+    }[type] || '#d1ecf1';
+    
+    const textColor = {
+      success: '#155724',
+      error: '#721c24',
+      warning: '#856404',
+      info: '#0c5460'
+    }[type] || '#0c5460';
+    
+    toast.style.cssText = `
+      background-color: ${bgColor};
+      color: ${textColor};
+      border: 1px solid;
+      border-radius: 5px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      font-size: 14px;
+      line-height: 1.4;
+    `;
+    
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => {
+      toast.style.opacity = '1';
+    }, 100);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
+    }, 5000);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     console.log("DOM loaded - Pagination-based course management");
 
@@ -1879,23 +2040,136 @@ Sorting:
     // Initialize bulk delete button state
     updateBulkDeleteButton();
 
-    // Add Courses loading state function
-    window.showLoadingState = function(form) {
+    // Initialize validation start time when validation starts
+    
+    window.handleAddCoursesSubmit = function(form) {
+      const now = Date.now();
       const button = form.querySelector('#addCoursesBtn');
+      
+      // Check if button is already processing
+      if (button.disabled) {
+        console.log('Add Courses: Already processing, ignoring request');
+        return false;
+      }
+      
+      // Debounce check
+      if (now - lastAddCoursesRequest < DEBOUNCE_DELAY) {
+        const remaining = Math.ceil((DEBOUNCE_DELAY - (now - lastAddCoursesRequest)) / 1000);
+        showToast(`Please wait ${remaining} more second(s) before fetching again`, 'warning');
+        return false;
+      }
+      
+      // Confirmation dialog with detailed information
+      const confirmed = confirm(
+        '🎯 Generate Exactly 25 URL-Validated AI Courses?\n\n' +
+        '� This will create and validate courses from:\n' +
+        '• LinkedIn Learning\n' +
+        '• Microsoft Learn\n' +
+        '• Coursera\n\n' +
+        '✅ Every course URL will be validated before adding\n' +
+        '🚫 Invalid or broken links are automatically rejected\n' +
+        '🔄 Retries until exactly 25 valid courses are found\n' +
+        '⏱️ Process may take 30-60 seconds for thorough validation\n\n' +
+        'Continue with URL validation?'
+      );
+      
+      if (!confirmed) {
+        return false;
+      }
+      
+      // Update last request time
+      lastAddCoursesRequest = now;
+      
+      // Show enhanced loading state
+      showEnhancedLoadingState(button);
+      
+      return true; // Allow form submission
+    };
+    
+    window.showEnhancedLoadingState = function(button) {
       const icon = button.querySelector('i');
       const originalText = button.innerHTML;
+      
+      // Store original content
+      button.setAttribute('data-original', originalText);
       
       // Show loading state
       button.disabled = true;
       button.classList.remove('btn-info');
       button.classList.add('btn-secondary');
-      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Discovering Courses...';
       
-      // Store original content for potential restoration
-      button.setAttribute('data-original', originalText);
+      // Animated loading with progress indication
+      let dots = '';
+      let step = 0;
+      const steps = [
+        'Initializing Robust Generator',
+        'Generating Course Candidates',
+        'Validating Course URLs', 
+        'Checking URL Accessibility',
+        'Filtering Valid Courses',
+        'Retrying Failed Validations',
+        'Saving Validated Courses'
+      ];
       
-      return true; // Allow form submission
+      const updateLoadingText = () => {
+        dots = dots.length < 3 ? dots + '.' : '';
+        const currentStep = steps[Math.floor(step / 10) % steps.length];
+        button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${currentStep}${dots}`;
+        step++;
+      };
+      
+      // Update every 500ms
+      const loadingInterval = setInterval(updateLoadingText, 500);
+      
+      // Store interval ID for cleanup
+      button.setAttribute('data-loading-interval', loadingInterval);
+      
+      // Auto-restore after 30 seconds (failsafe)
+      setTimeout(() => {
+        clearInterval(loadingInterval);
+        if (button.disabled) {
+          restoreButtonState(button);
+        }
+      }, 30000);
     };
+    
+    window.restoreButtonState = function(button) {
+      const originalText = button.getAttribute('data-original');
+      const intervalId = button.getAttribute('data-loading-interval');
+      
+      if (intervalId) {
+        clearInterval(parseInt(intervalId));
+        button.removeAttribute('data-loading-interval');
+      }
+      
+      if (originalText) {
+        button.innerHTML = originalText;
+        button.removeAttribute('data-original');
+      }
+      
+      button.disabled = false;
+      button.classList.remove('btn-secondary');
+      button.classList.add('btn-info');
+    };
+    
+    // Legacy function for backward compatibility
+    window.showLoadingState = function(form) {
+      const button = form.querySelector('#addCoursesBtn');
+      if (button) {
+        showEnhancedLoadingState(button);
+      }
+      return true;
+    };
+    
+    // Auto-restore button state on page load (in case of refresh during processing)
+    document.addEventListener('DOMContentLoaded', function() {
+      const addCoursesBtn = document.getElementById('addCoursesBtn');
+      if (addCoursesBtn && addCoursesBtn.disabled) {
+        setTimeout(() => {
+          restoreButtonState(addCoursesBtn);
+        }, 1000);
+      }
+    });
   });
 </script>
 {% endblock %}

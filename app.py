@@ -2086,6 +2086,17 @@ def admin_courses():
         sources = conn.execute('SELECT DISTINCT source FROM courses WHERE source IS NOT NULL ORDER BY source').fetchall()
         levels = conn.execute('SELECT DISTINCT level FROM courses WHERE level IS NOT NULL ORDER BY level').fetchall()
         
+        # Calculate statistics for the dashboard (from entire database, not just current page)
+        stats_query = '''
+            SELECT 
+                COUNT(*) as total_courses,
+                COUNT(CASE WHEN source = 'Manual' THEN 1 END) as manual_entries,
+                COUNT(CASE WHEN url_status = 'Working' THEN 1 END) as working_urls,
+                COUNT(CASE WHEN url_status = 'Not Working' OR url_status = 'Broken' THEN 1 END) as broken_urls
+            FROM courses
+        '''
+        stats = conn.execute(stats_query).fetchone()
+        
         pagination_info = {
             'page': page,
             'per_page': per_page,
@@ -2102,6 +2113,7 @@ def admin_courses():
         return render_template('admin/courses.html', 
                              courses=courses, 
                              pagination=pagination_info,
+                             stats=stats,
                              sources=[row['source'] for row in sources],
                              levels=[row['level'] for row in levels],
                              current_search=search,
@@ -2896,106 +2908,102 @@ def admin_add_course():
     
     return render_template('admin/add_course.html')
 
+# Global storage for course fetch status (since background threads can't access Flask session)
+course_fetch_status = {}
+
 @app.route('/admin/populate-ai-courses', methods=['POST'])
 @require_admin
 def admin_populate_ai_courses():
-    """Populate courses with dynamically fetched AI courses from allowed sources (admin only)"""
-    logger.info("🔍 Admin initiated dynamic AI course population from multiple sources")
+    """Fetch AI/Copilot courses from live APIs with real-time updates"""
+    logger.info("🔍 Admin initiated FAST live API course fetching")
     
-    # Import the ENHANCED course fetcher with real web scraping
+    # Import the FAST course fetcher (no fallbacks)
     try:
-        from enhanced_course_fetcher import get_enhanced_ai_courses
-        logger.info("✅ Enhanced course fetcher module loaded successfully with real web scraping")
+        from fast_course_fetcher import get_fast_ai_courses
+        logger.info("✅ Fast course API fetcher module loaded successfully")
     except ImportError as e:
-        logger.error(f"❌ Failed to import enhanced course fetcher: {str(e)}")
-        flash('Error: Enhanced course fetcher module not available', 'error')
-        return redirect(url_for('admin_courses'))
-    
-    conn = get_db_connection()
+        logger.error(f"❌ Failed to import fast course fetcher: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Fast course fetcher module not available'
+        }), 500
+
     try:
-        logger.info("📡 Starting dynamic AI course fetching process...")
+        logger.info("📡 Starting FAST live API course fetching...")
         
-        # Fetch AI courses dynamically using REAL web scraping (fetch MORE available courses)
-        ai_courses = get_enhanced_ai_courses(max_courses=50)  # Increased to get more courses per batch
+        # Start asynchronous course fetching with real-time updates
+        import threading
+        import uuid
         
-        if not ai_courses:
-            logger.warning("⚠️ No AI courses were fetched")
-            flash('No AI courses could be fetched at this time. Please try again later.', 'warning')
-            return redirect(url_for('admin_courses'))
+        # Generate unique fetch ID for this request
+        fetch_id = str(uuid.uuid4())[:8]
         
-        logger.info(f"📚 Fetched {len(ai_courses)} AI courses for processing")
-        
-        added_count = 0
-        skipped_count = 0
-        
-        for course in ai_courses:
+        def fetch_courses_async():
+            """Background task to fetch courses asynchronously"""
             try:
-                # Validate required course data
-                if not all(key in course for key in ['title', 'description', 'source', 'url', 'level', 'points']):
-                    logger.warning(f"⚠️ Skipping course with missing data: {course.get('title', 'Unknown')}")
-                    skipped_count += 1
-                    continue
+                # Update status: Starting
+                course_fetch_status[fetch_id] = {
+                    'status': 'fetching',
+                    'message': 'Fetching courses from live APIs...',
+                    'progress': 10
+                }
                 
-                # Check if course already exists (prevent duplicates)
-                existing = conn.execute(
-                    'SELECT id FROM courses WHERE title = ? AND source = ?',
-                    (course['title'], course['source'])
-                ).fetchone()
+                # Fetch courses (faster, no fallbacks)
+                result = get_fast_ai_courses(10)  # Reduced count for speed
                 
-                if existing:
-                    logger.info(f"⏭️ Course already exists, skipping: {course['title']}")
-                    skipped_count += 1
-                    continue
+                # Update status: Complete
+                course_fetch_status[fetch_id] = {
+                    'status': 'complete',
+                    'message': f'Successfully added {result["courses_added"]} courses in {result["total_time"]}s',
+                    'progress': 100,
+                    'result': result
+                }
                 
-                # Insert new course with timestamp
-                conn.execute('''
-                    INSERT INTO courses (title, description, source, url, link, level, points, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                ''', (
-                    course['title'],
-                    course['description'], 
-                    course['source'],
-                    course['url'],
-                    course.get('link', course['url']),  # Use link if available, fallback to url
-                    course['level'],
-                    course['points']
-                ))
+                logger.info(f"📚 Fast course fetching completed: {result['courses_added']} courses added")
                 
-                added_count += 1
-                logger.info(f"✅ Added course: {course['title']} ({course['level']}, {course['points']} pts)")
-                
-            except Exception as course_error:
-                logger.error(f"❌ Error processing course {course.get('title', 'Unknown')}: {str(course_error)}")
-                skipped_count += 1
-                continue
+            except Exception as e:
+                # Update status: Error
+                course_fetch_status[fetch_id] = {
+                    'status': 'error',
+                    'message': f'Error: {str(e)}',
+                    'progress': 0,
+                    'error': str(e)
+                }
+                logger.error(f"❌ Fast course fetching failed: {e}")
         
-        # Commit transaction (either all courses added successfully or rollback on error)
-        conn.commit()
-        logger.info(f"💾 Transaction committed successfully - {added_count} courses added")
+        # Start background thread
+        fetch_thread = threading.Thread(target=fetch_courses_async)
+        fetch_thread.daemon = True
+        fetch_thread.start()
         
-        # Prepare success message
-        if added_count > 0:
-            message = f'Successfully added {added_count} new AI courses from verified sources!'
-            if skipped_count > 0:
-                message += f' ({skipped_count} courses were skipped - already exist or invalid data)'
-            flash(message, 'success')
-            logger.info(f"✅ Course population completed: {added_count} added, {skipped_count} skipped from multiple sources")
-        else:
-            flash('No new AI courses were added. All courses may already exist in the database.', 'info')
-            logger.info("ℹ️ No new courses added - all may already exist")
+        # Return JSON response with fetch ID for status tracking
+        return jsonify({
+            'success': True,
+            'fetch_id': fetch_id,
+            'message': 'Course fetching started - real APIs only, no fallbacks'
+        })
             
     except Exception as e:
-        # Rollback transaction on error
-        conn.rollback()
-        error_msg = f'Error fetching AI courses: {str(e)}'
-        logger.error(f"❌ Course population failed: {error_msg}")
-        flash(error_msg, 'error')
-        
-    finally:
-        conn.close()
-        logger.info("🔚 Database connection closed")
-    
-    return redirect(url_for('admin_courses'))
+        error_msg = f'Error starting fast API course fetching: {str(e)}'
+        logger.error(f"❌ Failed to start fast background fetching: {error_msg}")
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        }), 500
+
+@app.route('/admin/course-fetch-status/<fetch_id>')
+@require_admin
+def get_course_fetch_status(fetch_id):
+    """Get the status of a course fetching operation"""
+    status = course_fetch_status.get(fetch_id)
+    if status:
+        return jsonify(status)
+    else:
+        return jsonify({
+            'status': 'not_found',
+            'message': 'Fetch operation not found'
+        }), 404
+
 
 # Backward compatibility alias for old route name
 @app.route('/admin/populate-linkedin-courses', methods=['POST'])

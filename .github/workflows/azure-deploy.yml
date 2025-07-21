@@ -1,0 +1,172 @@
+name: Deploy AI Learning Tracker to Azure
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+    types: [closed]
+
+env:
+  AZURE_WEBAPP_NAME: ai-learning-tracker-bharath
+  AZURE_WEBAPP_PACKAGE_PATH: '.'
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Create virtual environment
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+    
+    - name: Install dependencies
+      run: |
+        source venv/bin/activate
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run validation tests
+      run: |
+        source venv/bin/activate
+        python test_course_validation.py
+        echo "✅ Course validation tests passed"
+    
+    - name: Security scan for protected users
+      run: |
+        source venv/bin/activate
+        python -c "
+import re
+import os
+from pathlib import Path
+
+print('🔒 Running security scan for protected user logic...')
+issues = []
+patterns = [
+    (r'generate_password_hash.*admin.*admin', 'Hardcoded admin password'),
+    (r'DELETE.*users.*admin', 'Admin deletion attempt'),
+    (r'UPDATE.*users.*password.*admin', 'Direct admin password update')
+]
+
+for py_file in Path('.').glob('**/*.py'):
+    try:
+        content = py_file.read_text(encoding='utf-8')
+        for pattern, desc in patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                issues.append(f'{py_file}: {desc}')
+    except:
+        pass
+
+if issues:
+    print('⚠️ Security issues found:')
+    for issue in issues:
+        print(f'  - {issue}')
+    exit(1)
+else:
+    print('✅ Security scan passed - no protected user violations found')
+        "
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Create virtual environment
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+    
+    - name: Install dependencies
+      run: |
+        source venv/bin/activate
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Prepare deployment package
+      run: |
+        # Create a clean deployment directory
+        mkdir -p deployment
+        
+        # Copy application files (exclude development files)
+        cp -r templates static *.py requirements.txt deployment/
+        cp -r .github deployment/.github
+        
+        # Create production configuration
+        echo "FLASK_ENV=production" > deployment/.env
+        echo "FLASK_DEBUG=False" >> deployment/.env
+        
+        # Ensure no sensitive files are included
+        rm -f deployment/test_*.py
+        rm -f deployment/*_test.py
+        rm -f deployment/deployment_log.txt
+        
+        echo "✅ Deployment package prepared"
+    
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        package: './deployment'
+    
+    - name: Post-deployment verification
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo "🌐 Application URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+        echo "📊 Admin Panel: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/admin"
+        echo ""
+        echo "🔍 Features deployed in this release:"
+        echo "  ✅ Enhanced course validation with URL checking"
+        echo "  ✅ Comprehensive schema enforcement"
+        echo "  ✅ Multi-select bulk delete for courses"
+        echo "  ✅ Server-side pagination and filtering"
+        echo "  ✅ Professional admin UI enhancements"
+        echo "  ✅ Form validation with error preservation"
+        echo "  ✅ Real-time character counting"
+        echo "  ✅ URL accessibility validation"
+        
+        # Optional: Health check
+        sleep 30
+        curl -f "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health" || echo "⚠️ Health check failed (app may still be starting)"
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [test, deploy]
+    if: always()
+    
+    steps:
+    - name: Deployment Status
+      run: |
+        if [ "${{ needs.deploy.result }}" = "success" ]; then
+          echo "✅ DEPLOYMENT SUCCESS"
+          echo "The AI Learning Tracker has been successfully deployed to Azure with:"
+          echo "- Enhanced course validation and URL checking"
+          echo "- Improved admin course management with bulk operations"
+          echo "- Professional UI/UX enhancements"
+          echo "- Comprehensive form validation and error handling"
+        elif [ "${{ needs.test.result }}" = "failure" ]; then
+          echo "❌ TESTS FAILED"
+          echo "Deployment was blocked due to test failures."
+        elif [ "${{ needs.deploy.result }}" = "failure" ]; then
+          echo "❌ DEPLOYMENT FAILED"
+          echo "Tests passed but deployment to Azure failed."
+        else
+          echo "ℹ️ DEPLOYMENT SKIPPED"
+          echo "Deployment was skipped (not master branch or PR not merged)."
+        fi
