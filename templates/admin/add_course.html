@@ -54,11 +54,10 @@
               <select class="form-control {% if course_data and course_data.level and not course_data.level.strip() %}is-invalid{% endif %}" id="level" name="level" required>
                 <option value="">Select Level</option>
                 <option value="Beginner" {% if course_data and course_data.level == 'Beginner' %}selected{% endif %}>Beginner</option>
-                <option value="Learner" {% if course_data and course_data.level == 'Learner' %}selected{% endif %}>Learner</option>
                 <option value="Intermediate" {% if course_data and course_data.level == 'Intermediate' %}selected{% endif %}>Intermediate</option>
-                <option value="Expert" {% if course_data and course_data.level == 'Expert' %}selected{% endif %}>Expert</option>
+                <option value="Advanced" {% if course_data and course_data.level == 'Advanced' %}selected{% endif %}>Advanced</option>
               </select>
-              <div class="form-text">Course difficulty level for learners.</div>
+              <div class="form-text">Course difficulty level (auto-calculated from points).</div>
             </div>
             <div class="col-md-6 mb-3">
               <label for="points" class="form-label">Points</label>

@@ -1871,8 +1871,8 @@ def admin_dashboard():
         user_points = user_data['points'] if user_data else 0
         
         # Calculate next level info
-        level_mapping = {'Beginner': 0, 'Learner': 100, 'Intermediate': 250, 'Expert': 500}
-        next_level = 'Expert'
+        level_mapping = {'Beginner': 0, 'Intermediate': 150, 'Advanced': 250}
+        next_level = 'Advanced'
         points_needed = 0
         
         for level, required_points in level_mapping.items():
@@ -2052,12 +2052,16 @@ def admin_courses():
             params.append(url_status_filter)
             
         if points_filter:
-            if points_filter == "0-50":
-                where_conditions.append("CAST(points as INTEGER) BETWEEN 0 AND 50")
-            elif points_filter == "51-100":
-                where_conditions.append("CAST(points as INTEGER) BETWEEN 51 AND 100")
-            elif points_filter == "101+":
-                where_conditions.append("CAST(points as INTEGER) > 100")
+            if points_filter == "0-100":
+                where_conditions.append("CAST(points as INTEGER) BETWEEN 0 AND 100")
+            elif points_filter == "100-200":
+                where_conditions.append("CAST(points as INTEGER) BETWEEN 100 AND 200")
+            elif points_filter == "200-300":
+                where_conditions.append("CAST(points as INTEGER) BETWEEN 200 AND 300")
+            elif points_filter == "300-400":
+                where_conditions.append("CAST(points as INTEGER) BETWEEN 300 AND 400")
+            elif points_filter == "400+":
+                where_conditions.append("CAST(points as INTEGER) > 400")
         
         where_clause = ""
         if where_conditions:
@@ -2123,6 +2127,260 @@ def admin_courses():
                              current_points=points_filter)
     finally:
         conn.close()
+
+@app.route('/admin/upload_excel_courses', methods=['POST'])
+def admin_upload_excel_courses():
+    """Upload courses from Excel file - Admin only"""
+    user = get_current_user()
+    if not user or user['username'] != 'admin':
+        return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
+    
+    try:
+        import pandas as pd
+        from datetime import datetime
+        import hashlib
+        
+        # Check if file was uploaded
+        if 'excel_file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded.'}), 400
+        
+        file = request.files['excel_file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected.'}), 400
+        
+        # Validate file type
+        if not file.filename.lower().endswith(('.xlsx', '.xls')):
+            return jsonify({'success': False, 'error': 'Please upload an Excel file (.xlsx or .xls).'}), 400
+        
+        # Read Excel file
+        try:
+            df = pd.read_excel(file)
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Failed to read Excel file: {str(e)}'}), 400
+        
+        # Validate required columns
+        required_columns = ['title', 'url', 'source', 'level']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return jsonify({
+                'success': False, 
+                'error': f'Missing required columns: {", ".join(missing_columns)}. Required: {", ".join(required_columns)}'
+            }), 400
+        
+        # Process the data
+        conn = get_db_connection()
+        stats = {
+            'total_processed': 0,
+            'added': 0,
+            'skipped': 0,
+            'errors': 0
+        }
+        
+        try:
+            # Get existing courses to check for duplicates
+            existing_courses = conn.execute(
+                'SELECT title, url FROM courses'
+            ).fetchall()
+            existing_set = set((row['title'].lower().strip(), row['url'].lower().strip()) 
+                             for row in existing_courses)
+            
+            for index, row in df.iterrows():
+                stats['total_processed'] += 1
+                
+                try:
+                    # Extract and validate data
+                    title = str(row['title']).strip()
+                    url = str(row['url']).strip()
+                    source = str(row['source']).strip()
+                    level = str(row['level']).strip()
+                    
+                    # Validate required fields
+                    if not all([title, url, source, level]):
+                        stats['errors'] += 1
+                        continue
+                    
+                    # Validate level
+                    if level not in ['Beginner', 'Intermediate', 'Advanced']:
+                        stats['errors'] += 1
+                        continue
+                    
+                    # Validate URL format
+                    if not url.startswith(('http://', 'https://')):
+                        stats['errors'] += 1
+                        continue
+                    
+                    # Check for duplicates
+                    if (title.lower(), url.lower()) in existing_set:
+                        stats['skipped'] += 1
+                        continue
+                    
+                    # Extract optional fields
+                    description = str(row.get('description', '')).strip() if pd.notna(row.get('description')) else ''
+                    category = str(row.get('category', '')).strip() if pd.notna(row.get('category')) else None
+                    difficulty = str(row.get('difficulty', '')).strip() if pd.notna(row.get('difficulty')) else None
+                    
+                    # Handle points
+                    points = 0
+                    if 'points' in row and pd.notna(row['points']):
+                        try:
+                            points = int(float(row['points']))
+                            if points < 0:
+                                points = 0
+                        except (ValueError, TypeError):
+                            points = 0
+                    
+                    # Auto-assign level based on points if points are provided
+                    if points > 0:
+                        if points < 150:
+                            level = 'Beginner'
+                        elif points < 250:
+                            level = 'Intermediate'
+                        else:
+                            level = 'Advanced'
+                    
+                    # Insert the course
+                    conn.execute('''
+                        INSERT INTO courses 
+                        (title, description, url, link, source, level, points, category, difficulty, created_at, url_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        title,
+                        description,
+                        url,
+                        url,  # Use the same URL for both url and link columns
+                        source,
+                        level,
+                        points,
+                        category,
+                        difficulty,
+                        datetime.now().isoformat(),
+                        'Pending'
+                    ))
+                    
+                    # Add to existing set to prevent duplicates within the same upload
+                    existing_set.add((title.lower(), url.lower()))
+                    stats['added'] += 1
+                    
+                except Exception as e:
+                    stats['errors'] += 1
+                    continue
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Excel upload completed successfully.',
+                'stats': stats
+            })
+            
+        finally:
+            conn.close()
+            
+    except ImportError:
+        return jsonify({
+            'success': False, 
+            'error': 'pandas library is required for Excel processing. Please install it.'
+        }), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Upload failed: {str(e)}'}), 500
+
+@app.route('/admin/download_excel_template')
+def admin_download_excel_template():
+    """Download Excel template for course upload - Admin only"""
+    user = get_current_user()
+    if not user or user['username'] != 'admin':
+        flash('Admin privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        import pandas as pd
+        from io import BytesIO
+        from flask import send_file
+        
+        # Create sample data for the template
+        sample_data = {
+            'title': [
+                'Introduction to Machine Learning',
+                'Advanced Python Programming',
+                'Azure AI Fundamentals'
+            ],
+            'description': [
+                'Learn the basics of machine learning and AI concepts',
+                'Deep dive into advanced Python programming techniques',
+                'Understand Azure AI services and capabilities'
+            ],
+            'url': [
+                'https://learn.microsoft.com/en-us/training/paths/machine-learning-foundations',
+                'https://learn.microsoft.com/en-us/training/paths/python-advanced',
+                'https://learn.microsoft.com/en-us/training/paths/azure-ai-fundamentals'
+            ],
+            'source': [
+                'Microsoft Learn',
+                'Microsoft Learn', 
+                'Microsoft Learn'
+            ],
+            'level': [
+                'Beginner',
+                'Intermediate',
+                'Advanced'
+            ],
+            'points': [
+                120,
+                200,
+                300
+            ],
+            'category': [
+                'Machine Learning',
+                'Programming',
+                'Cloud Computing'
+            ],
+            'difficulty': [
+                'Easy',
+                'Medium',
+                'Hard'
+            ]
+        }
+        
+        # Create DataFrame
+        df = pd.DataFrame(sample_data)
+        
+        # Create Excel file in memory
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Courses', index=False)
+            
+            # Get the workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Courses']
+            
+            # Auto-adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='course_upload_template.xlsx'
+        )
+        
+    except ImportError:
+        flash('pandas library is required for Excel processing.', 'error')
+        return redirect(url_for('admin_courses'))
+    except Exception as e:
+        flash(f'Failed to generate template: {str(e)}', 'error')
+        return redirect(url_for('admin_courses'))
 
 @app.route('/admin/course-configs')
 def admin_course_configs():
@@ -2328,6 +2586,14 @@ def admin_edit_course(course_id):
                 points = int(points) if points else 0
             except ValueError:
                 points = 0
+            
+            # Auto-calculate level based on points
+            if points < 150:
+                level = 'Beginner'
+            elif points < 250:
+                level = 'Intermediate'
+            else:
+                level = 'Advanced'
             
             conn.execute('''
                 UPDATE courses 

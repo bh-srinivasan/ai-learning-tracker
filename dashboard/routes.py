@@ -186,7 +186,7 @@ def profile():
         # Handle level update with enhanced validation
         user_selected_level = request.form.get('user_selected_level')
         
-        if user_selected_level in ['Beginner', 'Learner', 'Intermediate', 'Expert']:
+        if user_selected_level in ['Beginner', 'Intermediate', 'Advanced']:
             # Use level manager to update with validation
             result = level_manager.update_user_selected_level(user_id, user_selected_level)
             

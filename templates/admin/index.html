@@ -161,7 +161,7 @@ Tracker{% endblock %} {% block content %}
                 <td>{{ user.username }}</td>
                 <td>
                   <span
-                    class="badge bg-{% if user.level == 'Expert' %}danger{% elif user.level == 'Intermediate' %}warning{% elif user.level == 'Learner' %}info{% else %}secondary{% endif %}"
+                    class="badge bg-{% if user.level == 'Advanced' %}danger{% elif user.level == 'Intermediate' %}warning{% else %}secondary{% endif %}"
                   >
                     {{ user.level }}
                   </span>

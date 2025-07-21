@@ -430,11 +430,27 @@ class FastCourseAPIFetcher:
             logger.debug(f"❌ URL validation failed for {url}: {e}")
             return False
     
+    def calculate_level_from_points(self, points: int) -> str:
+        """Calculate course level based on points"""
+        if points is None:
+            points = 0
+        
+        if points < 150:
+            return 'Beginner'
+        elif points < 250:
+            return 'Intermediate'
+        else:
+            return 'Advanced'
+
     def add_course_to_db(self, course: Dict[str, Any]) -> bool:
         """Add single course to database"""
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
+            
+            # Auto-calculate level based on points
+            points = course.get('points', 0)
+            level = self.calculate_level_from_points(points)
             
             # Use the actual database schema: title, source, level, link, points, description, url, category
             cursor.execute("""
@@ -445,8 +461,8 @@ class FastCourseAPIFetcher:
                 course['description'],
                 course['url'],
                 course['url'],  # Both url and link use the same URL
-                course['level'],
-                course['points'],
+                level,  # Use calculated level instead of course['level']
+                points,
                 course['source'],
                 'AI/ML'  # Default category for AI courses
             ))
