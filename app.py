@@ -2329,41 +2329,6 @@ def admin_upload_excel_courses():
         error_msg = f'Upload failed: {str(e)}'
         print(f"General error: {error_msg}")
         return jsonify({'success': False, 'error': error_msg}), 500
-                        source,
-                        level,
-                        points,
-                        category,
-                        difficulty,
-                        datetime.now().isoformat(),
-                        'Pending'
-                    ))
-                    
-                    # Add to existing set to prevent duplicates within the same upload
-                    existing_set.add((title.lower(), url.lower()))
-                    stats['added'] += 1
-                    
-                except Exception as e:
-                    stats['errors'] += 1
-                    continue
-            
-            conn.commit()
-            
-            return jsonify({
-                'success': True,
-                'message': 'Excel upload completed successfully.',
-                'stats': stats
-            })
-            
-        finally:
-            conn.close()
-            
-    except ImportError:
-        return jsonify({
-            'success': False, 
-            'error': 'pandas library is required for Excel processing. Please install it.'
-        }), 500
-    except Exception as e:
-        return jsonify({'success': False, 'error': f'Upload failed: {str(e)}'}), 500
 
 @app.route('/admin/download_excel_template')
 def admin_download_excel_template():
