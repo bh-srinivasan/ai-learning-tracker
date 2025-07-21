@@ -1968,23 +1968,60 @@ def admin_users():
 
 @app.route('/admin/sessions')
 def admin_sessions():
-    """Admin session management"""
+    """Admin session management with dynamic statistics"""
     user = get_current_user()
     if not user or user['username'] != 'admin':
         flash('Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get session data
     conn = get_db_connection()
     try:
-        sessions = conn.execute('''
-            SELECT us.*, u.username 
+        # Get active sessions
+        active_sessions = conn.execute('''
+            SELECT 
+                us.*,
+                u.username,
+                u.level,
+                'Active' as session_status,
+                datetime(us.created_at, 'localtime') as created_at_formatted,
+                datetime(us.expires_at, 'localtime') as expires_at_formatted
             FROM user_sessions us 
             JOIN users u ON us.user_id = u.id 
             WHERE us.is_active = 1 
             ORDER BY us.created_at DESC
         ''').fetchall()
-        return render_template('admin/sessions.html', sessions=sessions)
+        
+        # Get activity statistics (last 7 days)
+        activity_stats = conn.execute('''
+            SELECT activity_type, COUNT(*) as count
+            FROM session_activity 
+            WHERE datetime(timestamp) >= datetime('now', '-7 days')
+            GROUP BY activity_type
+            ORDER BY count DESC
+        ''').fetchall()
+        
+        # Get daily login statistics (last 7 days)
+        login_stats = conn.execute('''
+            SELECT DATE(created_at) as login_date, COUNT(*) as login_count
+            FROM user_sessions 
+            WHERE datetime(created_at) >= datetime('now', '-7 days')
+            GROUP BY DATE(created_at)
+            ORDER BY login_date DESC
+        ''').fetchall()
+        
+        # Calculate today's login count
+        today_login_count = 0
+        today_date = conn.execute("SELECT DATE('now')").fetchone()[0]
+        for stat in login_stats:
+            if stat['login_date'] == today_date:
+                today_login_count = stat['login_count']
+                break
+        
+        return render_template('admin/sessions.html', 
+                             active_sessions=active_sessions,
+                             activity_stats=activity_stats,
+                             login_stats=login_stats,
+                             today_login_count=today_login_count)
     finally:
         conn.close()
 

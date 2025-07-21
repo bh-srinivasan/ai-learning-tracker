@@ -20,7 +20,7 @@ Tracker{% endblock %} {% block content %}
     <div class="card text-center bg-success text-white">
       <div class="card-body">
         <h5 class="card-title">Total Activity (7 days)</h5>
-        <h2>{{ activity_stats|sum(attribute='count') }}</h2>
+        <h2>{% if activity_stats %}{{ activity_stats|sum(attribute='count') }}{% else %}0{% endif %}</h2>
       </div>
     </div>
   </div>
@@ -28,11 +28,7 @@ Tracker{% endblock %} {% block content %}
     <div class="card text-center bg-info text-white">
       <div class="card-body">
         <h5 class="card-title">Logins Today</h5>
-        <h2>
-          {% for stat in login_stats %} {% if stat.login_date ==
-          moment().format('YYYY-MM-DD') %} {{ stat.login_count }} {% endif %} {%
-          else %} 0 {% endfor %}
-        </h2>
+        <h2>{{ today_login_count or 0 }}</h2>
       </div>
     </div>
   </div>
@@ -46,7 +42,7 @@ Tracker{% endblock %} {% block content %}
         <h5><i class="fas fa-chart-bar"></i> Activity Types (Last 7 Days)</h5>
       </div>
       <div class="card-body">
-        {% if activity_stats %}
+        {% if activity_stats and activity_stats|length > 0 %}
         <table class="table table-sm">
           <thead>
             <tr>
@@ -59,11 +55,14 @@ Tracker{% endblock %} {% block content %}
             <tr>
               <td>
                 {% if stat.activity_type == 'session_created' %}
-                <i class="fas fa-sign-in-alt text-success"></i> Login {% elif
-                stat.activity_type == 'session_invalidated' %}
-                <i class="fas fa-sign-out-alt text-danger"></i> Logout {% elif
-                stat.activity_type == 'page_access' %}
-                <i class="fas fa-eye text-info"></i> Page Access {% else %}
+                <i class="fas fa-sign-in-alt text-success"></i> Login 
+                {% elif stat.activity_type == 'session_invalidated' %}
+                <i class="fas fa-sign-out-alt text-danger"></i> Logout 
+                {% elif stat.activity_type == 'page_access' %}
+                <i class="fas fa-eye text-info"></i> Page Access 
+                {% elif stat.activity_type == 'session_expired' %}
+                <i class="fas fa-clock text-warning"></i> Session Expired
+                {% else %}
                 <i class="fas fa-activity"></i> {{ stat.activity_type|title }}
                 {% endif %}
               </td>
@@ -87,7 +86,7 @@ Tracker{% endblock %} {% block content %}
         <h5><i class="fas fa-calendar"></i> Daily Logins (Last 7 Days)</h5>
       </div>
       <div class="card-body">
-        {% if login_stats %}
+        {% if login_stats and login_stats|length > 0 %}
         <table class="table table-sm">
           <thead>
             <tr>
