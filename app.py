@@ -2155,57 +2155,68 @@ def admin_upload_excel_courses():
         # Read Excel file
         try:
             df = pd.read_excel(file)
+            print(f"Excel file read successfully: {len(df)} rows, columns: {list(df.columns)}")
         except Exception as e:
-            return jsonify({'success': False, 'error': f'Failed to read Excel file: {str(e)}'}), 400
+            error_msg = f'Failed to read Excel file: {str(e)}'
+            print(f"Excel read error: {error_msg}")
+            return jsonify({'success': False, 'error': error_msg}), 400
         
         # Validate required columns
         required_columns = ['title', 'url', 'source', 'level']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
-            return jsonify({
-                'success': False, 
-                'error': f'Missing required columns: {", ".join(missing_columns)}. Required: {", ".join(required_columns)}'
-            }), 400
+            error_msg = f'Missing required columns: {", ".join(missing_columns)}. Required: {", ".join(required_columns)}'
+            print(f"Column validation error: {error_msg}")
+            return jsonify({'success': False, 'error': error_msg}), 400
         
         # Process the data
-        conn = get_db_connection()
-        stats = {
-            'total_processed': 0,
-            'added': 0,
-            'skipped': 0,
-            'errors': 0
-        }
-        
+        conn = None
         try:
+            conn = get_db_connection()
+            print("Database connection established")
+            
+            stats = {
+                'total_processed': 0,
+                'added': 0,
+                'skipped': 0,
+                'errors': 0,
+                'error_details': []
+            }
+            
             # Get existing courses to check for duplicates
-            existing_courses = conn.execute(
-                'SELECT title, url FROM courses'
-            ).fetchall()
+            existing_courses = conn.execute('SELECT title, url FROM courses').fetchall()
             existing_set = set((row['title'].lower().strip(), row['url'].lower().strip()) 
                              for row in existing_courses)
+            print(f"Found {len(existing_set)} existing courses for duplicate check")
             
             for index, row in df.iterrows():
                 stats['total_processed'] += 1
                 
                 try:
                     # Extract and validate data
-                    title = str(row['title']).strip()
-                    url = str(row['url']).strip()
-                    source = str(row['source']).strip()
-                    level = str(row['level']).strip()
+                    title = str(row['title']).strip() if pd.notna(row['title']) else ''
+                    url = str(row['url']).strip() if pd.notna(row['url']) else ''
+                    source = str(row['source']).strip() if pd.notna(row['source']) else ''
+                    level = str(row['level']).strip() if pd.notna(row['level']) else ''
                     
                     # Validate required fields
                     if not all([title, url, source, level]):
+                        error_detail = f'Row {index + 1}: Missing required data - title: {bool(title)}, url: {bool(url)}, source: {bool(source)}, level: {bool(level)}'
+                        stats['error_details'].append(error_detail)
                         stats['errors'] += 1
                         continue
                     
                     # Validate level
                     if level not in ['Beginner', 'Intermediate', 'Advanced']:
+                        error_detail = f'Row {index + 1}: Invalid level "{level}", must be Beginner, Intermediate, or Advanced'
+                        stats['error_details'].append(error_detail)
                         stats['errors'] += 1
                         continue
                     
                     # Validate URL format
                     if not url.startswith(('http://', 'https://')):
+                        error_detail = f'Row {index + 1}: Invalid URL format "{url}", must start with http:// or https://'
+                        stats['error_details'].append(error_detail)
                         stats['errors'] += 1
                         continue
                     
@@ -2239,15 +2250,85 @@ def admin_upload_excel_courses():
                             level = 'Advanced'
                     
                     # Insert the course
-                    conn.execute('''
-                        INSERT INTO courses 
-                        (title, description, url, link, source, level, points, category, difficulty, created_at, url_status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        title,
-                        description,
-                        url,
-                        url,  # Use the same URL for both url and link columns
+                    try:
+                        conn.execute('''
+                            INSERT INTO courses 
+                            (title, description, url, link, source, level, points, category, difficulty, created_at, url_status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            title,
+                            description,
+                            url,
+                            url,  # Use the same URL for both url and link columns
+                            source,
+                            level,
+                            points,
+                            category,
+                            difficulty,
+                            datetime.now().isoformat(),
+                            'Pending'
+                        ))
+                        
+                        # Add to existing set to prevent duplicates within the same upload
+                        existing_set.add((title.lower(), url.lower()))
+                        stats['added'] += 1
+                        
+                    except Exception as db_error:
+                        error_detail = f'Row {index + 1}: Database insert failed - {str(db_error)}'
+                        stats['error_details'].append(error_detail)
+                        stats['errors'] += 1
+                        print(f"Database insert error for row {index + 1}: {str(db_error)}")
+                        continue
+                    
+                except Exception as row_error:
+                    error_detail = f'Row {index + 1}: Processing failed - {str(row_error)}'
+                    stats['error_details'].append(error_detail)
+                    stats['errors'] += 1
+                    print(f"Row processing error for row {index + 1}: {str(row_error)}")
+                    continue
+            
+            # Commit the transaction
+            try:
+                conn.commit()
+                print(f"Transaction committed successfully. Stats: {stats}")
+            except Exception as commit_error:
+                print(f"Commit error: {str(commit_error)}")
+                return jsonify({
+                    'success': False, 
+                    'error': f'Failed to save courses to database: {str(commit_error)}',
+                    'stats': stats
+                }), 500
+            
+            # Prepare response
+            response_data = {
+                'success': True,
+                'message': 'Excel upload completed successfully.',
+                'stats': stats
+            }
+            
+            # Include error details if there were any errors (but still consider it a success if some courses were added)
+            if stats['error_details']:
+                response_data['warnings'] = stats['error_details'][:10]  # Limit to first 10 errors for readability
+            
+            return jsonify(response_data)
+            
+        except Exception as db_error:
+            error_msg = f'Database operation failed: {str(db_error)}'
+            print(f"Database error: {error_msg}")
+            return jsonify({'success': False, 'error': error_msg}), 500
+        finally:
+            if conn:
+                conn.close()
+                print("Database connection closed")
+            
+    except ImportError as import_error:
+        error_msg = f'pandas library is required for Excel processing. Import error: {str(import_error)}'
+        print(f"Import error: {error_msg}")
+        return jsonify({'success': False, 'error': error_msg}), 500
+    except Exception as e:
+        error_msg = f'Upload failed: {str(e)}'
+        print(f"General error: {error_msg}")
+        return jsonify({'success': False, 'error': error_msg}), 500
                         source,
                         level,
                         points,
