@@ -7,5 +7,6 @@ azure-storage-blob==12.19.0
 schedule==1.2.0
 feedparser==6.0.10
 aiohttp==3.8.6
+numpy==1.24.3
 pandas==2.0.3
 openpyxl==3.1.2
