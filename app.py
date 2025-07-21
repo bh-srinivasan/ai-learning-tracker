@@ -2128,6 +2128,59 @@ def admin_courses():
     finally:
         conn.close()
 
+@app.route('/admin/debug_environment', methods=['GET'])
+def debug_environment():
+    """Debug endpoint to check Azure environment"""
+    import sys
+    import os
+    
+    try:
+        # Test imports
+        import pandas as pd
+        pandas_version = pd.__version__
+        pandas_ok = True
+    except ImportError as e:
+        pandas_version = f"IMPORT ERROR: {e}"
+        pandas_ok = False
+    
+    try:
+        import openpyxl
+        openpyxl_version = openpyxl.__version__
+        openpyxl_ok = True
+    except ImportError as e:
+        openpyxl_version = f"IMPORT ERROR: {e}"
+        openpyxl_ok = False
+    
+    try:
+        import sqlite3
+        sqlite_version = sqlite3.sqlite_version
+        sqlite_ok = True
+    except ImportError as e:
+        sqlite_version = f"IMPORT ERROR: {e}"
+        sqlite_ok = False
+    
+    debug_info = {
+        "python_version": sys.version,
+        "platform": sys.platform,
+        "environment_variables": {
+            "WEBSITE_SITE_NAME": os.environ.get("WEBSITE_SITE_NAME"),
+            "PYTHONPATH": os.environ.get("PYTHONPATH"),
+            "PATH": os.environ.get("PATH", "")[:200] + "..." if len(os.environ.get("PATH", "")) > 200 else os.environ.get("PATH", ""),
+        },
+        "dependencies": {
+            "pandas": {"version": pandas_version, "ok": pandas_ok},
+            "openpyxl": {"version": openpyxl_version, "ok": openpyxl_ok},
+            "sqlite3": {"version": sqlite_version, "ok": sqlite_ok}
+        },
+        "file_system": {
+            "current_directory": os.getcwd(),
+            "temp_directory": os.environ.get("TEMP", "/tmp"),
+            "can_write_temp": os.access(os.environ.get("TEMP", "/tmp"), os.W_OK)
+        }
+    }
+    
+    return jsonify(debug_info)
+
 @app.route('/admin/upload_excel_courses', methods=['POST'])
 def admin_upload_excel_courses():
     """Upload courses from Excel file - Admin only"""
