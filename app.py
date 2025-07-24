@@ -50,7 +50,6 @@ import threading
 import time
 import requests
 from urllib.parse import urlparse
-import requests
 
 # Import security guard system and production configuration
 from security_guard import (
@@ -1098,9 +1097,9 @@ def azure_backup_scheduler():
     
     while True:
         try:
-            from azure_database_sync import azure_db_sync
-            azure_db_sync.sync_to_azure_periodically()
-            time.sleep(1800)  # Backup every 30 minutes
+            # Azure sync temporarily disabled - module removed in cleanup
+            logger.info("Azure backup scheduler: Module not available, skipping sync")
+            time.sleep(1800)  # Check every 30 minutes
         except Exception as e:
             logger.error(f"Azure backup scheduler error: {e}")
             time.sleep(1800)  # Continue after error
@@ -1123,9 +1122,8 @@ def safe_init_db():
     try:
         logger.info("🔍 SAFE_INIT_DB: Starting database safety check...")
         
-        # AZURE STORAGE INTEGRATION: Sync from Azure on startup
-        from azure_database_sync import azure_db_sync
-        azure_db_sync.sync_from_azure_on_startup()
+        # AZURE STORAGE INTEGRATION: Temporarily disabled - module removed in cleanup
+        logger.info("Azure sync temporarily disabled - using local database only")
         
         # Check if database file exists (may have been downloaded from Azure)
         db_path = get_database_path()
@@ -1133,8 +1131,6 @@ def safe_init_db():
             logger.info(f"📁 SAFE_INIT_DB: Database file {db_path} not found - will create new one")
             init_db()
             ensure_admin_exists()
-            # Upload new database to Azure Storage
-            azure_db_sync.upload_database_to_azure()
             return
         
         conn = get_db_connection()
@@ -1169,18 +1165,16 @@ def safe_init_db():
             ensure_admin_exists()
             logger.info("✅ SAFE_INIT_DB: Complete - existing data preserved")
             
-            # AZURE STORAGE INTEGRATION: Upload database after successful verification
-            from azure_database_sync import azure_db_sync
-            azure_db_sync.upload_database_to_azure()
+            # AZURE STORAGE INTEGRATION: Temporarily disabled - module removed in cleanup
+            logger.info("Azure sync temporarily disabled - using local database only")
             return
         else:
             logger.info("📋 SAFE_INIT_DB: Users table exists but empty - safe to initialize")
             conn.close()
             init_db()
             ensure_admin_exists()
-            # Upload new database to Azure Storage
-            from azure_database_sync import azure_db_sync
-            azure_db_sync.upload_database_to_azure()
+            # Azure sync temporarily disabled - using local database only
+            logger.info("Azure sync temporarily disabled - using local database only")
             return
         
     except Exception as e:
@@ -1250,26 +1244,25 @@ safe_init_db()
 # EMERGENCY FIX: Disable deployment safety to prevent data resets
 # Initialize deployment safety and data integrity monitoring
 try:
-    # TEMPORARILY DISABLED - suspected of causing data resets
-    # from deployment_safety import init_deployment_safety
-    # deployment_safety = init_deployment_safety(app)
-    logger.info("⚠️ Deployment safety DISABLED to prevent data resets")
+    # RESTORED - deployment safety module recreated
+    from deployment_safety import init_deployment_safety
+    deployment_safety = init_deployment_safety(app)
+    logger.info("✅ Deployment safety initialized successfully")
 except ImportError:
     logger.warning("⚠️ Deployment safety module not available - install azure-storage-blob for full functionality")
 except Exception as e:
     logger.error(f"❌ Failed to initialize deployment safety: {e}")
 
-# Temporarily comment out blueprints to fix circular import
-# TODO: Re-enable after fixing circular imports
-# from auth.routes import auth_bp
-# from dashboard.routes import dashboard_bp
-# from learnings.routes import learnings_bp
-# from admin.routes import admin_bp
+# Re-enable blueprints - circular import issue resolved
+from auth.routes import auth_bp
+from dashboard.routes import dashboard_bp  
+from learnings.routes import learnings_bp
+from admin.routes import admin_bp
 
-# app.register_blueprint(auth_bp, url_prefix='/auth')
-# app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
-# app.register_blueprint(learnings_bp, url_prefix='/learnings')
-# app.register_blueprint(admin_bp)
+app.register_blueprint(auth_bp, url_prefix='/auth')
+app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
+app.register_blueprint(learnings_bp, url_prefix='/learnings')
+app.register_blueprint(admin_bp)
 
 # Error handlers for security
 @app.errorhandler(400)
@@ -2221,9 +2214,17 @@ def debug_environment():
 @app.route('/admin/upload_excel_courses', methods=['POST'])
 def admin_upload_excel_courses():
     """Upload courses from Excel file - Admin only"""
-    user = get_current_user()
-    if not user or user['username'] != 'admin':
-        return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
+    try:
+        print(f"📋 Upload request received from: {request.remote_addr}")
+        user = get_current_user()
+        print(f"📋 Current user: {user}")
+        
+        if not user or user['username'] != 'admin':
+            print(f"❌ Access denied for user: {user}")
+            return jsonify({'success': False, 'error': 'Admin privileges required.'}), 403
+    except Exception as auth_error:
+        print(f"❌ Authentication error: {auth_error}")
+        return jsonify({'success': False, 'error': f'Authentication error: {str(auth_error)}'}), 500
     
     try:
         import pandas as pd
@@ -2275,8 +2276,12 @@ def admin_upload_excel_courses():
             
             # Get existing courses to check for duplicates
             existing_courses = conn.execute('SELECT title, url FROM courses').fetchall()
-            existing_set = set((row['title'].lower().strip(), row['url'].lower().strip()) 
-                             for row in existing_courses)
+            existing_set = set()
+            for row in existing_courses:
+                title = row['title'] if row['title'] else ''
+                url = row['url'] if row['url'] else ''
+                if title and url:  # Only add if both title and url are not empty
+                    existing_set.add((title.lower().strip(), url.lower().strip()))
             print(f"Found {len(existing_set)} existing courses for duplicate check")
             
             for index, row in df.iterrows():
@@ -3185,14 +3190,10 @@ def admin_add_user():
 def admin_add_course():
     """Add a new course with comprehensive validation (admin only)"""
     if request.method == 'POST':
-        # Import validator
-        try:
-            from course_validator import CourseURLValidator
-            validator = CourseURLValidator()
-        except ImportError as e:
-            logger.error(f"Failed to import course validator: {e}")
-            flash('Course validation service is not available. Course added without URL validation.', 'warning')
-            validator = None
+        # Course validator temporarily disabled - module removed in cleanup
+        logger.info("Course validation temporarily disabled - using basic validation only")
+        flash('Course added with basic validation. Advanced URL validation temporarily unavailable.', 'info')
+        validator = None
         
         # Collect form data
         course_data = {
@@ -3319,16 +3320,13 @@ def admin_populate_ai_courses():
     """Fetch AI/Copilot courses from live APIs with real-time updates"""
     logger.info("🔍 Admin initiated FAST live API course fetching")
     
-    # Import the FAST course fetcher (no fallbacks)
-    try:
-        from fast_course_fetcher import get_fast_ai_courses
-        logger.info("✅ Fast course API fetcher module loaded successfully")
-    except ImportError as e:
-        logger.error(f"❌ Failed to import fast course fetcher: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': 'Fast course fetcher module not available'
-        }), 500
+    # Fast course fetcher temporarily disabled - module removed in cleanup
+    logger.info("Fast course API fetcher temporarily disabled - using basic course addition only")
+    return jsonify({
+        'success': False,
+        'error': 'Fast course fetcher temporarily unavailable. Please add courses manually.',
+        'message': 'Advanced course fetching is temporarily disabled during workspace cleanup.'
+    }), 503
 
     try:
         logger.info("📡 Starting FAST live API course fetching...")

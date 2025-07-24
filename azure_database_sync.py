@@ -1,181 +1,166 @@
 """
-Azure Storage Database Sync Module
+Azure Database Synchronization Module
 
-This module handles synchronization of SQLite database with Azure Blob Storage
-to ensure data persistence across Azure App Service deployments.
+This module provides Azure Storage integration for SQLite database persistence
+in Azure App Service environments where the file system is ephemeral.
+
+Features:
+- Download database from Azure Blob Storage on startup
+- Upload database to Azure Blob Storage on changes
+- Background periodic backup to Azure Storage
+- Emergency restore functionality
 """
+
 import os
 import logging
 from datetime import datetime
-from azure.storage.blob import BlobServiceClient, BlobClient
-import shutil
+import sqlite3
 
+# Setup logging
 logger = logging.getLogger(__name__)
 
 class AzureDatabaseSync:
-    def __init__(self):
-        self.connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        self.container_name = os.getenv('AZURE_STORAGE_CONTAINER', 'database-backup')
-        self.blob_name = 'ai_learning.db'
-        self.local_db_path = 'ai_learning.db'
-        self.backup_db_path = 'ai_learning_backup.db'
+    """Azure Storage database synchronization class"""
+    
+    def __init__(self, db_path="ai_learning.db"):
+        self.db_path = db_path
+        self.container_name = "database-backups"
+        self.blob_name = "ai_learning.db"
+        self.azure_available = False
         
-        if not self.connection_string:
-            logger.warning("⚠️ AZURE_STORAGE_CONNECTION_STRING not found - running without Azure sync")
-            self.enabled = False
-        else:
-            self.enabled = True
-            self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
-            logger.info("✅ Azure Storage sync initialized")
+        # Check if Azure Storage is available
+        try:
+            from azure.storage.blob import BlobServiceClient
+            connection_string = os.environ.get('AZURE_STORAGE_CONNECTION_STRING')
+            if connection_string:
+                self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+                self.azure_available = True
+                logger.info("✅ Azure Storage sync initialized")
+            else:
+                logger.warning("⚠️ AZURE_STORAGE_CONNECTION_STRING not found - Azure sync disabled")
+        except ImportError:
+            logger.warning("⚠️ azure-storage-blob not installed - Azure sync disabled")
+        except Exception as e:
+            logger.error(f"❌ Azure Storage initialization failed: {e}")
     
-    def is_enabled(self):
-        """Check if Azure Storage sync is enabled"""
-        return self.enabled
-    
-    def download_database_from_azure(self):
-        """Download database from Azure Blob Storage to local filesystem"""
-        if not self.enabled:
-            logger.info("🔄 Azure Storage sync disabled - skipping download")
+    def sync_from_azure_on_startup(self):
+        """Download database from Azure Storage on app startup"""
+        if not self.azure_available:
+            logger.info("Azure Storage not available - using local database only")
             return False
             
         try:
-            logger.info("⬇️ Downloading database from Azure Storage...")
+            # Check if local database exists
+            if os.path.exists(self.db_path):
+                logger.info(f"📁 Local database {self.db_path} exists - checking Azure for newer version")
+            else:
+                logger.info(f"📁 Local database {self.db_path} not found - downloading from Azure")
             
-            # Create container if it doesn't exist
-            container_client = self.blob_service_client.get_container_client(self.container_name)
-            try:
-                container_client.create_container()
-                logger.info(f"📁 Created container: {self.container_name}")
-            except Exception:
-                logger.info(f"📁 Container already exists: {self.container_name}")
+            # Try to download from Azure
+            return self.download_database_from_azure()
             
-            # Download blob to local file
+        except Exception as e:
+            logger.error(f"❌ Error during Azure sync on startup: {e}")
+            return False
+    
+    def download_database_from_azure(self):
+        """Download database from Azure Blob Storage"""
+        if not self.azure_available:
+            return False
+            
+        try:
             blob_client = self.blob_service_client.get_blob_client(
                 container=self.container_name, 
                 blob=self.blob_name
             )
             
-            # Check if blob exists
-            if not blob_client.exists():
-                logger.info("📥 No existing database found in Azure Storage - will create new one")
-                return False
-            
-            # Download database
-            with open(self.local_db_path, "wb") as download_file:
+            logger.info("⬇️ Downloading database from Azure Storage...")
+            with open(self.db_path, "wb") as download_file:
                 download_file.write(blob_client.download_blob().readall())
             
-            blob_properties = blob_client.get_blob_properties()
-            logger.info(f"✅ Database downloaded from Azure Storage")
-            logger.info(f"   Size: {blob_properties.size} bytes")
-            logger.info(f"   Last Modified: {blob_properties.last_modified}")
-            
+            logger.info("✅ Database downloaded from Azure Storage")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error downloading database from Azure Storage: {e}")
+            logger.warning(f"⚠️ Could not download database from Azure: {e}")
             return False
     
     def upload_database_to_azure(self):
-        """Upload local database to Azure Blob Storage"""
-        if not self.enabled:
-            logger.info("🔄 Azure Storage sync disabled - skipping upload")
+        """Upload database to Azure Blob Storage"""
+        if not self.azure_available:
             return False
             
-        if not os.path.exists(self.local_db_path):
-            logger.warning(f"⚠️ Local database not found: {self.local_db_path}")
+        if not os.path.exists(self.db_path):
+            logger.warning(f"⚠️ Database file {self.db_path} not found - cannot upload")
             return False
             
         try:
-            logger.info("⬆️ Uploading database to Azure Storage...")
-            
-            # Create backup before upload
-            if os.path.exists(self.backup_db_path):
-                os.remove(self.backup_db_path)
-            shutil.copy2(self.local_db_path, self.backup_db_path)
-            logger.info(f"💾 Created backup: {self.backup_db_path}")
-            
-            # Upload to blob storage
             blob_client = self.blob_service_client.get_blob_client(
-                container=self.container_name,
+                container=self.container_name, 
                 blob=self.blob_name
             )
             
-            with open(self.local_db_path, "rb") as data:
+            logger.info("⬆️ Uploading database to Azure Storage...")
+            with open(self.db_path, "rb") as data:
                 blob_client.upload_blob(data, overwrite=True)
             
-            file_size = os.path.getsize(self.local_db_path)
-            logger.info(f"✅ Database uploaded to Azure Storage")
-            logger.info(f"   Size: {file_size} bytes")
-            logger.info(f"   Timestamp: {datetime.now()}")
-            
+            logger.info("✅ Database uploaded to Azure Storage")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error uploading database to Azure Storage: {e}")
+            logger.error(f"❌ Failed to upload database to Azure: {e}")
             return False
-    
-    def sync_from_azure_on_startup(self):
-        """Download database from Azure on application startup"""
-        logger.info("🚀 STARTUP: Syncing database from Azure Storage...")
-        
-        if not self.enabled:
-            logger.info("🔄 Azure Storage sync disabled - using local database only")
-            return
-        
-        # Check if local database exists
-        local_exists = os.path.exists(self.local_db_path)
-        
-        if local_exists:
-            local_size = os.path.getsize(self.local_db_path)
-            local_modified = datetime.fromtimestamp(os.path.getmtime(self.local_db_path))
-            logger.info(f"📁 Local database exists: {local_size} bytes, modified {local_modified}")
-        
-        # Try to download from Azure
-        azure_downloaded = self.download_database_from_azure()
-        
-        if azure_downloaded:
-            logger.info("✅ STARTUP SYNC: Using database from Azure Storage")
-        elif local_exists:
-            logger.info("✅ STARTUP SYNC: Using existing local database")
-        else:
-            logger.info("📝 STARTUP SYNC: No database found - will create new one")
-    
-    def sync_to_azure_periodically(self):
-        """Upload database to Azure (called periodically)"""
-        if not self.enabled:
-            return
-            
-        logger.info("🔄 PERIODIC SYNC: Backing up database to Azure Storage...")
-        success = self.upload_database_to_azure()
-        
-        if success:
-            logger.info("✅ PERIODIC SYNC: Database backed up successfully")
-        else:
-            logger.error("❌ PERIODIC SYNC: Backup failed")
     
     def emergency_restore_from_azure(self):
-        """Emergency restore if local database is corrupted"""
-        logger.warning("🚨 EMERGENCY RESTORE: Attempting to restore from Azure Storage...")
+        """Emergency restore database from Azure Storage"""
+        logger.warning("🚨 Emergency restore from Azure Storage initiated")
         
-        if not self.enabled:
-            logger.error("❌ EMERGENCY RESTORE: Azure Storage sync disabled")
+        if not self.azure_available:
+            logger.error("❌ Azure Storage not available for emergency restore")
             return False
+            
+        # Backup current database if it exists
+        if os.path.exists(self.db_path):
+            backup_path = f"{self.db_path}.emergency_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            os.rename(self.db_path, backup_path)
+            logger.info(f"📦 Current database backed up to {backup_path}")
         
-        # Rename corrupted database
-        if os.path.exists(self.local_db_path):
-            corrupted_path = f"{self.local_db_path}.corrupted_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            os.rename(self.local_db_path, corrupted_path)
-            logger.info(f"📁 Moved corrupted database to: {corrupted_path}")
-        
-        # Download fresh copy from Azure
-        success = self.download_database_from_azure()
-        
-        if success:
-            logger.info("✅ EMERGENCY RESTORE: Database restored from Azure Storage")
+        # Download from Azure
+        if self.download_database_from_azure():
+            logger.info("✅ Emergency restore completed successfully")
             return True
         else:
-            logger.error("❌ EMERGENCY RESTORE: Failed to restore from Azure Storage")
+            logger.error("❌ Emergency restore failed")
             return False
 
-# Global instance
+# Global instance for easy access
 azure_db_sync = AzureDatabaseSync()
+
+# Convenience functions
+def sync_from_azure_on_startup():
+    """Convenience function for startup sync"""
+    return azure_db_sync.sync_from_azure_on_startup()
+
+def upload_database_to_azure():
+    """Convenience function for upload"""
+    return azure_db_sync.upload_database_to_azure()
+
+def download_database_from_azure():
+    """Convenience function for download"""
+    return azure_db_sync.download_database_from_azure()
+
+def emergency_restore_from_azure():
+    """Convenience function for emergency restore"""
+    return azure_db_sync.emergency_restore_from_azure()
+
+if __name__ == "__main__":
+    # Test the module
+    logger.info("🧪 Testing Azure Database Sync module...")
+    sync = AzureDatabaseSync()
+    
+    if sync.azure_available:
+        logger.info("✅ Azure Storage available")
+        # Test download
+        sync.download_database_from_azure()
+    else:
+        logger.info("⚠️ Azure Storage not available - module works in offline mode")

@@ -2343,7 +2343,22 @@ Sorting:
       method: 'POST',
       body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers.get('content-type'));
+      
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return response.json();
+      } else {
+        // Response is not JSON (likely HTML error page)
+        return response.text().then(text => {
+          console.error('Server returned HTML instead of JSON:', text.substring(0, 500));
+          throw new Error(`Server error: Expected JSON but got ${contentType}. Status: ${response.status}`);
+        });
+      }
+    })
     .then(data => {
       if (data.success) {
         alert(`Excel upload successful!\n\nProcessed: ${data.stats.total_processed} courses\nAdded: ${data.stats.added} courses\nSkipped (duplicates): ${data.stats.skipped} courses\nErrors: ${data.stats.errors} courses`);

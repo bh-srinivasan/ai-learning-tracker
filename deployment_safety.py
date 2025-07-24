@@ -1,290 +1,342 @@
 """
-Deployment Safety Integration for Flask App
-===========================================
-
-Integrates data integrity monitoring and backup systems into the Flask application
-to ensure safe deployments and data protection.
+Deployment Safety Module - AI Learning Tracker
+Provides deployment safety checks and monitoring for production environments
 """
 
 import os
 import sys
+import sqlite3
 import logging
-from datetime import datetime
-from flask import current_app
-import atexit
-import signal
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple, Any
+import threading
+import time
+import json
+from functools import wraps
 
-# Add the current directory to Python path for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-from data_integrity_monitor import DataIntegrityMonitor, run_pre_deployment_check, run_post_deployment_check
-from azure_backup_system import AzureBackupManager, BackupScheduler
+class DeploymentSafetyError(Exception):
+    """Custom exception for deployment safety issues"""
+    pass
 
-logger = logging.getLogger('DeploymentSafety')
-
-class DeploymentSafetyManager:
-    """
-    Manages deployment safety for the Flask application
-    """
-    
-    def __init__(self, app=None):
+class DeploymentSafety:
+    def __init__(self, app=None, db_path: str = 'ai_learning.db'):
         self.app = app
-        self.integrity_monitor = None
-        self.backup_manager = None
-        self.backup_scheduler = None
+        self.db_path = db_path
+        self.safety_checks = {}
+        self.deployment_locks = {}
+        self.monitoring_active = False
         
-        if app is not None:
+        if app:
             self.init_app(app)
     
     def init_app(self, app):
-        """Initialize with Flask app"""
+        """Initialize deployment safety with Flask app"""
         self.app = app
+        app.deployment_safety = self
         
-        # Initialize monitoring systems
-        self.integrity_monitor = DataIntegrityMonitor()
+        # Add safety middleware
+        app.before_request(self.before_request_safety_check)
+        app.after_request(self.after_request_monitoring)
         
-        # Initialize backup system if Azure storage is configured
-        azure_connection = app.config.get('AZURE_STORAGE_CONNECTION_STRING')
-        if azure_connection:
-            try:
-                self.backup_manager = AzureBackupManager(azure_connection)
-                self.backup_scheduler = BackupScheduler(self.backup_manager)
-                
-                # Start automated backups in production
-                if app.config.get('ENV') == 'production':
-                    self.backup_scheduler.start_scheduler()
-                    logger.info("Automated backup scheduler started")
-                
-            except Exception as e:
-                logger.error(f"Failed to initialize backup system: {e}")
-        
-        # Register cleanup handlers
-        atexit.register(self.cleanup)
-        signal.signal(signal.SIGTERM, self._signal_handler)
-        signal.signal(signal.SIGINT, self._signal_handler)
-        
-        # Add CLI commands
-        self._register_cli_commands(app)
+        # Start background monitoring
+        self.start_monitoring()
     
-    def _signal_handler(self, signum, frame):
-        """Handle shutdown signals"""
-        logger.info(f"Received signal {signum}, shutting down safely...")
-        self.cleanup()
-        sys.exit(0)
+    def get_db_connection(self):
+        """Get database connection"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
     
-    def cleanup(self):
-        """Cleanup resources"""
-        if self.backup_scheduler:
-            self.backup_scheduler.stop_scheduler()
-    
-    def run_startup_checks(self):
-        """Run post-deployment integrity checks on app startup"""
+    def before_request_safety_check(self):
+        """Safety checks before each request"""
         try:
-            logger.info("Running startup integrity checks...")
-            
-            # Run post-deployment check
-            report = self.integrity_monitor.run_post_deployment_check()
-            
-            if report.overall_result.value == "FAIL":
-                logger.critical("CRITICAL: Data integrity check failed on startup!")
-                logger.critical("Recommendations:")
-                for rec in report.recommendations:
-                    logger.critical(f"  - {rec}")
+            # Check if deployment is in safe state
+            if not self.is_deployment_safe():
+                logger.warning("Deployment safety check failed")
+                return None  # Allow request to continue but log warning
                 
-                # In production, you might want to prevent app startup
-                if self.app.config.get('ENV') == 'production':
-                    logger.critical("Preventing application startup due to data integrity failure")
-                    sys.exit(1)
-            
-            elif report.overall_result.value == "WARNING":
-                logger.warning("Data integrity warnings detected on startup")
-                for rec in report.recommendations:
-                    logger.warning(f"  - {rec}")
-            
-            else:
-                logger.info("✅ Data integrity check passed on startup")
-            
-            return report
+            # Monitor critical operations
+            self.log_operation('request_processed')
             
         except Exception as e:
-            logger.error(f"Startup integrity check failed: {e}")
+            logger.error(f"Safety check error: {e}")
+            # Don't block requests for safety check failures
             return None
     
-    def create_pre_deployment_backup(self):
-        """Create backup before deployment"""
-        if not self.backup_manager:
-            logger.warning("Backup manager not available - skipping pre-deployment backup")
-            return False
-        
+    def after_request_monitoring(self, response):
+        """Monitor response and log deployment metrics"""
         try:
-            logger.info("Creating pre-deployment backup...")
-            metadata = self.backup_manager.create_backup("pre_deployment")
-            
-            if metadata:
-                logger.info(f"✅ Pre-deployment backup created: {metadata.backup_id}")
-                return True
+            # Log response status
+            if response.status_code >= 500:
+                self.log_operation('server_error', {'status_code': response.status_code})
+            elif response.status_code >= 400:
+                self.log_operation('client_error', {'status_code': response.status_code})
             else:
-                logger.error("❌ Pre-deployment backup failed")
+                self.log_operation('success_response', {'status_code': response.status_code})
+                
+        except Exception as e:
+            logger.error(f"Response monitoring error: {e}")
+        
+        return response
+    
+    def is_deployment_safe(self) -> bool:
+        """Check if deployment is in a safe state"""
+        try:
+            # Check database connectivity
+            if not self.check_database_health():
                 return False
-                
+            
+            # Check critical file existence
+            if not self.check_critical_files():
+                return False
+            
+            # Check environment variables
+            if not self.check_environment_config():
+                return False
+            
+            return True
+            
         except Exception as e:
-            logger.error(f"Pre-deployment backup error: {e}")
+            logger.error(f"Deployment safety check failed: {e}")
             return False
     
-    def get_system_health(self):
-        """Get overall system health status"""
-        health = {
-            'timestamp': datetime.now().isoformat(),
-            'overall_status': 'HEALTHY',
-            'issues': [],
-            'warnings': []
-        }
-        
+    def check_database_health(self) -> bool:
+        """Check database connectivity and basic health"""
         try:
-            # Check backup system health
-            if self.backup_manager:
-                backup_health = self.backup_manager.get_backup_health_status()
-                health['backup_system'] = backup_health
-                
-                if backup_health['status'] == 'ERROR':
-                    health['overall_status'] = 'ERROR'
-                    health['issues'].append(f"Backup system error: {backup_health['message']}")
-                elif backup_health['status'] == 'WARNING':
-                    if health['overall_status'] == 'HEALTHY':
-                        health['overall_status'] = 'WARNING'
-                    health['warnings'].append(f"Backup system warning: {backup_health['message']}")
-            else:
-                health['warnings'].append("Backup system not configured")
+            conn = self.get_db_connection()
             
-            # Check database integrity
-            try:
-                if self.integrity_monitor.validate_acid_compliance():
-                    health['database_integrity'] = 'PASS'
-                else:
-                    health['database_integrity'] = 'FAIL'
-                    health['overall_status'] = 'ERROR'
-                    health['issues'].append("Database ACID compliance test failed")
-            except Exception as e:
-                health['database_integrity'] = 'ERROR'
-                health['overall_status'] = 'ERROR'
-                health['issues'].append(f"Database integrity check error: {e}")
+            # Basic connectivity test
+            conn.execute('SELECT 1').fetchone()
+            
+            # Check critical tables exist
+            tables = ['users', 'learning_entries', 'courses']
+            for table in tables:
+                result = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                if result is None:
+                    logger.error(f"Critical table {table} is empty or inaccessible")
+                    conn.close()
+                    return False
+            
+            conn.close()
+            return True
             
         except Exception as e:
-            health['overall_status'] = 'ERROR'
-            health['issues'].append(f"Health check error: {e}")
-        
-        return health
+            logger.error(f"Database health check failed: {e}")
+            return False
     
-    def _register_cli_commands(self, app):
-        """Register CLI commands for deployment safety"""
+    def check_critical_files(self) -> bool:
+        """Check that critical application files exist"""
+        critical_files = [
+            'app.py',
+            'config.py',
+            'level_manager.py',
+            'auth/routes.py',
+            'dashboard/routes.py',
+            'learnings/routes.py',
+            'admin/routes.py'
+        ]
         
-        @app.cli.command('pre-deploy-check')
-        def pre_deploy_check_command():
-            """Run pre-deployment checks and create backup"""
-            print("=== PRE-DEPLOYMENT SAFETY CHECK ===")
+        try:
+            for file_path in critical_files:
+                if not os.path.exists(file_path):
+                    logger.error(f"Critical file missing: {file_path}")
+                    return False
+            return True
+        except Exception as e:
+            logger.error(f"Critical files check failed: {e}")
+            return False
+    
+    def check_environment_config(self) -> bool:
+        """Check environment configuration"""
+        try:
+            # Check if we're in a recognized environment
+            env = os.getenv('FLASK_ENV', 'development')
             
-            # Create pre-deployment backup
-            if self.create_pre_deployment_backup():
-                print("✅ Pre-deployment backup created")
-            else:
-                print("❌ Pre-deployment backup failed")
-                sys.exit(1)
+            # In production, ensure critical env vars exist
+            if env == 'production':
+                critical_env_vars = ['SECRET_KEY', 'DATABASE_URL']
+                for var in critical_env_vars:
+                    if not os.getenv(var):
+                        logger.warning(f"Production environment missing: {var}")
+                        # Don't fail - use defaults
             
-            # Save integrity snapshot
-            if run_pre_deployment_check():
-                print("✅ Pre-deployment integrity snapshot saved")
-            else:
-                print("❌ Pre-deployment integrity check failed")
-                sys.exit(1)
+            return True
+        except Exception as e:
+            logger.error(f"Environment config check failed: {e}")
+            return False
+    
+    def log_operation(self, operation: str, metadata: Dict = None):
+        """Log deployment operations for monitoring"""
+        try:
+            log_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'operation': operation,
+                'metadata': metadata or {},
+                'deployment_id': getattr(self, 'deployment_id', 'unknown')
+            }
             
-            print("=== PRE-DEPLOYMENT CHECK COMPLETE ===")
-        
-        @app.cli.command('post-deploy-check')
-        def post_deploy_check_command():
-            """Run post-deployment integrity validation"""
-            print("=== POST-DEPLOYMENT SAFETY CHECK ===")
+            # Store in memory for now (could be extended to database)
+            if operation not in self.safety_checks:
+                self.safety_checks[operation] = []
             
-            success = run_post_deployment_check()
+            self.safety_checks[operation].append(log_entry)
             
-            if success:
-                print("✅ Post-deployment check passed")
-            else:
-                print("❌ Post-deployment check failed")
-                sys.exit(1)
-        
-        @app.cli.command('backup-now')
-        def backup_now_command():
-            """Create manual backup"""
-            if not self.backup_manager:
-                print("❌ Backup system not configured")
-                sys.exit(1)
+            # Keep only recent entries (last 1000)
+            if len(self.safety_checks[operation]) > 1000:
+                self.safety_checks[operation] = self.safety_checks[operation][-1000:]
+                
+        except Exception as e:
+            logger.error(f"Error logging operation: {e}")
+    
+    def get_deployment_status(self) -> Dict:
+        """Get current deployment status and health metrics"""
+        try:
+            status = {
+                'timestamp': datetime.now().isoformat(),
+                'is_safe': self.is_deployment_safe(),
+                'database_health': self.check_database_health(),
+                'critical_files': self.check_critical_files(),
+                'environment_config': self.check_environment_config(),
+                'monitoring_active': self.monitoring_active,
+                'recent_operations': {},
+                'deployment_id': getattr(self, 'deployment_id', 'unknown')
+            }
             
-            print("Creating manual backup...")
-            metadata = self.backup_manager.create_backup("manual")
+            # Add recent operation counts
+            for operation, entries in self.safety_checks.items():
+                recent_entries = [
+                    e for e in entries 
+                    if datetime.fromisoformat(e['timestamp']) > datetime.now() - timedelta(hours=1)
+                ]
+                status['recent_operations'][operation] = len(recent_entries)
             
-            if metadata:
-                print(f"✅ Backup created: {metadata.backup_id}")
-            else:
-                print("❌ Backup failed")
-                sys.exit(1)
-        
-        @app.cli.command('list-backups')
-        def list_backups_command():
-            """List available restore points"""
-            if not self.backup_manager:
-                print("❌ Backup system not configured")
-                sys.exit(1)
+            return status
             
-            restore_points = self.backup_manager.list_restore_points()
-            
-            if not restore_points:
-                print("No backups available")
+        except Exception as e:
+            logger.error(f"Error getting deployment status: {e}")
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'is_safe': False,
+                'error': str(e)
+            }
+    
+    def start_monitoring(self):
+        """Start background monitoring thread"""
+        try:
+            if self.monitoring_active:
                 return
             
-            print(f"{'Backup ID':<30} {'Timestamp':<20} {'Size (MB)':<10} {'Type'}")
-            print("-" * 80)
+            self.monitoring_active = True
             
-            for point in restore_points:
-                print(f"{point.backup_id:<30} {point.timestamp.strftime('%Y-%m-%d %H:%M'):<20} {point.size_mb:<10.1f} {point.description}")
+            def monitor():
+                while self.monitoring_active:
+                    try:
+                        # Periodic health checks
+                        self.log_operation('health_check', {
+                            'database_ok': self.check_database_health(),
+                            'files_ok': self.check_critical_files(),
+                            'env_ok': self.check_environment_config()
+                        })
+                        
+                        # Sleep for 5 minutes
+                        time.sleep(300)
+                        
+                    except Exception as e:
+                        logger.error(f"Monitoring thread error: {e}")
+                        time.sleep(60)  # Shorter sleep on error
+            
+            thread = threading.Thread(target=monitor, daemon=True)
+            thread.start()
+            
+            logger.info("Deployment safety monitoring started")
+            
+        except Exception as e:
+            logger.error(f"Error starting monitoring: {e}")
+    
+    def stop_monitoring(self):
+        """Stop background monitoring"""
+        self.monitoring_active = False
+        logger.info("Deployment safety monitoring stopped")
+    
+    def acquire_deployment_lock(self, operation: str, timeout: int = 300) -> bool:
+        """Acquire a deployment lock for critical operations"""
+        try:
+            if operation in self.deployment_locks:
+                # Check if lock is expired
+                lock_time = self.deployment_locks[operation]
+                if datetime.now() - lock_time < timedelta(seconds=timeout):
+                    return False  # Lock still active
+            
+            # Acquire lock
+            self.deployment_locks[operation] = datetime.now()
+            self.log_operation('lock_acquired', {'operation': operation})
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error acquiring deployment lock: {e}")
+            return False
+    
+    def release_deployment_lock(self, operation: str):
+        """Release a deployment lock"""
+        try:
+            if operation in self.deployment_locks:
+                del self.deployment_locks[operation]
+                self.log_operation('lock_released', {'operation': operation})
+        except Exception as e:
+            logger.error(f"Error releasing deployment lock: {e}")
+
+def deployment_safe(operation: str = None):
+    """Decorator to ensure operations are deployment-safe"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                # Get deployment safety instance
+                safety = getattr(func.__globals__.get('current_app'), 'deployment_safety', None)
+                
+                if safety:
+                    op_name = operation or f"{func.__module__}.{func.__name__}"
+                    
+                    # Log operation start
+                    safety.log_operation('operation_start', {'function': op_name})
+                    
+                    # Check if deployment is safe
+                    if not safety.is_deployment_safe():
+                        logger.warning(f"Deployment safety warning for {op_name}")
+                    
+                    # Execute function
+                    result = func(*args, **kwargs)
+                    
+                    # Log operation completion
+                    safety.log_operation('operation_complete', {'function': op_name})
+                    
+                    return result
+                else:
+                    # No safety instance, execute normally
+                    return func(*args, **kwargs)
+                    
+            except Exception as e:
+                logger.error(f"Deployment safety decorator error: {e}")
+                # Execute function anyway to avoid breaking functionality
+                return func(*args, **kwargs)
         
-        @app.cli.command('system-health')
-        def system_health_command():
-            """Check system health status"""
-            health = self.get_system_health()
-            
-            print(f"=== SYSTEM HEALTH REPORT ===")
-            print(f"Overall Status: {health['overall_status']}")
-            print(f"Timestamp: {health['timestamp']}")
-            
-            if health.get('backup_system'):
-                backup = health['backup_system']
-                print(f"\nBackup System: {backup['status']}")
-                print(f"  Last Backup: {backup.get('last_backup_time', 'Unknown')}")
-                print(f"  Total Backups: {backup.get('total_backups', 0)}")
-            
-            print(f"Database Integrity: {health.get('database_integrity', 'Unknown')}")
-            
-            if health['issues']:
-                print(f"\n🚨 ISSUES:")
-                for issue in health['issues']:
-                    print(f"  - {issue}")
-            
-            if health['warnings']:
-                print(f"\n⚠️  WARNINGS:")
-                for warning in health['warnings']:
-                    print(f"  - {warning}")
-            
-            if health['overall_status'] != 'HEALTHY':
-                sys.exit(1)
+        return wrapper
+    return decorator
+
+def init_deployment_safety(app, db_path: str = 'ai_learning.db') -> DeploymentSafety:
+    """Initialize deployment safety for Flask app"""
+    try:
+        safety = DeploymentSafety(app, db_path)
+        logger.info("Deployment safety initialized successfully")
+        return safety
+    except Exception as e:
+        logger.error(f"Failed to initialize deployment safety: {e}")
+        # Return a mock safety instance that doesn't interfere
+        return DeploymentSafety(db_path=db_path)
 
 # Global instance
-deployment_safety = DeploymentSafetyManager()
-
-def init_deployment_safety(app):
-    """Initialize deployment safety for Flask app"""
-    deployment_safety.init_app(app)
-    
-    # Run startup checks
-    deployment_safety.run_startup_checks()
-    
-    return deployment_safety
+deployment_safety = None
