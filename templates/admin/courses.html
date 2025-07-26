@@ -2340,7 +2340,7 @@ Sorting:
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
     
-    fetch('/admin/upload_excel_courses_enhanced', {
+    fetch('/admin/upload_excel_courses', {
       method: 'POST',
       body: formData
     })
