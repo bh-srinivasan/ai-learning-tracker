@@ -2308,6 +2308,7 @@ Sorting:
   function showExcelUploadModal() {
     const modal = document.getElementById('excelUploadModal');
     const bootstrapModal = new bootstrap.Modal(modal);
+    clearErrorDescription(); // Clear any previous error descriptions
     bootstrapModal.show();
   }
 
@@ -2339,7 +2340,7 @@ Sorting:
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
     
-    fetch('/admin/upload_excel_courses', {
+    fetch('/admin/upload_excel_courses_enhanced', {
       method: 'POST',
       body: formData
     })
@@ -2360,7 +2361,15 @@ Sorting:
       }
     })
     .then(data => {
+      // Clear previous error display
+      clearErrorDescription();
+      
       if (data.success) {
+        // Show success description
+        if (data.success_description) {
+          showSuccessDescription(data.success_description);
+        }
+        
         alert(`Excel upload successful!\n\nProcessed: ${data.stats.total_processed} courses\nAdded: ${data.stats.added} courses\nSkipped (duplicates): ${data.stats.skipped} courses\nErrors: ${data.stats.errors} courses`);
         
         // Close modal and refresh page
@@ -2368,18 +2377,57 @@ Sorting:
         modal.hide();
         location.reload();
       } else {
-        alert('Upload failed: ' + data.error);
+        // Show error description
+        if (data.error_description) {
+          showErrorDescription(data.error_description);
+        } else {
+          alert('Upload failed: ' + data.error);
+        }
       }
     })
     .catch(error => {
       console.error('Upload error:', error);
-      alert('Upload failed: ' + error.message);
+      showErrorDescription('An unexpected error occurred while uploading the file. Please try again or contact support if the problem persists.');
     })
     .finally(() => {
       // Restore button state
       uploadBtn.disabled = false;
       uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
     });
+  }
+
+  function showErrorDescription(message) {
+    const errorContainer = document.getElementById('uploadErrorDescription');
+    if (errorContainer) {
+      errorContainer.innerHTML = `
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+          <i class="fas fa-exclamation-triangle"></i> <strong>Error:</strong> ${message}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      `;
+      errorContainer.style.display = 'block';
+    }
+  }
+
+  function showSuccessDescription(message) {
+    const errorContainer = document.getElementById('uploadErrorDescription');
+    if (errorContainer) {
+      errorContainer.innerHTML = `
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+          <i class="fas fa-check-circle"></i> <strong>Success:</strong> ${message}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      `;
+      errorContainer.style.display = 'block';
+    }
+  }
+
+  function clearErrorDescription() {
+    const errorContainer = document.getElementById('uploadErrorDescription');
+    if (errorContainer) {
+      errorContainer.innerHTML = '';
+      errorContainer.style.display = 'none';
+    }
   }
 
   function downloadTemplate() {
@@ -2398,6 +2446,9 @@ Sorting:
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <!-- Error/Success Description Container -->
+        <div id="uploadErrorDescription" style="display: none; margin-bottom: 15px;"></div>
+        
         <div class="alert alert-info">
           <strong><i class="fas fa-info-circle"></i> Instructions:</strong>
           <ul class="mb-0 mt-2">

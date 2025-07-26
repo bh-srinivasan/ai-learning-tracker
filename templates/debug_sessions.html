@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Debug Sessions Data</title>
+  </head>
+  <body>
+    <h1>Debug Session Data</h1>
+
+    <h2>Activity Stats Debug</h2>
+    <p>
+      activity_stats type: {{ activity_stats.__class__.__name__ if
+      activity_stats }}
+    </p>
+    <p>activity_stats length: {{ activity_stats|length if activity_stats }}</p>
+    <p>activity_stats exists: {{ 'yes' if activity_stats else 'no' }}</p>
+    <p>activity_stats raw: {{ activity_stats }}</p>
+
+    <h2>Login Stats Debug</h2>
+    <p>login_stats type: {{ login_stats.__class__.__name__ if login_stats }}</p>
+    <p>login_stats length: {{ login_stats|length if login_stats }}</p>
+    <p>login_stats exists: {{ 'yes' if login_stats else 'no' }}</p>
+    <p>login_stats raw: {{ login_stats }}</p>
+
+    <h2>Activity Stats Table</h2>
+    {% if activity_stats %}
+    <table border="1">
+      <tr>
+        <th>Activity Type</th>
+        <th>Count</th>
+      </tr>
+      {% for stat in activity_stats %}
+      <tr>
+        <td>{{ stat.activity_type }}</td>
+        <td>{{ stat.count }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p>No activity data</p>
+    {% endif %}
+
+    <h2>Login Stats Table</h2>
+    {% if login_stats %}
+    <table border="1">
+      <tr>
+        <th>Date</th>
+        <th>Count</th>
+      </tr>
+      {% for stat in login_stats %}
+      <tr>
+        <td>{{ stat.login_date }}</td>
+        <td>{{ stat.login_count }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p>No login data</p>
+    {% endif %}
+  </body>
+</html>
