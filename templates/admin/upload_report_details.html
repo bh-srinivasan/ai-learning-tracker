@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Report #{{ report.id }} - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2>
+                        <i class="fas fa-file-alt text-primary"></i> 
+                        Upload Report #{{ report.id }}
+                    </h2>
+                    <p class="text-muted">Detailed audit trail for Excel upload</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('admin_reports.upload_reports_list') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Back to Reports
+                    </a>
+                    <a href="{{ url_for('admin_reports.export_report', report_id=report.id) }}" class="btn btn-success">
+                        <i class="fas fa-download"></i> Export CSV
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Summary -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle"></i> Upload Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="150">File Name:</th>
+                                    <td>
+                                        <i class="fas fa-file-excel text-success"></i>
+                                        {{ report.filename }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Upload Time:</th>
+                                    <td>{{ report.upload_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Uploaded By:</th>
+                                    <td>
+                                        <span class="badge badge-primary">{{ report.username }}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Total Rows:</th>
+                                    <td><span class="badge badge-info">{{ report.total_rows }}</span></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="150">Processed:</th>
+                                    <td><span class="badge badge-secondary">{{ report.processed_rows }}</span></td>
+                                </tr>
+                                <tr>
+                                    <th>Successful:</th>
+                                    <td><span class="badge badge-success">{{ report.success_count }}</span></td>
+                                </tr>
+                                <tr>
+                                    <th>Errors:</th>
+                                    <td><span class="badge badge-danger">{{ report.error_count }}</span></td>
+                                </tr>
+                                <tr>
+                                    <th>Warnings:</th>
+                                    <td><span class="badge badge-warning">{{ report.warnings_count }}</span></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Success Rate Progress Bar -->
+                    {% if report.processed_rows > 0 %}
+                    <div class="mt-3">
+                        <label>Success Rate:</label>
+                        {% set success_rate = (report.success_count / report.processed_rows * 100) | round(1) %}
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar bg-success" 
+                                 role="progressbar" 
+                                 style="width: {{ success_rate }}%"
+                                 aria-valuenow="{{ success_rate }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                {{ success_rate }}%
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Tabs -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" id="statusTabs" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" id="all-tab" data-toggle="tab" href="#all" role="tab">
+                                All Rows <span class="badge badge-secondary">{{ row_details|length }}</span>
+                            </a>
+                        </li>
+                        {% if details_by_status.SUCCESS %}
+                        <li class="nav-item">
+                            <a class="nav-link" id="success-tab" data-toggle="tab" href="#success" role="tab">
+                                <i class="fas fa-check-circle text-success"></i> 
+                                Success <span class="badge badge-success">{{ details_by_status.SUCCESS|length }}</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if details_by_status.ERROR %}
+                        <li class="nav-item">
+                            <a class="nav-link" id="error-tab" data-toggle="tab" href="#error" role="tab">
+                                <i class="fas fa-exclamation-circle text-danger"></i> 
+                                Errors <span class="badge badge-danger">{{ details_by_status.ERROR|length }}</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if details_by_status.SKIPPED %}
+                        <li class="nav-item">
+                            <a class="nav-link" id="skipped-tab" data-toggle="tab" href="#skipped" role="tab">
+                                <i class="fas fa-minus-circle text-warning"></i> 
+                                Skipped <span class="badge badge-warning">{{ details_by_status.SKIPPED|length }}</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content" id="statusTabsContent">
+                        <!-- All Rows Tab -->
+                        <div class="tab-pane fade show active" id="all" role="tabpanel">
+                            {% include 'admin/upload_report_table.html' %}
+                        </div>
+
+                        <!-- Success Tab -->
+                        {% if details_by_status.SUCCESS %}
+                        <div class="tab-pane fade" id="success" role="tabpanel">
+                            {% with filtered_details = details_by_status.SUCCESS %}
+                                {% include 'admin/upload_report_table.html' %}
+                            {% endwith %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Error Tab -->
+                        {% if details_by_status.ERROR %}
+                        <div class="tab-pane fade" id="error" role="tabpanel">
+                            {% with filtered_details = details_by_status.ERROR %}
+                                {% include 'admin/upload_report_table.html' %}
+                            {% endwith %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Skipped Tab -->
+                        {% if details_by_status.SKIPPED %}
+                        <div class="tab-pane fade" id="skipped" role="tabpanel">
+                            {% with filtered_details = details_by_status.SKIPPED %}
+                                {% include 'admin/upload_report_table.html' %}
+                            {% endwith %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-scroll to error tab if there are errors and no specific tab was requested
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    
+    if (!tab && {{ details_by_status.ERROR|length }} > 0) {
+        // Auto-focus on errors if they exist
+        document.getElementById('error-tab').click();
+    }
+});
+
+// Table search functionality
+function filterTable(inputId, tableId) {
+    const input = document.getElementById(inputId);
+    const table = document.getElementById(tableId);
+    const rows = table.getElementsByTagName('tr');
+    
+    input.addEventListener('keyup', function() {
+        const filter = this.value.toLowerCase();
+        
+        for (let i = 1; i < rows.length; i++) { // Skip header row
+            const cells = rows[i].getElementsByTagName('td');
+            let found = false;
+            
+            for (let j = 0; j < cells.length; j++) {
+                if (cells[j].textContent.toLowerCase().includes(filter)) {
+                    found = true;
+                    break;
+                }
+            }
+            
+            rows[i].style.display = found ? '' : 'none';
+        }
+    });
+}
+
+// Initialize search for all tables
+document.addEventListener('DOMContentLoaded', function() {
+    // Add search boxes dynamically if needed
+    const tables = document.querySelectorAll('.table');
+    tables.forEach((table, index) => {
+        if (table.rows.length > 10) { // Only add search for larger tables
+            // Implementation would depend on specific requirements
+        }
+    });
+});
+</script>
+{% endblock %}

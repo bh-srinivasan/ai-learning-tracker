@@ -1298,11 +1298,13 @@ from auth.routes import auth_bp
 from dashboard.routes import dashboard_bp  
 from learnings.routes import learnings_bp
 from admin.routes import admin_bp
+from admin_reports_routes import admin_reports_bp  # Upload reports admin interface
 
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
 app.register_blueprint(learnings_bp, url_prefix='/learnings')
 app.register_blueprint(admin_bp)
+app.register_blueprint(admin_reports_bp)
 
 # Error handlers for security
 @app.errorhandler(400)
@@ -2270,6 +2272,14 @@ def admin_upload_excel_courses():
         import pandas as pd
         from datetime import datetime
         import hashlib
+        from upload_reports_manager import UploadReportsManager
+        
+        # Initialize upload reports manager
+        try:
+            reports_manager = UploadReportsManager()
+        except Exception as e:
+            print(f"Warning: Could not initialize upload reports manager: {e}")
+            reports_manager = None
         
         # Check if file was uploaded
         if 'excel_file' not in request.files:
@@ -2314,6 +2324,23 @@ def admin_upload_excel_courses():
                 'error_details': []
             }
             
+            # Create upload report entry
+            report_id = None
+            if reports_manager:
+                try:
+                    report_id = reports_manager.create_upload_report(
+                        user_id=user['id'],
+                        filename=file.filename,
+                        total_rows=len(df),
+                        processed_rows=0,
+                        success_count=0,
+                        error_count=0,
+                        warnings_count=0
+                    )
+                except Exception as report_error:
+                    print(f"Warning: Could not create upload report: {report_error}")
+                    report_id = None
+            
             # Get existing courses to check for duplicates
             existing_courses = conn.execute('SELECT title, url FROM courses').fetchall()
             existing_set = set()
@@ -2339,6 +2366,20 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Missing required data - title: {bool(title)}, url: {bool(url)}, source: {bool(source)}, level: {bool(level)}'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Validate level
@@ -2346,6 +2387,20 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Invalid level "{level}", must be Beginner, Intermediate, or Advanced'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Validate URL format
@@ -2353,11 +2408,39 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Invalid URL format "{url}", must start with http:// or https://'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Check for duplicates
                     if (title.lower(), url.lower()) in existing_set:
                         stats['skipped'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='skipped',
+                                    message='Duplicate course already exists',
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add skipped row detail: {detail_error}")
                         continue
                     
                     # Extract optional fields
@@ -2408,11 +2491,39 @@ def admin_upload_excel_courses():
                         existing_set.add((title.lower(), url.lower()))
                         stats['added'] += 1
                         
+                        # Add successful row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='success',
+                                    message='Course added successfully',
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add row detail: {detail_error}")
+                        
                     except Exception as db_error:
                         error_detail = f'Row {index + 1}: Database insert failed - {str(db_error)}'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
                         print(f"Database insert error for row {index + 1}: {str(db_error)}")
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add DB error row detail: {detail_error}")
                         continue
                     
                 except Exception as row_error:
@@ -2420,25 +2531,64 @@ def admin_upload_excel_courses():
                     stats['error_details'].append(error_detail)
                     stats['errors'] += 1
                     print(f"Row processing error for row {index + 1}: {str(row_error)}")
+                    
+                    # Add row detail to report
+                    if report_id and reports_manager:
+                        try:
+                            reports_manager.add_row_detail(
+                                report_id=report_id,
+                                row_number=index + 1,
+                                status='failed',
+                                message=error_detail,
+                                course_title='Unknown',
+                                course_url='Unknown'
+                            )
+                        except Exception as detail_error:
+                            print(f"Warning: Could not add processing error row detail: {detail_error}")
                     continue
             
             # Commit the transaction
             try:
                 conn.commit()
                 print(f"Transaction committed successfully. Stats: {stats}")
+                
+                # Update the upload report with final statistics
+                if report_id and reports_manager:
+                    try:
+                        reports_manager.update_upload_report(
+                            report_id=report_id,
+                            processed_rows=stats['total_processed'],
+                            success_count=stats['added'],
+                            error_count=stats['errors'],
+                            warnings_count=stats['skipped']
+                        )
+                    except Exception as update_error:
+                        print(f"Warning: Could not update upload report: {update_error}")
             except Exception as commit_error:
                 print(f"Commit error: {str(commit_error)}")
                 return jsonify({
                     'success': False, 
                     'error': f'Failed to save courses to database: {str(commit_error)}',
-                    'stats': stats
+                    'stats': {
+                    'total_processed': stats['total_processed'],
+                    'successful': stats['added'],  # Frontend expects 'successful' not 'added'
+                    'skipped': stats['skipped'],
+                    'errors': stats['errors'],
+                    'warnings': len(stats['error_details']) if stats['error_details'] else 0
+                }
                 }), 500
             
             # Prepare response
             response_data = {
                 'success': True,
                 'message': 'Excel upload completed successfully.',
-                'stats': stats
+                'stats': {
+                    'total_processed': stats['total_processed'],
+                    'successful': stats['added'],  # Frontend expects 'successful' not 'added'
+                    'skipped': stats['skipped'],
+                    'errors': stats['errors'],
+                    'warnings': len(stats['error_details']) if stats['error_details'] else 0
+                }
             }
             
             # Include error details if there were any errors (but still consider it a success if some courses were added)
@@ -5994,6 +6144,14 @@ def admin_upload_excel_courses():
         import pandas as pd
         from datetime import datetime
         import hashlib
+        from upload_reports_manager import UploadReportsManager
+        
+        # Initialize upload reports manager
+        try:
+            reports_manager = UploadReportsManager()
+        except Exception as e:
+            print(f"Warning: Could not initialize upload reports manager: {e}")
+            reports_manager = None
         
         # Check if file was uploaded
         if 'excel_file' not in request.files:
@@ -6038,6 +6196,23 @@ def admin_upload_excel_courses():
                 'error_details': []
             }
             
+            # Create upload report entry
+            report_id = None
+            if reports_manager:
+                try:
+                    report_id = reports_manager.create_upload_report(
+                        user_id=user['id'],
+                        filename=file.filename,
+                        total_rows=len(df),
+                        processed_rows=0,
+                        success_count=0,
+                        error_count=0,
+                        warnings_count=0
+                    )
+                except Exception as report_error:
+                    print(f"Warning: Could not create upload report: {report_error}")
+                    report_id = None
+            
             # Get existing courses to check for duplicates
             existing_courses = conn.execute('SELECT title, url FROM courses').fetchall()
             existing_set = set()
@@ -6063,6 +6238,20 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Missing required data - title: {bool(title)}, url: {bool(url)}, source: {bool(source)}, level: {bool(level)}'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Validate level
@@ -6070,6 +6259,20 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Invalid level "{level}", must be Beginner, Intermediate, or Advanced'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Validate URL format
@@ -6077,11 +6280,39 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Invalid URL format "{url}", must start with http:// or https://'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Check for duplicates
                     if (title.lower(), url.lower()) in existing_set:
                         stats['skipped'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='skipped',
+                                    message='Duplicate course already exists',
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add skipped row detail: {detail_error}")
                         continue
                     
                     # Extract optional fields
@@ -6132,11 +6363,39 @@ def admin_upload_excel_courses():
                         existing_set.add((title.lower(), url.lower()))
                         stats['added'] += 1
                         
+                        # Add successful row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='success',
+                                    message='Course added successfully',
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add row detail: {detail_error}")
+                        
                     except Exception as db_error:
                         error_detail = f'Row {index + 1}: Database insert failed - {str(db_error)}'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
                         print(f"Database insert error for row {index + 1}: {str(db_error)}")
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add DB error row detail: {detail_error}")
                         continue
                     
                 except Exception as row_error:
@@ -6144,25 +6403,64 @@ def admin_upload_excel_courses():
                     stats['error_details'].append(error_detail)
                     stats['errors'] += 1
                     print(f"Row processing error for row {index + 1}: {str(row_error)}")
+                    
+                    # Add row detail to report
+                    if report_id and reports_manager:
+                        try:
+                            reports_manager.add_row_detail(
+                                report_id=report_id,
+                                row_number=index + 1,
+                                status='failed',
+                                message=error_detail,
+                                course_title='Unknown',
+                                course_url='Unknown'
+                            )
+                        except Exception as detail_error:
+                            print(f"Warning: Could not add processing error row detail: {detail_error}")
                     continue
             
             # Commit the transaction
             try:
                 conn.commit()
                 print(f"Transaction committed successfully. Stats: {stats}")
+                
+                # Update the upload report with final statistics
+                if report_id and reports_manager:
+                    try:
+                        reports_manager.update_upload_report(
+                            report_id=report_id,
+                            processed_rows=stats['total_processed'],
+                            success_count=stats['added'],
+                            error_count=stats['errors'],
+                            warnings_count=stats['skipped']
+                        )
+                    except Exception as update_error:
+                        print(f"Warning: Could not update upload report: {update_error}")
             except Exception as commit_error:
                 print(f"Commit error: {str(commit_error)}")
                 return jsonify({
                     'success': False, 
                     'error': f'Failed to save courses to database: {str(commit_error)}',
-                    'stats': stats
+                    'stats': {
+                    'total_processed': stats['total_processed'],
+                    'successful': stats['added'],  # Frontend expects 'successful' not 'added'
+                    'skipped': stats['skipped'],
+                    'errors': stats['errors'],
+                    'warnings': len(stats['error_details']) if stats['error_details'] else 0
+                }
                 }), 500
             
             # Prepare response
             response_data = {
                 'success': True,
                 'message': 'Excel upload completed successfully.',
-                'stats': stats
+                'stats': {
+                    'total_processed': stats['total_processed'],
+                    'successful': stats['added'],  # Frontend expects 'successful' not 'added'
+                    'skipped': stats['skipped'],
+                    'errors': stats['errors'],
+                    'warnings': len(stats['error_details']) if stats['error_details'] else 0
+                }
             }
             
             # Include error details if there were any errors (but still consider it a success if some courses were added)
@@ -9718,6 +10016,14 @@ def admin_upload_excel_courses():
         import pandas as pd
         from datetime import datetime
         import hashlib
+        from upload_reports_manager import UploadReportsManager
+        
+        # Initialize upload reports manager
+        try:
+            reports_manager = UploadReportsManager()
+        except Exception as e:
+            print(f"Warning: Could not initialize upload reports manager: {e}")
+            reports_manager = None
         
         # Check if file was uploaded
         if 'excel_file' not in request.files:
@@ -9762,6 +10068,23 @@ def admin_upload_excel_courses():
                 'error_details': []
             }
             
+            # Create upload report entry
+            report_id = None
+            if reports_manager:
+                try:
+                    report_id = reports_manager.create_upload_report(
+                        user_id=user['id'],
+                        filename=file.filename,
+                        total_rows=len(df),
+                        processed_rows=0,
+                        success_count=0,
+                        error_count=0,
+                        warnings_count=0
+                    )
+                except Exception as report_error:
+                    print(f"Warning: Could not create upload report: {report_error}")
+                    report_id = None
+            
             # Get existing courses to check for duplicates
             existing_courses = conn.execute('SELECT title, url FROM courses').fetchall()
             existing_set = set()
@@ -9787,6 +10110,20 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Missing required data - title: {bool(title)}, url: {bool(url)}, source: {bool(source)}, level: {bool(level)}'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Validate level
@@ -9794,6 +10131,20 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Invalid level "{level}", must be Beginner, Intermediate, or Advanced'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Validate URL format
@@ -9801,11 +10152,39 @@ def admin_upload_excel_courses():
                         error_detail = f'Row {index + 1}: Invalid URL format "{url}", must start with http:// or https://'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title if title else 'N/A',
+                                    course_url=url if url else 'N/A'
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add error row detail: {detail_error}")
                         continue
                     
                     # Check for duplicates
                     if (title.lower(), url.lower()) in existing_set:
                         stats['skipped'] += 1
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='skipped',
+                                    message='Duplicate course already exists',
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add skipped row detail: {detail_error}")
                         continue
                     
                     # Extract optional fields
@@ -9856,11 +10235,39 @@ def admin_upload_excel_courses():
                         existing_set.add((title.lower(), url.lower()))
                         stats['added'] += 1
                         
+                        # Add successful row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='success',
+                                    message='Course added successfully',
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add row detail: {detail_error}")
+                        
                     except Exception as db_error:
                         error_detail = f'Row {index + 1}: Database insert failed - {str(db_error)}'
                         stats['error_details'].append(error_detail)
                         stats['errors'] += 1
                         print(f"Database insert error for row {index + 1}: {str(db_error)}")
+                        
+                        # Add row detail to report
+                        if report_id and reports_manager:
+                            try:
+                                reports_manager.add_row_detail(
+                                    report_id=report_id,
+                                    row_number=index + 1,
+                                    status='failed',
+                                    message=error_detail,
+                                    course_title=title,
+                                    course_url=url
+                                )
+                            except Exception as detail_error:
+                                print(f"Warning: Could not add DB error row detail: {detail_error}")
                         continue
                     
                 except Exception as row_error:
@@ -9868,25 +10275,64 @@ def admin_upload_excel_courses():
                     stats['error_details'].append(error_detail)
                     stats['errors'] += 1
                     print(f"Row processing error for row {index + 1}: {str(row_error)}")
+                    
+                    # Add row detail to report
+                    if report_id and reports_manager:
+                        try:
+                            reports_manager.add_row_detail(
+                                report_id=report_id,
+                                row_number=index + 1,
+                                status='failed',
+                                message=error_detail,
+                                course_title='Unknown',
+                                course_url='Unknown'
+                            )
+                        except Exception as detail_error:
+                            print(f"Warning: Could not add processing error row detail: {detail_error}")
                     continue
             
             # Commit the transaction
             try:
                 conn.commit()
                 print(f"Transaction committed successfully. Stats: {stats}")
+                
+                # Update the upload report with final statistics
+                if report_id and reports_manager:
+                    try:
+                        reports_manager.update_upload_report(
+                            report_id=report_id,
+                            processed_rows=stats['total_processed'],
+                            success_count=stats['added'],
+                            error_count=stats['errors'],
+                            warnings_count=stats['skipped']
+                        )
+                    except Exception as update_error:
+                        print(f"Warning: Could not update upload report: {update_error}")
             except Exception as commit_error:
                 print(f"Commit error: {str(commit_error)}")
                 return jsonify({
                     'success': False, 
                     'error': f'Failed to save courses to database: {str(commit_error)}',
-                    'stats': stats
+                    'stats': {
+                    'total_processed': stats['total_processed'],
+                    'successful': stats['added'],  # Frontend expects 'successful' not 'added'
+                    'skipped': stats['skipped'],
+                    'errors': stats['errors'],
+                    'warnings': len(stats['error_details']) if stats['error_details'] else 0
+                }
                 }), 500
             
             # Prepare response
             response_data = {
                 'success': True,
                 'message': 'Excel upload completed successfully.',
-                'stats': stats
+                'stats': {
+                    'total_processed': stats['total_processed'],
+                    'successful': stats['added'],  # Frontend expects 'successful' not 'added'
+                    'skipped': stats['skipped'],
+                    'errors': stats['errors'],
+                    'warnings': len(stats['error_details']) if stats['error_details'] else 0
+                }
             }
             
             # Include error details if there were any errors (but still consider it a success if some courses were added)

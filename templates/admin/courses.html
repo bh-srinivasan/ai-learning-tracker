@@ -29,6 +29,14 @@ endblock %} {% block content %}
         <span class="d-none d-sm-inline ms-1">Excel&nbsp;Upload</span>
       </button>
       <a
+        href="{{ url_for('admin_reports.upload_reports_list') }}"
+        class="btn btn-info btn-sm"
+        title="View upload reports and audit trails"
+      >
+        <i class="fas fa-chart-line"></i>
+        <span class="d-none d-sm-inline ms-1">Upload&nbsp;Reports</span>
+      </a>
+      <a
         href="{{ url_for('admin_course_configs') }}"
         class="btn btn-success btn-sm"
         title="Search and import courses from external sources"
@@ -2331,6 +2339,9 @@ Sorting:
       alert('Please select a valid Excel file (.xlsx or .xls).');
       return;
     }
+
+    // Clear previous results
+    clearUploadResults();
     
     const formData = new FormData();
     formData.append('excel_file', file);
@@ -2338,7 +2349,9 @@ Sorting:
     // Show loading state
     const uploadBtn = document.getElementById('uploadExcelBtn');
     uploadBtn.disabled = true;
-    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    
+    const startTime = Date.now();
     
     fetch('/admin/upload_excel_courses', {
       method: 'POST',
@@ -2361,39 +2374,214 @@ Sorting:
       }
     })
     .then(data => {
+      const endTime = Date.now();
+      const processingTime = endTime - startTime;
+      
+      console.log('Upload response:', data);
+      
       // Clear previous error display
       clearErrorDescription();
       
+      // Show upload notification
+      showUploadNotification(data);
+      
       if (data.success) {
-        // Show success description
-        if (data.success_description) {
-          showSuccessDescription(data.success_description);
+        // Display comprehensive results
+        displayUploadResults(data, processingTime);
+        
+        // Show success notification with auto-close after viewing results
+        setTimeout(() => {
+          if (data.stats.successful > 0) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('excelUploadModal'));
+            modal.hide();
+            location.reload();
+          }
+        }, 5000); // Auto-close after 5 seconds if successful
+        
+      } else {
+        // Handle errors
+        if (data.message) {
+          showErrorDescription(data.message);
         }
         
-        alert(`Excel upload successful!\n\nProcessed: ${data.stats.total_processed} courses\nAdded: ${data.stats.added} courses\nSkipped (duplicates): ${data.stats.skipped} courses\nErrors: ${data.stats.errors} courses`);
-        
-        // Close modal and refresh page
-        const modal = bootstrap.Modal.getInstance(document.getElementById('excelUploadModal'));
-        modal.hide();
-        location.reload();
-      } else {
-        // Show error description
-        if (data.error_description) {
-          showErrorDescription(data.error_description);
-        } else {
-          alert('Upload failed: ' + data.error);
+        // Still show results if there's row data
+        if (data.row_results && data.row_results.length > 0) {
+          displayUploadResults(data, processingTime);
         }
       }
     })
     .catch(error => {
       console.error('Upload error:', error);
-      showErrorDescription('An unexpected error occurred while uploading the file. Please try again or contact support if the problem persists.');
+      showErrorDescription('An unexpected error occurred while uploading the file. Please check your connection and try again.');
+      showUploadNotification({
+        success: false,
+        message: 'Upload failed due to network or server error.',
+        timestamp: new Date().toISOString()
+      });
     })
     .finally(() => {
       // Restore button state
       uploadBtn.disabled = false;
       uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
     });
+  }
+
+  function clearUploadResults() {
+    // Hide results section
+    document.getElementById('uploadResultsSection').style.display = 'none';
+    
+    // Clear stats
+    document.getElementById('successCount').textContent = '0';
+    document.getElementById('skippedCount').textContent = '0';
+    document.getElementById('errorCount').textContent = '0';
+    document.getElementById('warningCount').textContent = '0';
+    
+    // Clear table
+    document.getElementById('uploadDetailsBody').innerHTML = '';
+  }
+
+  function displayUploadResults(data, processingTime) {
+    // Show results section
+    document.getElementById('uploadResultsSection').style.display = 'block';
+    
+    // Update stats
+    const stats = data.stats || {};
+    document.getElementById('successCount').textContent = stats.successful || 0;
+    document.getElementById('skippedCount').textContent = stats.skipped || 0;
+    document.getElementById('errorCount').textContent = stats.errors || 0;
+    document.getElementById('warningCount').textContent = stats.warnings || 0;
+    
+    // Update processing info
+    const env = data.environment || 'unknown';
+    const procTime = processingTime || data.summary?.processing_time_ms || 0;
+    document.getElementById('processingInfo').innerHTML = 
+      `Processed in ${procTime}ms using ${env} database (${data.user || 'admin'})`;
+    
+    // Populate details table
+    const tbody = document.getElementById('uploadDetailsBody');
+    tbody.innerHTML = '';
+    
+    if (data.row_results && data.row_results.length > 0) {
+      data.row_results.forEach(row => {
+        const tr = document.createElement('tr');
+        
+        // Determine row status styling
+        let statusClass = '';
+        let statusIcon = '';
+        let statusText = '';
+        
+        switch (row.status) {
+          case 'success':
+            statusClass = 'text-success';
+            statusIcon = 'fas fa-check-circle';
+            statusText = 'Success';
+            break;
+          case 'skipped':
+            statusClass = 'text-warning';
+            statusIcon = 'fas fa-skip-forward';
+            statusText = 'Skipped';
+            break;
+          case 'error':
+            statusClass = 'text-danger';
+            statusIcon = 'fas fa-exclamation-circle';
+            statusText = 'Error';
+            break;
+          default:
+            statusClass = 'text-muted';
+            statusIcon = 'fas fa-question-circle';
+            statusText = 'Unknown';
+        }
+        
+        // Build message text
+        let message = row.error_message || row.action || '';
+        if (row.warnings && row.warnings.length > 0) {
+          message += ' (⚠️ ' + row.warnings.length + ' warnings)';
+        }
+        
+        tr.innerHTML = `
+          <td class="text-center">${row.row_number}</td>
+          <td class="${statusClass}">
+            <i class="${statusIcon}"></i> ${statusText}
+          </td>
+          <td class="text-truncate" title="${row.processed_data?.title || row.raw_data_preview?.title || ''}">
+            ${(row.processed_data?.title || row.raw_data_preview?.title || '').substring(0, 30)}${((row.processed_data?.title || row.raw_data_preview?.title || '').length > 30) ? '...' : ''}
+          </td>
+          <td class="text-truncate" title="${row.processed_data?.url || row.raw_data_preview?.url || ''}">
+            ${(row.processed_data?.url || row.raw_data_preview?.url || '').substring(0, 25)}${((row.processed_data?.url || row.raw_data_preview?.url || '').length > 25) ? '...' : ''}
+          </td>
+          <td>
+            <span class="badge ${getStatusBadgeClass(row.processed_data?.level || row.raw_data_preview?.level)}">
+              ${row.processed_data?.level || row.raw_data_preview?.level || 'N/A'}
+            </span>
+          </td>
+          <td class="text-truncate" title="${message}">
+            ${message.substring(0, 30)}${message.length > 30 ? '...' : ''}
+          </td>
+        `;
+        
+        tbody.appendChild(tr);
+      });
+    } else {
+      // No detailed results available
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td colspan="6" class="text-center text-muted">
+          <i class="fas fa-info-circle"></i> No detailed row information available
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function getStatusBadgeClass(level) {
+    switch (level) {
+      case 'Beginner': return 'bg-success';
+      case 'Intermediate': return 'bg-warning';
+      case 'Advanced': return 'bg-danger';
+      default: return 'bg-secondary';
+    }
+  }
+
+  function showUploadNotification(data) {
+    const notification = document.getElementById('uploadNotification');
+    const toastElement = notification.querySelector('.toast');
+    const timestamp = notification.querySelector('#uploadTimestamp');
+    const body = notification.querySelector('#uploadNotificationBody');
+    
+    // Update timestamp
+    const now = new Date();
+    timestamp.textContent = now.toLocaleTimeString();
+    
+    // Update message
+    if (data.success) {
+      body.innerHTML = `
+        <div class="text-success">
+          <i class="fas fa-check-circle"></i> ${data.message || 'Upload completed successfully!'}
+        </div>
+        ${data.stats ? `
+        <small class="text-muted">
+          ${data.stats.successful} added, ${data.stats.skipped} skipped, ${data.stats.errors} errors
+        </small>
+        ` : ''}
+      `;
+    } else {
+      body.innerHTML = `
+        <div class="text-danger">
+          <i class="fas fa-exclamation-triangle"></i> ${data.message || 'Upload failed'}
+        </div>
+        <small class="text-muted">
+          Check the details below for more information.
+        </small>
+      `;
+    }
+    
+    // Show notification
+    notification.style.display = 'block';
+    const toast = new bootstrap.Toast(toastElement, {
+      autohide: data.success,
+      delay: data.success ? 4000 : 8000
+    });
+    toast.show();
   }
 
   function showErrorDescription(message) {
@@ -2475,6 +2663,59 @@ Sorting:
           <strong><i class="fas fa-exclamation-triangle"></i> Note:</strong>
           Duplicate courses (same title and URL) will be skipped automatically.
         </div>
+        
+        <!-- Upload Results Section -->
+        <div id="uploadResultsSection" style="display: none; margin-top: 20px;">
+          <hr>
+          <h6><i class="fas fa-chart-bar"></i> Upload Results</h6>
+          
+          <!-- Summary Stats -->
+          <div id="uploadStats" class="row mb-3">
+            <div class="col-3 text-center">
+              <div class="badge bg-success fs-6" id="successCount">0</div>
+              <small class="d-block text-muted">Successful</small>
+            </div>
+            <div class="col-3 text-center">
+              <div class="badge bg-warning fs-6" id="skippedCount">0</div>
+              <small class="d-block text-muted">Skipped</small>
+            </div>
+            <div class="col-3 text-center">
+              <div class="badge bg-danger fs-6" id="errorCount">0</div>
+              <small class="d-block text-muted">Errors</small>
+            </div>
+            <div class="col-3 text-center">
+              <div class="badge bg-info fs-6" id="warningCount">0</div>
+              <small class="d-block text-muted">Warnings</small>
+            </div>
+          </div>
+          
+          <!-- Detailed Results Table -->
+          <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-striped" id="uploadDetailsTable">
+              <thead class="table-dark sticky-top">
+                <tr>
+                  <th width="8%">Row</th>
+                  <th width="12%">Status</th>
+                  <th width="25%">Title</th>
+                  <th width="20%">URL</th>
+                  <th width="15%">Level</th>
+                  <th width="20%">Message</th>
+                </tr>
+              </thead>
+              <tbody id="uploadDetailsBody">
+                <!-- Results will be populated here -->
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Processing Info -->
+          <div class="mt-2">
+            <small class="text-muted">
+              <i class="fas fa-info-circle"></i> 
+              <span id="processingInfo">Processing completed</span>
+            </small>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -2485,4 +2726,20 @@ Sorting:
     </div>
   </div>
 </div>
+
+<!-- Upload Success/Error Notification -->
+<div id="uploadNotification" class="position-fixed top-0 end-0 p-3" style="z-index: 1100; display: none;">
+  <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="toast-header">
+      <i class="fas fa-file-excel text-success me-2"></i>
+      <strong class="me-auto">Excel Upload</strong>
+      <small id="uploadTimestamp">just now</small>
+      <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+    <div class="toast-body" id="uploadNotificationBody">
+      Upload completed successfully!
+    </div>
+  </div>
+</div>
+
 {% endblock %}

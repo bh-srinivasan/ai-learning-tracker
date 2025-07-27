@@ -280,6 +280,45 @@ class DatabaseSchemaManager:
                 'CREATE INDEX IF NOT EXISTS idx_admin_actions_type ON admin_actions(action_type)',
                 'CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions(created_at)'
             ]
+        },
+        'excel_upload_reports': {
+            'columns': [
+                'id INTEGER PRIMARY KEY AUTOINCREMENT',
+                'user_id INTEGER NOT NULL',
+                'filename VARCHAR(255) NOT NULL',
+                'upload_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+                'total_rows INTEGER DEFAULT 0',
+                'processed_rows INTEGER DEFAULT 0',
+                'success_count INTEGER DEFAULT 0',
+                'error_count INTEGER DEFAULT 0',
+                'warnings_count INTEGER DEFAULT 0'
+            ],
+            'foreign_keys': [
+                'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE'
+            ],
+            'indexes': [
+                'CREATE INDEX IF NOT EXISTS idx_excel_reports_user_id ON excel_upload_reports(user_id)',
+                'CREATE INDEX IF NOT EXISTS idx_excel_reports_timestamp ON excel_upload_reports(upload_timestamp)'
+            ]
+        },
+        'excel_upload_row_details': {
+            'columns': [
+                'id INTEGER PRIMARY KEY AUTOINCREMENT',
+                'report_id INTEGER NOT NULL',
+                'row_number INTEGER NOT NULL',
+                'status VARCHAR(20) NOT NULL',
+                'message TEXT',
+                'course_title VARCHAR(300)',
+                'course_url VARCHAR(500)',
+                'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+            ],
+            'foreign_keys': [
+                'FOREIGN KEY (report_id) REFERENCES excel_upload_reports(id) ON DELETE CASCADE'
+            ],
+            'indexes': [
+                'CREATE INDEX IF NOT EXISTS idx_excel_row_details_report_id ON excel_upload_row_details(report_id)',
+                'CREATE INDEX IF NOT EXISTS idx_excel_row_details_status ON excel_upload_row_details(status)'
+            ]
         }
     }
 
@@ -345,6 +384,18 @@ class DatabaseEnvironmentManager:
         self.schema_manager = DatabaseSchemaManager()
         
         logger.info(f"🌍 Environment detected: {self.environment}")
+
+    def is_azure_sql(self) -> bool:
+        """Check if current environment is using Azure SQL"""
+        return self.environment == 'production'
+
+    def connect(self):
+        """Alias for connect_to_database for compatibility"""
+        self.connect_to_database()
+    
+    def disconnect(self):
+        """Alias for close_connection for compatibility"""
+        self.close_connection()
 
     def _detect_environment(self) -> str:
         """Detect current environment from environment variables"""
@@ -538,7 +589,9 @@ class DatabaseEnvironmentManager:
             'security_events',
             'security_logs',
             'points_log',
-            'admin_actions'
+            'admin_actions',
+            'excel_upload_reports',
+            'excel_upload_row_details'
         ]
         
         for table_name in table_order:
@@ -575,7 +628,9 @@ class DatabaseEnvironmentManager:
             'security_events',
             'security_logs',
             'points_log',
-            'admin_actions'
+            'admin_actions',
+            'excel_upload_reports',
+            'excel_upload_row_details'
         ]
         
         for table_name in table_order:
