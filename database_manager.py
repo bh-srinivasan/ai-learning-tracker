@@ -7,9 +7,16 @@ proper database initialization and migration from SQLite if needed.
 
 import os
 import sqlite3
-import pyodbc
 import logging
+import time
 from typing import Optional, Any, Dict, List, Tuple
+
+try:
+    import pyodbc
+    PYODBC_AVAILABLE = True
+except ImportError:
+    pyodbc = None
+    PYODBC_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,18 +35,36 @@ class DatabaseManager:
         env = os.environ.get('ENV', 'development').lower()
         
         if env == 'production' and self._has_azure_sql_config():
-            # Use Azure SQL in production
-            self.connection_string = self._build_azure_sql_connection_string()
-            self.is_azure_sql = True
-            logger.info("✅ Using Azure SQL Database")
+            try:
+                # Test Azure SQL connection before committing to it
+                test_connection_string = self._build_azure_sql_connection_string()
+                test_conn = pyodbc.connect(test_connection_string)
+                test_conn.close()
+                
+                # If successful, use Azure SQL
+                self.connection_string = test_connection_string
+                self.is_azure_sql = True
+                logger.info("✅ Using Azure SQL Database")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Azure SQL connection failed ({e}), falling back to SQLite")
+                self._setup_sqlite_fallback()
         else:
-            # Use SQLite for development
-            self.connection_string = os.path.join(os.path.dirname(__file__), 'ai_learning.db')
-            self.is_azure_sql = False
-            logger.info("✅ Using SQLite Database")
+            # Use SQLite for development or if Azure SQL is not configured
+            self._setup_sqlite_fallback()
+    
+    def _setup_sqlite_fallback(self):
+        """Setup SQLite connection as fallback"""
+        self.connection_string = os.path.join(os.path.dirname(__file__), 'ai_learning.db')
+        self.is_azure_sql = False
+        logger.info("✅ Using SQLite Database")
     
     def _has_azure_sql_config(self) -> bool:
         """Check if Azure SQL configuration is available"""
+        if not PYODBC_AVAILABLE:
+            logger.warning("pyodbc not available, cannot use Azure SQL")
+            return False
+        
         required_vars = ['AZURE_SQL_SERVER', 'AZURE_SQL_DATABASE', 'AZURE_SQL_USERNAME', 'AZURE_SQL_PASSWORD']
         return all(os.environ.get(var) for var in required_vars)
     
@@ -63,13 +88,28 @@ class DatabaseManager:
         )
     
     def get_connection(self):
-        """Get database connection"""
-        if self.is_azure_sql:
-            return pyodbc.connect(self.connection_string)
-        else:
-            conn = sqlite3.connect(self.connection_string)
-            conn.row_factory = sqlite3.Row
-            return conn
+        """Get database connection with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if self.is_azure_sql:
+                    return pyodbc.connect(self.connection_string)
+                else:
+                    conn = sqlite3.connect(self.connection_string)
+                    conn.row_factory = sqlite3.Row
+                    return conn
+            except Exception as e:
+                logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    if self.is_azure_sql:
+                        logger.error("Azure SQL connection failed, falling back to SQLite")
+                        self._setup_sqlite_fallback()
+                        conn = sqlite3.connect(self.connection_string)
+                        conn.row_factory = sqlite3.Row
+                        return conn
+                    else:
+                        raise
+                time.sleep(1)  # Wait before retry
     
     def test_connection(self) -> bool:
         """Test database connection"""
