@@ -50,12 +50,6 @@ import threading
 import time
 import requests
 from urllib.parse import urlparse
-try:
-    from database_manager import get_db_connection as db_get_connection, init_database as db_init, db_manager
-except ImportError:
-    db_get_connection = None
-    db_init = None
-    db_manager = None
 
 # Import security guard system and production configuration
 from security_guard import (
@@ -147,43 +141,20 @@ def get_database_path():
     return 'ai_learning.db'
 
 def get_db_connection():
-    """Get database connection with environment-aware support for Azure SQL"""
-    try:
-        # Check if we should use Azure SQL
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///ai_learning.db')
-        
-        if (database_url == 'azure_sql' or production_safety.environment == 'production') and db_get_connection:
-            logger.info(f"🌍 Environment: {production_safety.environment}")
-            
-            if db_manager and db_manager.is_azure_sql:
-                logger.info("📂 Connecting to Azure SQL Database")
-            else:
-                logger.info("📂 Using SQLite via database manager")
-            
-            return db_get_connection()
-        else:
-            # Use traditional SQLite connection
-            database_path = get_database_path()
-            
-            # Log database connection details for debugging
-            logger.info(f"📂 Connecting to database: {os.path.abspath(database_path)}")
-            logger.info(f"🌍 Environment: {production_safety.environment}")
-            logger.info(f"💾 Database exists: {os.path.exists(database_path)}")
-            
-            if os.path.exists(database_path):
-                logger.info(f"📊 Database size: {os.path.getsize(database_path)} bytes")
-            
-            conn = sqlite3.connect(database_path)
-            conn.row_factory = sqlite3.Row
-            return conn
-            
-    except Exception as e:
-        # Fallback to old method if there are any issues
-        logger.warning(f"Database manager error ({e}), using fallback SQLite connection")
-        database_path = get_database_path()
-        conn = sqlite3.connect(database_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    """Get database connection with environment-aware logging"""
+    database_path = get_database_path()
+    
+    # Log database connection details for debugging
+    logger.info(f"📂 Connecting to database: {os.path.abspath(database_path)}")
+    logger.info(f"🌍 Environment: {production_safety.environment}")
+    logger.info(f"💾 Database exists: {os.path.exists(database_path)}")
+    
+    if os.path.exists(database_path):
+        logger.info(f"📊 Database size: {os.path.getsize(database_path)} bytes")
+    
+    conn = sqlite3.connect(database_path)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     """Initialize the database with required tables"""
@@ -3899,15 +3870,6 @@ def simple_init_admin():
             '''
         )
 
-# Initialize database on startup
-try:
-    if db_init:
-        logger.info("🔄 Initializing database with Azure SQL support...")
-        db_init()
-        logger.info("✅ Database initialization completed")
-except Exception as e:
-    logger.error(f"❌ Database initialization failed: {e}")
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
@@ -3964,12 +3926,6 @@ import threading
 import time
 import requests
 from urllib.parse import urlparse
-try:
-    from database_manager import get_db_connection as db_get_connection, init_database as db_init, db_manager
-except ImportError:
-    db_get_connection = None
-    db_init = None
-    db_manager = None
 
 # Import security guard system and production configuration
 from security_guard import (
@@ -4061,43 +4017,20 @@ def get_database_path():
     return 'ai_learning.db'
 
 def get_db_connection():
-    """Get database connection with environment-aware support for Azure SQL"""
-    try:
-        # Check if we should use Azure SQL
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///ai_learning.db')
-        
-        if (database_url == 'azure_sql' or production_safety.environment == 'production') and db_get_connection:
-            logger.info(f"🌍 Environment: {production_safety.environment}")
-            
-            if db_manager and db_manager.is_azure_sql:
-                logger.info("📂 Connecting to Azure SQL Database")
-            else:
-                logger.info("📂 Using SQLite via database manager")
-            
-            return db_get_connection()
-        else:
-            # Use traditional SQLite connection
-            database_path = get_database_path()
-            
-            # Log database connection details for debugging
-            logger.info(f"📂 Connecting to database: {os.path.abspath(database_path)}")
-            logger.info(f"🌍 Environment: {production_safety.environment}")
-            logger.info(f"💾 Database exists: {os.path.exists(database_path)}")
-            
-            if os.path.exists(database_path):
-                logger.info(f"📊 Database size: {os.path.getsize(database_path)} bytes")
-            
-            conn = sqlite3.connect(database_path)
-            conn.row_factory = sqlite3.Row
-            return conn
-            
-    except Exception as e:
-        # Fallback to old method if there are any issues
-        logger.warning(f"Database manager error ({e}), using fallback SQLite connection")
-        database_path = get_database_path()
-        conn = sqlite3.connect(database_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    """Get database connection with environment-aware logging"""
+    database_path = get_database_path()
+    
+    # Log database connection details for debugging
+    logger.info(f"📂 Connecting to database: {os.path.abspath(database_path)}")
+    logger.info(f"🌍 Environment: {production_safety.environment}")
+    logger.info(f"💾 Database exists: {os.path.exists(database_path)}")
+    
+    if os.path.exists(database_path):
+        logger.info(f"📊 Database size: {os.path.getsize(database_path)} bytes")
+    
+    conn = sqlite3.connect(database_path)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     """Initialize the database with required tables"""
@@ -7811,15 +7744,6 @@ def simple_init_admin():
             '''
         )
 
-# Initialize database on startup
-try:
-    if db_init:
-        logger.info("🔄 Initializing database with Azure SQL support...")
-        db_init()
-        logger.info("✅ Database initialization completed")
-except Exception as e:
-    logger.error(f"❌ Database initialization failed: {e}")
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
@@ -7876,12 +7800,6 @@ import threading
 import time
 import requests
 from urllib.parse import urlparse
-try:
-    from database_manager import get_db_connection as db_get_connection, init_database as db_init, db_manager
-except ImportError:
-    db_get_connection = None
-    db_init = None
-    db_manager = None
 
 # Import security guard system and production configuration
 from security_guard import (
@@ -7973,43 +7891,20 @@ def get_database_path():
     return 'ai_learning.db'
 
 def get_db_connection():
-    """Get database connection with environment-aware support for Azure SQL"""
-    try:
-        # Check if we should use Azure SQL
-        database_url = os.getenv('DATABASE_URL', 'sqlite:///ai_learning.db')
-        
-        if (database_url == 'azure_sql' or production_safety.environment == 'production') and db_get_connection:
-            logger.info(f"🌍 Environment: {production_safety.environment}")
-            
-            if db_manager and db_manager.is_azure_sql:
-                logger.info("📂 Connecting to Azure SQL Database")
-            else:
-                logger.info("📂 Using SQLite via database manager")
-            
-            return db_get_connection()
-        else:
-            # Use traditional SQLite connection
-            database_path = get_database_path()
-            
-            # Log database connection details for debugging
-            logger.info(f"📂 Connecting to database: {os.path.abspath(database_path)}")
-            logger.info(f"🌍 Environment: {production_safety.environment}")
-            logger.info(f"💾 Database exists: {os.path.exists(database_path)}")
-            
-            if os.path.exists(database_path):
-                logger.info(f"📊 Database size: {os.path.getsize(database_path)} bytes")
-            
-            conn = sqlite3.connect(database_path)
-            conn.row_factory = sqlite3.Row
-            return conn
-            
-    except Exception as e:
-        # Fallback to old method if there are any issues
-        logger.warning(f"Database manager error ({e}), using fallback SQLite connection")
-        database_path = get_database_path()
-        conn = sqlite3.connect(database_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    """Get database connection with environment-aware logging"""
+    database_path = get_database_path()
+    
+    # Log database connection details for debugging
+    logger.info(f"📂 Connecting to database: {os.path.abspath(database_path)}")
+    logger.info(f"🌍 Environment: {production_safety.environment}")
+    logger.info(f"💾 Database exists: {os.path.exists(database_path)}")
+    
+    if os.path.exists(database_path):
+        logger.info(f"📊 Database size: {os.path.getsize(database_path)} bytes")
+    
+    conn = sqlite3.connect(database_path)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     """Initialize the database with required tables"""
@@ -11722,15 +11617,6 @@ def simple_init_admin():
             <a href="/init-admin" style="color: #007bff;">Try Again</a>
             '''
         )
-
-# Initialize database on startup
-try:
-    if db_init:
-        logger.info("🔄 Initializing database with Azure SQL support...")
-        db_init()
-        logger.info("✅ Database initialization completed")
-except Exception as e:
-    logger.error(f"❌ Database initialization failed: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
