@@ -35,6 +35,143 @@
       .course-card {
         border-left: 4px solid #28a745;
       }
+      
+      /* Fix for Upload Reports table text visibility */
+      .admin-table, .admin-table tbody tr, .admin-table tbody td {
+        color: #000000 !important;
+        background-color: #ffffff !important;
+      }
+      
+      .admin-table thead th {
+        color: #000000 !important;
+        background-color: #f8f9fa !important;
+      }
+      
+      /* Force all text elements in admin tables to be dark */
+      .admin-table * {
+        color: #000000 !important;
+      }
+      
+      /* Override Bootstrap badge colors for better visibility */
+      .admin-table .badge {
+        color: #ffffff !important;
+        font-weight: bold !important;
+      }
+      
+      .admin-table .badge-primary {
+        background-color: #007bff !important;
+        color: #ffffff !important;
+      }
+      
+      .admin-table .badge-success {
+        background-color: #28a745 !important;
+        color: #ffffff !important;
+      }
+      
+      .admin-table .badge-danger {
+        background-color: #dc3545 !important;
+        color: #ffffff !important;
+      }
+      
+      .admin-table .badge-warning {
+        background-color: #ffc107 !important;
+        color: #000000 !important;
+      }
+      
+      .admin-table .badge-info {
+        background-color: #17a2b8 !important;
+        color: #ffffff !important;
+      }
+      
+      .admin-table .badge-secondary {
+        background-color: #6c757d !important;
+        color: #ffffff !important;
+      }
+      
+      .admin-table .text-muted {
+        color: #6c757d !important;
+      }
+      
+      /* Enhanced styling for zero values - make them more visually appealing */
+      .admin-table .zero-value {
+        background-color: #e9ecef !important;
+        color: #495057 !important;
+        padding: 2px 8px !important;
+        border-radius: 4px !important;
+        font-size: 0.875rem !important;
+        font-weight: 500 !important;
+        border: 1px solid #dee2e6 !important;
+        display: inline-block !important;
+      }
+      
+      /* Enhanced styling for empty/missing values */
+      .admin-table .empty-value {
+        background-color: #f8f9fa !important;
+        color: #6c757d !important;
+        padding: 2px 8px !important;
+        border-radius: 4px !important;
+        font-size: 0.875rem !important;
+        font-style: italic !important;
+        border: 1px solid #e9ecef !important;
+        display: inline-block !important;
+      }
+      
+      /* Hover effects for better interactivity */
+      .admin-table .zero-value:hover {
+        background-color: #dee2e6 !important;
+        transform: translateY(-1px) !important;
+        transition: all 0.2s ease !important;
+      }
+      
+      .admin-table .empty-value:hover {
+        background-color: #e9ecef !important;
+        color: #495057 !important;
+        transform: translateY(-1px) !important;
+        transition: all 0.2s ease !important;
+      }
+      
+      /* Enhanced table row hover effects */
+      .admin-table tbody tr:hover {
+        background-color: #f5f5f5 !important;
+        transition: background-color 0.2s ease !important;
+      }
+      
+      .admin-table a {
+        color: #007bff !important;
+      }
+      
+      .admin-table code {
+        color: #000000 !important;
+        background-color: #f8f9fa !important;
+      }
+      
+      /* Ensure table striping is visible with proper contrast */
+      .admin-table tbody tr:nth-of-type(odd) {
+        background-color: #f9f9f9 !important;
+      }
+      
+      .admin-table tbody tr:nth-of-type(even) {
+        background-color: #ffffff !important;
+      }
+      
+      /* Fix for any remaining white text issues */
+      .admin-table span, .admin-table p, .admin-table div {
+        color: #000000 !important;
+      }
+      
+      /* Extra aggressive fix for any white text in admin tables */
+      .admin-table [style*="color: white"], 
+      .admin-table [style*="color:#ffffff"], 
+      .admin-table [style*="color: #ffffff"],
+      .admin-table [style*="color:#fff"],
+      .admin-table [style*="color: #fff"] {
+        color: #000000 !important;
+      }
+      
+      /* Force all Bootstrap components in admin tables to have visible text */
+      .admin-table .btn, .admin-table .alert, .admin-table .card {
+        color: #000000 !important;
+      }
     </style>
   </head>
   <body>

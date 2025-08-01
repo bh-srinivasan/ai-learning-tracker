@@ -99,6 +99,19 @@
     </div>
 
     <!-- Reports Table -->
+    <!-- 
+        FIX: Text Visibility Issue Resolution
+        ====================================
+        Applied explicit color styling to prevent white text on light backgrounds.
+        See upload_report_table.html for detailed explanation of the fix.
+        
+        ENHANCEMENT: Visual Improvements for Zero Values
+        ==============================================
+        - Zero values now display with stylized badges (gray background, rounded)
+        - Empty values use italic styling with light backgrounds
+        - Added hover effects for better user interaction
+        - Maintains professional appearance while improving readability
+    -->
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -111,63 +124,65 @@
                 <div class="card-body">
                     {% if reports %}
                         <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead class="thead-light">
+                            <!-- Fix for text visibility issue: Ensure table text is readable against all backgrounds -->
+                            <table class="table table-striped table-hover admin-table" style="color: #000000; background-color: #ffffff;">
+                                <thead class="thead-light" style="background-color: #f8f9fa; color: #000000;">
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Upload Time</th>
-                                        <th>User</th>
-                                        <th>Filename</th>
-                                        <th>Total Rows</th>
-                                        <th>Success</th>
-                                        <th>Errors</th>
-                                        <th>Warnings</th>
-                                        <th>Actions</th>
+                                        <th style="color: #000000;">ID</th>
+                                        <th style="color: #000000;">Upload Time</th>
+                                        <th style="color: #000000;">User</th>
+                                        <th style="color: #000000;">Filename</th>
+                                        <th style="color: #000000;">Total Rows</th>
+                                        <th style="color: #000000;">Success</th>
+                                        <th style="color: #000000;">Errors</th>
+                                        <th style="color: #000000;">Warnings</th>
+                                        <th style="color: #000000;">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody style="color: #000000; background-color: #ffffff;">
                                     {% for report in reports %}
-                                    <tr>
-                                        <td>
-                                            <code>#{{ report.id }}</code>
+                                    <!-- Fix for text visibility: Ensure row content is readable with explicit color styling -->
+                                    <tr style="color: #000000;">
+                                        <td style="color: #000000;">
+                                            <code style="color: #000000; background-color: #f8f9fa;">#{{ report.id }}</code>
                                         </td>
-                                        <td>
-                                            <span title="{{ report.upload_timestamp }}">
+                                        <td style="color: #000000;">
+                                            <span title="{{ report.upload_timestamp }}" style="color: #000000;">
                                                 {{ report.upload_timestamp.strftime('%Y-%m-%d %H:%M') }}
                                             </span>
                                         </td>
-                                        <td>
-                                            <span class="badge badge-primary">{{ report.username }}</span>
+                                        <td style="color: #000000;">
+                                            <span class="badge badge-primary" style="background-color: #007bff !important; color: #ffffff !important;">{{ report.username }}</span>
                                         </td>
-                                        <td>
+                                        <td style="color: #000000;">
                                             <i class="fas fa-file-excel text-success"></i>
-                                            {{ report.filename }}
+                                            <span style="color: #000000;">{{ report.filename }}</span>
                                         </td>
-                                        <td>
-                                            <span class="badge badge-info">{{ report.total_rows }}</span>
+                                        <td style="color: #000000;">
+                                            <span class="badge badge-info" style="background-color: #17a2b8 !important; color: #ffffff !important;">{{ report.total_rows }}</span>
                                         </td>
-                                        <td>
+                                        <td style="color: #000000;">
                                             {% if report.success_count > 0 %}
-                                                <span class="badge badge-success">{{ report.success_count }}</span>
+                                                <span class="badge badge-success" style="background-color: #28a745 !important; color: #ffffff !important;">{{ report.success_count }}</span>
                                             {% else %}
-                                                <span class="text-muted">0</span>
+                                                <span class="zero-value">0</span>
                                             {% endif %}
                                         </td>
-                                        <td>
+                                        <td style="color: #000000;">
                                             {% if report.error_count > 0 %}
-                                                <span class="badge badge-danger">{{ report.error_count }}</span>
+                                                <span class="badge badge-danger" style="background-color: #dc3545 !important; color: #ffffff !important;">{{ report.error_count }}</span>
                                             {% else %}
-                                                <span class="text-muted">0</span>
+                                                <span class="zero-value">0</span>
                                             {% endif %}
                                         </td>
-                                        <td>
+                                        <td style="color: #000000;">
                                             {% if report.warnings_count > 0 %}
-                                                <span class="badge badge-warning">{{ report.warnings_count }}</span>
+                                                <span class="badge badge-warning" style="background-color: #ffc107 !important; color: #000000 !important;">{{ report.warnings_count }}</span>
                                             {% else %}
-                                                <span class="text-muted">0</span>
+                                                <span class="zero-value">0</span>
                                             {% endif %}
                                         </td>
-                                        <td>
+                                        <td style="color: #000000;">
                                             <div class="btn-group btn-group-sm" role="group">
                                                 <a href="{{ url_for('admin_reports.report_details', report_id=report.id) }}" 
                                                    class="btn btn-outline-primary" 
