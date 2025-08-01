@@ -101,16 +101,19 @@ def initialize_database():
         return False
 
 if __name__ == '__main__':
-    # Initialize database
-    if initialize_database():
-        print("🚀 Starting Flask application...")
-        
-        # Import and run the main app
-        from app import app
-        
-        # Run the app
-        port = int(os.environ.get('PORT', 8000))
-        app.run(host='0.0.0.0', port=port, debug=False)
-    else:
-        print("❌ Failed to initialize database. Exiting.")
-        sys.exit(1)
+    # Initialize database first
+    print("🔄 Initializing database for Azure...")
+    initialize_database()
+    
+    # Now start the main application
+    print("🚀 Starting main Flask application...")
+    
+    # Import the main app
+    import app
+    
+    # Get the configured Flask app instance
+    flask_app = app.app
+    
+    # Run the app using the exact same configuration as the main app
+    port = int(os.environ.get('PORT', 8000))
+    flask_app.run(host='0.0.0.0', port=port, debug=False)
