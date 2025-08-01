@@ -1298,13 +1298,13 @@ from auth.routes import auth_bp
 from dashboard.routes import dashboard_bp  
 from learnings.routes import learnings_bp
 from admin.routes import admin_bp
-from admin_reports_routes import admin_reports_bp  # Upload reports admin interface
+# from admin_reports_routes import admin_reports_bp  # Upload reports admin interface - COMMENTED OUT - FILE MISSING
 
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
 app.register_blueprint(learnings_bp, url_prefix='/learnings')
 app.register_blueprint(admin_bp)
-app.register_blueprint(admin_reports_bp)
+# app.register_blueprint(admin_reports_bp)  # COMMENTED OUT - FILE MISSING
 
 # Error handlers for security
 @app.errorhandler(400)
