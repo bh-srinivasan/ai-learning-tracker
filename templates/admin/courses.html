@@ -28,6 +28,7 @@ endblock %} {% block content %}
         <i class="fas fa-file-excel"></i>
         <span class="d-none d-sm-inline ms-1">Excel&nbsp;Upload</span>
       </button>
+      <!-- Upload Reports button commented out - admin_reports blueprint not available
       <a
         href="{{ url_for('admin_reports.upload_reports_list') }}"
         class="btn btn-info btn-sm"
@@ -36,6 +37,7 @@ endblock %} {% block content %}
         <i class="fas fa-chart-line"></i>
         <span class="d-none d-sm-inline ms-1">Upload&nbsp;Reports</span>
       </a>
+      -->
       <a
         href="{{ url_for('admin_course_configs') }}"
         class="btn btn-success btn-sm"
