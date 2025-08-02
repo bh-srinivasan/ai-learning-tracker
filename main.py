@@ -34,6 +34,18 @@ try:
     
     logger.info("Environment variables set")
     
+    # Initialize database BEFORE importing app to prevent SQLite syntax errors
+    try:
+        logger.info("🔄 Pre-initializing database with Azure SQL support...")
+        from azure_sql_init import initialize_azure_database
+        if initialize_azure_database():
+            logger.info("✅ Azure SQL database pre-initialization completed")
+        else:
+            logger.warning("⚠️ Database pre-initialization failed, will retry during app startup")
+    except Exception as e:
+        logger.warning(f"⚠️ Database pre-initialization error: {e}")
+        # Continue - app will handle initialization
+    
     # Import the Flask app
     from app import app
     

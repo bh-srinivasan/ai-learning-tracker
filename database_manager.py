@@ -135,53 +135,59 @@ class DatabaseManager:
         
         try:
             if self.is_azure_sql:
-                # Azure SQL table creation
+                # Azure SQL table creation with proper syntax
                 cursor.execute("""
-                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='users' AND xtype='U')
-                    CREATE TABLE users (
-                        id INT IDENTITY(1,1) PRIMARY KEY,
-                        username NVARCHAR(80) UNIQUE NOT NULL,
-                        password_hash NVARCHAR(255) NOT NULL,
-                        created_at DATETIME2 DEFAULT GETDATE(),
-                        level NVARCHAR(20) DEFAULT 'Beginner',
-                        points INT DEFAULT 0,
-                        profile_picture NVARCHAR(255),
-                        bio NTEXT,
-                        is_admin BIT DEFAULT 0
-                    )
+                    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'users')
+                    BEGIN
+                        CREATE TABLE users (
+                            id INT IDENTITY(1,1) PRIMARY KEY,
+                            username NVARCHAR(80) UNIQUE NOT NULL,
+                            password_hash NVARCHAR(255) NOT NULL,
+                            created_at DATETIME2 DEFAULT GETDATE(),
+                            level NVARCHAR(20) DEFAULT 'Beginner',
+                            points INT DEFAULT 0,
+                            profile_picture NVARCHAR(255),
+                            bio NTEXT,
+                            is_admin BIT DEFAULT 0
+                        )
+                    END
                 """)
                 
                 cursor.execute("""
-                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='learning_entries' AND xtype='U')
-                    CREATE TABLE learning_entries (
-                        id INT IDENTITY(1,1) PRIMARY KEY,
-                        user_id INT NOT NULL,
-                        topic NVARCHAR(200) NOT NULL,
-                        description NTEXT,
-                        date_learned DATE NOT NULL,
-                        time_spent INT,
-                        difficulty NVARCHAR(20),
-                        tags NVARCHAR(500),
-                        notes NTEXT,
-                        created_at DATETIME2 DEFAULT GETDATE(),
-                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-                    )
+                    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'learning_entries')
+                    BEGIN
+                        CREATE TABLE learning_entries (
+                            id INT IDENTITY(1,1) PRIMARY KEY,
+                            user_id INT NOT NULL,
+                            topic NVARCHAR(200) NOT NULL,
+                            description NTEXT,
+                            date_learned DATE NOT NULL,
+                            time_spent INT,
+                            difficulty NVARCHAR(20),
+                            tags NVARCHAR(500),
+                            notes NTEXT,
+                            created_at DATETIME2 DEFAULT GETDATE(),
+                            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                        )
+                    END
                 """)
                 
                 cursor.execute("""
-                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='courses' AND xtype='U')
-                    CREATE TABLE courses (
-                        id INT IDENTITY(1,1) PRIMARY KEY,
-                        title NVARCHAR(255) NOT NULL,
-                        description NTEXT,
-                        level NVARCHAR(50),
-                        duration_hours INT,
-                        provider NVARCHAR(100),
-                        url NVARCHAR(500),
-                        tags NVARCHAR(500),
-                        created_at DATETIME2 DEFAULT GETDATE(),
-                        is_active BIT DEFAULT 1
-                    )
+                    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'courses')
+                    BEGIN
+                        CREATE TABLE courses (
+                            id INT IDENTITY(1,1) PRIMARY KEY,
+                            title NVARCHAR(255) NOT NULL,
+                            description NTEXT,
+                            level NVARCHAR(50),
+                            duration_hours INT,
+                            provider NVARCHAR(100),
+                            url NVARCHAR(500),
+                            tags NVARCHAR(500),
+                            created_at DATETIME2 DEFAULT GETDATE(),
+                            is_active BIT DEFAULT 1
+                        )
+                    END
                 """)
                 
             else:
