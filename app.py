@@ -901,7 +901,7 @@ def before_request():
     session_token = session.get('session_token')
     
     # Skip session validation for auth routes, static files, and health checks
-    if request.endpoint and (request.endpoint in ['login', 'logout', 'static', 'index', 'security_health', 'test_page', 'debug_session']):
+    if request.endpoint and (request.endpoint in ['login', 'logout', 'static', 'index', 'security_health', 'test_page', 'debug_session', 'simple_init_admin', 'create_admin_now']):
         return
     
     # Validate session
@@ -4860,7 +4860,7 @@ def before_request():
     session_token = session.get('session_token')
     
     # Skip session validation for auth routes, static files, and health checks
-    if request.endpoint and (request.endpoint in ['login', 'logout', 'static', 'index', 'security_health', 'test_page', 'debug_session']):
+    if request.endpoint and (request.endpoint in ['login', 'logout', 'static', 'index', 'security_health', 'test_page', 'debug_session', 'simple_init_admin', 'create_admin_now']):
         return
     
     # Validate session
@@ -8817,7 +8817,7 @@ def before_request():
     session_token = session.get('session_token')
     
     # Skip session validation for auth routes, static files, and health checks
-    if request.endpoint and (request.endpoint in ['login', 'logout', 'static', 'index', 'security_health', 'test_page', 'debug_session']):
+    if request.endpoint and (request.endpoint in ['login', 'logout', 'static', 'index', 'security_health', 'test_page', 'debug_session', 'simple_init_admin', 'create_admin_now']):
         return
     
     # Validate session
