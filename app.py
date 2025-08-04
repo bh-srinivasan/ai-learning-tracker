@@ -333,16 +333,19 @@ def get_current_user():
     # Get user from database
     conn = get_db_connection()
     try:
-        user_session = conn.execute('''
+        # Try Azure SQL table name first, then SQLite
+        session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+        
+        user_session = conn.execute(f'''
             SELECT s.*, u.username, u.level, u.points 
-            FROM sessions s 
+            FROM {session_table} s 
             JOIN users u ON s.user_id = u.id 
             WHERE s.session_token = ? AND s.is_active = ?
         ''', (session_token, True)).fetchone()
         
         if user_session:
-            conn.execute('''
-                UPDATE sessions 
+            conn.execute(f'''
+                UPDATE {session_table} 
                 SET last_activity = ? 
                 WHERE session_token = ?
             ''', (datetime.now(), session_token))
@@ -367,8 +370,11 @@ def invalidate_session(session_token):
     """Invalidate a user session"""
     conn = get_db_connection()
     try:
-        conn.execute('''
-            UPDATE sessions 
+        # Use correct table name for Azure SQL vs SQLite
+        session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+        
+        conn.execute(f'''
+            UPDATE {session_table} 
             SET is_active = ? 
             WHERE session_token = ?
         ''', (False, session_token))
