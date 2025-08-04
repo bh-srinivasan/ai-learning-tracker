@@ -518,6 +518,27 @@ def dashboard():
     finally:
         conn.close()
 
+@app.route('/debug-session')
+def debug_session():
+    """Debug endpoint to check session state"""
+    try:
+        session_token = session.get('session_token')
+        debug_info = {
+            'session_token': session_token,
+            'has_azure_sql': bool(os.getenv('AZURE_SQL_CONNECTION_STRING')),
+            'session_memory_count': len(active_sessions),
+            'session_in_memory': session_token in active_sessions if session_token else False,
+        }
+        
+        if session_token:
+            # Try to get user info
+            user = get_current_user()
+            debug_info['current_user'] = user
+        
+        return debug_info
+    except Exception as e:
+        return {'error': str(e), 'traceback': str(e.__traceback__)}
+
 @app.route('/admin')
 def admin_dashboard():
     """Admin dashboard"""
