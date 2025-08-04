@@ -319,7 +319,10 @@ def create_user_session(user_id, ip_address, user_agent):
 def get_current_user():
     """Get current user from session"""
     session_token = session.get('session_token')
+    print(f"🔍 get_current_user: session_token = {session_token}")
+    
     if not session_token:
+        print("🔍 No session token found")
         return None
     
     # Check memory first
@@ -327,7 +330,9 @@ def get_current_user():
         if session_token in active_sessions:
             session_data = active_sessions[session_token]
             session_data['last_activity'] = datetime.now()
+            print(f"🔍 Found session in memory: {session_data}")
         else:
+            print("🔍 Session not found in memory")
             return None
     
     # Get user from database
@@ -335,6 +340,7 @@ def get_current_user():
     try:
         # Try Azure SQL table name first, then SQLite
         session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+        print(f"🔍 Using session table: {session_table}")
         
         user_session = conn.execute(f'''
             SELECT s.*, u.username, u.level, u.points 
@@ -342,6 +348,8 @@ def get_current_user():
             JOIN users u ON s.user_id = u.id 
             WHERE s.session_token = ? AND s.is_active = ?
         ''', (session_token, True)).fetchone()
+        
+        print(f"🔍 Database query result: {user_session}")
         
         if user_session:
             conn.execute(f'''
@@ -351,17 +359,22 @@ def get_current_user():
             ''', (datetime.now(), session_token))
             conn.commit()
             
-            return {
+            user_result = {
                 'id': user_session['user_id'],
                 'username': user_session['username'],
                 'level': user_session['level'],
                 'points': user_session['points']
             }
+            print(f"✅ Returning user: {user_result}")
+            return user_result
         
+        print("🔍 No user session found in database")
         return None
         
     except Exception as e:
-        print(f"Error getting current user: {e}")
+        print(f"❌ Error getting current user: {e}")
+        import traceback
+        traceback.print_exc()
         return None
     finally:
         conn.close()
@@ -508,30 +521,57 @@ def dashboard():
 @app.route('/admin')
 def admin_dashboard():
     """Admin dashboard"""
-    user = get_current_user()
-    if not user or user.get('username') != 'admin':
-        flash('Access denied. Admin privileges required.', 'error')
+    print("🔍 Admin dashboard accessed")
+    
+    try:
+        # Debug session information
+        session_token = session.get('session_token')
+        print(f"🔍 Session token: {session_token}")
+        
+        user = get_current_user()
+        print(f"🔍 Current user: {user}")
+        
+        if not user:
+            print("❌ No user found - redirecting to login")
+            flash('Access denied. Admin privileges required.', 'error')
+            return redirect(url_for('login'))
+            
+        if user.get('username') != 'admin':
+            print(f"❌ User {user.get('username')} is not admin - redirecting to login")
+            flash('Access denied. Admin privileges required.', 'error')
+            return redirect(url_for('login'))
+            
+        print("✅ Admin user verified - proceeding with dashboard")
+        
+    except Exception as e:
+        print(f"❌ Error in admin auth check: {e}")
+        flash('Authentication error.', 'error')
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     try:
+        print("🔍 Getting database statistics...")
+        
         # Get statistics with error handling
         try:
             user_count = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
+            print(f"✅ User count: {user_count}")
         except Exception as e:
-            print(f"Error getting user count: {e}")
+            print(f"❌ Error getting user count: {e}")
             user_count = 0
             
         try:
             course_count = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count']
+            print(f"✅ Course count: {course_count}")
         except Exception as e:
-            print(f"Error getting course count: {e}")
+            print(f"❌ Error getting course count: {e}")
             course_count = 0
             
         try:
             learning_count = conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()['count']
+            print(f"✅ Learning count: {learning_count}")
         except Exception as e:
-            print(f"Error getting learning count: {e}")
+            print(f"❌ Error getting learning count: {e}")
             learning_count = 0
         
         # Get recent users with error handling
