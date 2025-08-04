@@ -525,6 +525,9 @@ def debug_session():
         session_token = session.get('session_token')
         debug_info = {
             'session_token': session_token,
+            'azure_sql_env': os.getenv('AZURE_SQL_CONNECTION_STRING'),
+            'sqlserver_env': os.getenv('SQLAZURECONNSTR_DEFAULTCONNECTION'),
+            'all_env_vars': [k for k in os.environ.keys() if 'SQL' in k.upper() or 'CONNECTION' in k.upper()],
             'has_azure_sql': bool(os.getenv('AZURE_SQL_CONNECTION_STRING')),
             'session_memory_count': len(active_sessions),
             'session_in_memory': session_token in active_sessions if session_token else False,
