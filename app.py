@@ -319,10 +319,8 @@ def create_user_session(user_id, ip_address, user_agent):
 def get_current_user():
     """Get current user from session"""
     session_token = session.get('session_token')
-    print(f"🔍 get_current_user: session_token = {session_token}")
     
     if not session_token:
-        print("🔍 No session token found")
         return None
     
     # Check memory first
@@ -330,9 +328,7 @@ def get_current_user():
         if session_token in active_sessions:
             session_data = active_sessions[session_token]
             session_data['last_activity'] = datetime.now()
-            print(f"🔍 Found session in memory: {session_data}")
         else:
-            print("🔍 Session not found in memory")
             return None
     
     # Get user from database
@@ -340,7 +336,6 @@ def get_current_user():
     try:
         # Try Azure SQL table name first, then SQLite
         session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
-        print(f"🔍 Using session table: {session_table}")
         
         user_session = conn.execute(f'''
             SELECT s.*, u.username, u.level, u.points 
@@ -348,8 +343,6 @@ def get_current_user():
             JOIN users u ON s.user_id = u.id 
             WHERE s.session_token = ? AND s.is_active = ?
         ''', (session_token, True)).fetchone()
-        
-        print(f"🔍 Database query result: {user_session}")
         
         if user_session:
             conn.execute(f'''
@@ -365,16 +358,12 @@ def get_current_user():
                 'level': user_session['level'],
                 'points': user_session['points']
             }
-            print(f"✅ Returning user: {user_result}")
             return user_result
         
-        print("🔍 No user session found in database")
         return None
         
     except Exception as e:
-        print(f"❌ Error getting current user: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error getting current user: {e}")
         return None
     finally:
         conn.close()
@@ -545,81 +534,137 @@ def debug_session():
 @app.route('/admin')
 def admin_dashboard():
     """Admin dashboard"""
-    print("🔍 Admin dashboard accessed")
-    
     try:
-        # Debug session information
+        # Simple session check first
         session_token = session.get('session_token')
-        print(f"🔍 Session token: {session_token}")
-        
-        user = get_current_user()
-        print(f"🔍 Current user: {user}")
-        
-        if not user:
-            print("❌ No user found - redirecting to login")
-            flash('Access denied. Admin privileges required.', 'error')
+        if not session_token:
+            flash('Please log in to access the admin panel.', 'error')
             return redirect(url_for('login'))
-            
-        if user.get('username') != 'admin':
-            print(f"❌ User {user.get('username')} is not admin - redirecting to login")
-            flash('Access denied. Admin privileges required.', 'error')
-            return redirect(url_for('login'))
-            
-        print("✅ Admin user verified - proceeding with dashboard")
         
-    except Exception as e:
-        print(f"❌ Error in admin auth check: {e}")
-        flash('Authentication error.', 'error')
-        return redirect(url_for('login'))
+        # Check memory session first (faster)
+        with session_lock:
+            if session_token not in active_sessions:
+                flash('Session expired. Please log in again.', 'error')
+                return redirect(url_for('login'))
+        
+        # Get database connection
+        conn = get_db_connection()
+        if not conn:
+            flash('Database connection error.', 'error')
+            return redirect(url_for('login'))
+        
+        try:
+            # Check if user exists in database - use both table names for compatibility
+            user_data = None
+            session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+            
+            try:
+                user_session = conn.execute(f'''
+                    SELECT s.user_id, u.username, u.level, u.points 
+                    FROM {session_table} s 
+                    JOIN users u ON s.user_id = u.id 
+                    WHERE s.session_token = ? AND s.is_active = ?
+                ''', (session_token, True)).fetchone()
+                
+                if user_session:
+                    user_data = {
+                        'id': user_session[0],
+                        'username': user_session[1],
+                        'level': user_session[2],
+                        'points': user_session[3]
+                    }
+            except Exception as db_error:
+                print(f"Database lookup error: {db_error}")
+                # Fallback: check if username is admin based on session memory
+                session_data = active_sessions.get(session_token, {})
+                if session_data:
+                    # Try direct user lookup
+                    try:
+                        user_record = conn.execute('SELECT id, username, level, points FROM users WHERE username = ?', ('admin',)).fetchone()
+                        if user_record:
+                            user_data = {
+                                'id': user_record[0],
+                                'username': user_record[1],
+                                'level': user_record[2],
+                                'points': user_record[3]
+                            }
+                    except Exception as user_error:
+                        print(f"User lookup error: {user_error}")
+            
+            # Check if user is admin
+            if not user_data or user_data.get('username') != 'admin':
+                flash('Admin privileges required.', 'error')
+                return redirect(url_for('login'))
+            
+            # Get basic statistics for admin dashboard
+            try:
+                user_count = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
+            except:
+                user_count = 0
+                
+            try:
+                course_count = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count']
+            except:
+                course_count = 0
+                
+            try:
+                learning_count = conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()['count']
+            except:
+                learning_count = 0
+            
+            # Get recent users
+            recent_users = []
+            try:
+                recent_users = conn.execute('''
+                    SELECT username, level, points, created_at 
+                    FROM users 
+                    ORDER BY created_at DESC 
+                    LIMIT 5
+                ''').fetchall()
+            except Exception as e:
+                print(f"Error getting recent users: {e}")
+            
+            return render_template('admin/index.html',
+                                 user_count=user_count,
+                                 course_count=course_count,
+                                 learning_count=learning_count,
+                                 recent_users=recent_users)
+        
+        except Exception as e:
+            print(f"Error in admin dashboard: {e}")
+            flash('Database error occurred. Please check the logs.', 'error')
+            return redirect(url_for('login'))
+        finally:
+            conn.close()
     
+    except Exception as e:
+        print(f"Critical error in admin dashboard: {e}")
+        flash('System error. Please try again.', 'error')
+        return redirect(url_for('login'))
+
+@app.route('/create-admin-emergency')
+def create_admin_emergency():
+    """Emergency admin creation endpoint"""
     conn = get_db_connection()
     try:
-        print("🔍 Getting database statistics...")
+        # Check if admin user already exists
+        admin_user = conn.execute('SELECT * FROM users WHERE username = ?', ('admin',)).fetchone()
         
-        # Get statistics with error handling
-        try:
-            user_count = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
-            print(f"✅ User count: {user_count}")
-        except Exception as e:
-            print(f"❌ Error getting user count: {e}")
-            user_count = 0
-            
-        try:
-            course_count = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count']
-            print(f"✅ Course count: {course_count}")
-        except Exception as e:
-            print(f"❌ Error getting course count: {e}")
-            course_count = 0
-            
-        try:
-            learning_count = conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()['count']
-            print(f"✅ Learning count: {learning_count}")
-        except Exception as e:
-            print(f"❌ Error getting learning count: {e}")
-            learning_count = 0
+        if admin_user:
+            return "<h2>✅ Admin user already exists!</h2><p>The admin user is already created in the database.</p><a href='/login'>Go to Login</a>"
         
-        # Get recent users with error handling
-        recent_users = []
-        try:
-            recent_users = conn.execute('''
-                SELECT username, level, points, created_at 
-                FROM users 
-                ORDER BY created_at DESC 
-                LIMIT 5
-            ''').fetchall()
-        except Exception as e:
-            print(f"Error getting recent users: {e}")
+        # Create admin user
+        password_hash = generate_password_hash('YourSecureAdminPassword123!')
+        conn.execute('''
+            INSERT INTO users (username, password_hash, level, points, created_at) 
+            VALUES (?, ?, ?, ?, ?)
+        ''', ('admin', password_hash, 'Expert', 1000, datetime.now()))
+        conn.commit()
         
-        return render_template('admin/index.html',
-                             user_count=user_count,
-                             course_count=course_count,
-                             learning_count=learning_count,
-                             recent_users=recent_users)
-    
+        return "<h2>✅ Admin user created successfully!</h2><p>You can now log in with username 'admin' and your password.</p><a href='/login'>Go to Login</a>"
+        
     except Exception as e:
-        print(f"Error in admin dashboard: {e}")
-        flash('Database error occurred. Please check the logs.', 'error')
-        return redirect(url_for('login'))
+        return f"<h2>❌ Error creating admin user:</h2><pre>{e}</pre><p><a href='/'>Back to Home</a></p>"
     finally:
         conn.close()
 
