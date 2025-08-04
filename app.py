@@ -50,6 +50,101 @@ MAX_ATTEMPTS = 5
 active_sessions = {}
 session_lock = threading.Lock()
 
+def initialize_database():
+    """Initialize database schema if missing"""
+    conn = get_db_connection()
+    try:
+        # Check if we're using Azure SQL or SQLite
+        is_azure = AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower()
+        
+        if is_azure:
+            # For Azure SQL, ensure proper table names (user_sessions vs sessions)
+            print("✅ Using Azure SQL - schema should already exist")
+            return True
+        else:
+            # For SQLite, create missing tables
+            print("🔄 Initializing SQLite database schema...")
+            
+            # Create users table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    level INTEGER DEFAULT 1,
+                    points INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create sessions table (for SQLite compatibility)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_token TEXT UNIQUE NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+            
+            # Create learning_entries table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS learning_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    difficulty TEXT,
+                    hours_spent REAL,
+                    completed_date DATE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+            
+            # Create courses table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS courses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    difficulty TEXT,
+                    duration_hours REAL,
+                    url TEXT,
+                    category TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create security_logs table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS security_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ip_address TEXT,
+                    username TEXT,
+                    action TEXT,
+                    success INTEGER,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            conn.commit()
+            print("✅ SQLite database schema initialized")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Error initializing database: {e}")
+        return False
+    finally:
+        conn.close()
+
 def get_db_connection():
     """Get database connection based on environment configuration"""
     try:
@@ -169,21 +264,38 @@ def check_rate_limit(ip_address):
 def create_user_session(user_id, ip_address, user_agent):
     """Create a new user session"""
     session_token = secrets.token_urlsafe(32)
+    expires_at = datetime.now() + timedelta(hours=24)
     
     conn = get_db_connection()
     try:
-        # Invalidate old sessions for this user
-        conn.execute('''
-            UPDATE sessions 
-            SET is_active = ? 
-            WHERE user_id = ? AND is_active = ?
-        ''', (False, user_id, True))
+        # Check if we're using Azure SQL or SQLite
+        is_azure = AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower()
         
-        # Create new session
-        conn.execute('''
-            INSERT INTO sessions (session_token, user_id, ip_address, user_agent)
-            VALUES (?, ?, ?, ?)
-        ''', (session_token, user_id, ip_address, user_agent))
+        # Invalidate old sessions for this user
+        if is_azure:
+            conn.execute('''
+                UPDATE user_sessions 
+                SET is_active = 0 
+                WHERE user_id = ? AND is_active = 1
+            ''', (user_id,))
+            
+            # Create new session
+            conn.execute('''
+                INSERT INTO user_sessions (session_token, user_id, ip_address, user_agent, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session_token, user_id, ip_address, user_agent, expires_at))
+        else:
+            conn.execute('''
+                UPDATE sessions 
+                SET is_active = 0 
+                WHERE user_id = ? AND is_active = 1
+            ''', (user_id,))
+            
+            # Create new session
+            conn.execute('''
+                INSERT INTO sessions (session_token, user_id, ip_address, user_agent, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session_token, user_id, ip_address, user_agent, expires_at))
         
         conn.commit()
         
@@ -391,24 +503,42 @@ def dashboard():
 def admin_dashboard():
     """Admin dashboard"""
     user = get_current_user()
-    if not user or user['username'] != 'admin':
+    if not user or user.get('username') != 'admin':
         flash('Access denied. Admin privileges required.', 'error')
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     try:
-        # Get statistics
-        user_count = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
-        course_count = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count']
-        learning_count = conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()['count']
+        # Get statistics with error handling
+        try:
+            user_count = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
+        except Exception as e:
+            print(f"Error getting user count: {e}")
+            user_count = 0
+            
+        try:
+            course_count = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count']
+        except Exception as e:
+            print(f"Error getting course count: {e}")
+            course_count = 0
+            
+        try:
+            learning_count = conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()['count']
+        except Exception as e:
+            print(f"Error getting learning count: {e}")
+            learning_count = 0
         
-        # Get recent users
-        recent_users = conn.execute('''
-            SELECT username, level, points, created_at 
-            FROM users 
-            ORDER BY created_at DESC 
-            LIMIT 5
-        ''').fetchall()
+        # Get recent users with error handling
+        recent_users = []
+        try:
+            recent_users = conn.execute('''
+                SELECT username, level, points, created_at 
+                FROM users 
+                ORDER BY created_at DESC 
+                LIMIT 5
+            ''').fetchall()
+        except Exception as e:
+            print(f"Error getting recent users: {e}")
         
         return render_template('admin/index.html',
                              user_count=user_count,
@@ -416,6 +546,10 @@ def admin_dashboard():
                              learning_count=learning_count,
                              recent_users=recent_users)
     
+    except Exception as e:
+        print(f"Error in admin dashboard: {e}")
+        flash('Database error occurred. Please check the logs.', 'error')
+        return redirect(url_for('login'))
     finally:
         conn.close()
 
@@ -448,6 +582,10 @@ def create_admin_now():
         return f"<h2>❌ Error creating admin: {str(e)}</h2><a href='/create-admin-now'>Try Again</a>"
     finally:
         conn.close()
+
+# Initialize database on startup
+print("🚀 Initializing AI Learning Tracker...")
+initialize_database()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
