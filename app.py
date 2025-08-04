@@ -598,18 +598,30 @@ def admin_dashboard():
             
             # Get basic statistics for admin dashboard
             try:
-                user_count = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()['count']
-            except:
+                result = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()
+                user_count = result[0] if hasattr(result, '__getitem__') else result
+                if hasattr(result, 'keys') and 'count' in result:
+                    user_count = result['count']
+            except Exception as e:
+                print(f"Error getting user count: {e}")
                 user_count = 0
                 
             try:
-                course_count = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()['count']
-            except:
+                result = conn.execute('SELECT COUNT(*) as count FROM courses').fetchone()
+                course_count = result[0] if hasattr(result, '__getitem__') else result
+                if hasattr(result, 'keys') and 'count' in result:
+                    course_count = result['count']
+            except Exception as e:
+                print(f"Error getting course count: {e}")
                 course_count = 0
                 
             try:
-                learning_count = conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()['count']
-            except:
+                result = conn.execute('SELECT COUNT(*) as count FROM learning_entries').fetchone()
+                learning_count = result[0] if hasattr(result, '__getitem__') else result
+                if hasattr(result, 'keys') and 'count' in result:
+                    learning_count = result['count']
+            except Exception as e:
+                print(f"Error getting learning count: {e}")
                 learning_count = 0
             
             # Get recent users
