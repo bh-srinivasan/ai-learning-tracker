@@ -413,8 +413,14 @@ def get_current_user():
     # Get user from database
     conn = get_db_connection()
     try:
-        # Try Azure SQL table name first, then SQLite
-        session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+        # Check if we're using Azure SQL by checking environment variables
+        azure_server = os.environ.get('AZURE_SQL_SERVER')
+        azure_database = os.environ.get('AZURE_SQL_DATABASE')
+        azure_username = os.environ.get('AZURE_SQL_USERNAME')
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        
+        is_azure = all([azure_server, azure_database, azure_username, azure_password])
+        session_table = 'user_sessions' if is_azure else 'sessions'
         
         user_session = conn.execute(f'''
             SELECT s.*, u.username, u.level, u.points 
@@ -456,8 +462,14 @@ def invalidate_session(session_token):
     """Invalidate a user session"""
     conn = get_db_connection()
     try:
-        # Use correct table name for Azure SQL vs SQLite
-        session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+        # Check if we're using Azure SQL by checking environment variables
+        azure_server = os.environ.get('AZURE_SQL_SERVER')
+        azure_database = os.environ.get('AZURE_SQL_DATABASE')
+        azure_username = os.environ.get('AZURE_SQL_USERNAME')
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        
+        is_azure = all([azure_server, azure_database, azure_username, azure_password])
+        session_table = 'user_sessions' if is_azure else 'sessions'
         
         conn.execute(f'''
             UPDATE {session_table} 
@@ -963,7 +975,14 @@ def admin_test():
         # Test 5: Admin user check
         try:
             conn = get_db_connection()
-            session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+            # Check if we're using Azure SQL by checking environment variables
+            azure_server = os.environ.get('AZURE_SQL_SERVER')
+            azure_database = os.environ.get('AZURE_SQL_DATABASE')
+            azure_username = os.environ.get('AZURE_SQL_USERNAME')
+            azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+            
+            is_azure = all([azure_server, azure_database, azure_username, azure_password])
+            session_table = 'user_sessions' if is_azure else 'sessions'
             
             user_session = conn.execute(f'''
                 SELECT s.user_id, u.username 
@@ -1014,7 +1033,14 @@ def admin_dashboard():
         try:
             # Check if user exists in database - use both table names for compatibility
             user_data = None
-            session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+            # Check if we're using Azure SQL by checking environment variables
+            azure_server = os.environ.get('AZURE_SQL_SERVER')
+            azure_database = os.environ.get('AZURE_SQL_DATABASE')
+            azure_username = os.environ.get('AZURE_SQL_USERNAME')
+            azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+            
+            is_azure = all([azure_server, azure_database, azure_username, azure_password])
+            session_table = 'user_sessions' if is_azure else 'sessions'
             
             try:
                 user_session = conn.execute(f'''
