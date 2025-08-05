@@ -537,6 +537,44 @@ def debug_session():
     except Exception as e:
         return {'error': str(e), 'traceback': str(e.__traceback__)}
 
+@app.route('/create-tables-azure')
+def create_tables_azure():
+    """Create missing tables in Azure SQL"""
+    try:
+        conn = get_db_connection()
+        
+        # Create user_sessions table for Azure SQL
+        try:
+            conn.execute('''
+                CREATE TABLE user_sessions (
+                    session_token NVARCHAR(255) PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    created_at DATETIME DEFAULT GETDATE(),
+                    is_active BIT DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            ''')
+            conn.commit()
+            result = "✅ user_sessions table created successfully"
+        except Exception as e:
+            if 'already exists' in str(e):
+                result = "✅ user_sessions table already exists"
+            else:
+                result = f"❌ Error creating user_sessions table: {e}"
+        
+        # Test table access
+        try:
+            count = conn.execute('SELECT COUNT(*) FROM user_sessions').fetchone()[0]
+            result += f"<br>✅ user_sessions table accessible with {count} records"
+        except Exception as e:
+            result += f"<br>❌ Error accessing user_sessions table: {e}"
+        
+        conn.close()
+        return f"<h2>Azure SQL Table Creation</h2><p>{result}</p><a href='/admin-test'>Test Admin</a>"
+        
+    except Exception as e:
+        return f"<h2>❌ Error:</h2><pre>{e}</pre>"
+
 @app.route('/admin-test')
 def admin_test():
     """Simple admin test to debug issues"""
