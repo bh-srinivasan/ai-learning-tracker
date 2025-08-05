@@ -703,9 +703,9 @@ def admin_dashboard():
                 print(f"Error getting recent users: {e}")
             
             return render_template('admin/index.html',
-                                 user_count=user_count,
-                                 course_count=course_count,
-                                 learning_count=learning_count,
+                                 total_users=user_count,
+                                 total_courses=course_count,
+                                 total_learnings=learning_count,
                                  recent_users=recent_users)
         
         except Exception as e:
