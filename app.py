@@ -537,6 +537,66 @@ def debug_session():
     except Exception as e:
         return {'error': str(e), 'traceback': str(e.__traceback__)}
 
+@app.route('/admin-test')
+def admin_test():
+    """Simple admin test to debug issues"""
+    try:
+        # Test 1: Session check
+        session_token = session.get('session_token')
+        if not session_token:
+            return "❌ No session token"
+        
+        # Test 2: Memory session check
+        with session_lock:
+            if session_token not in active_sessions:
+                return "❌ Session not in memory"
+        
+        # Test 3: Database connection
+        try:
+            conn = get_db_connection()
+            if not conn:
+                return "❌ No database connection"
+        except Exception as e:
+            return f"❌ Database connection error: {e}"
+        
+        # Test 4: Simple query
+        try:
+            result = conn.execute('SELECT COUNT(*) FROM users').fetchone()
+            user_count = result[0] if result else 0
+        except Exception as e:
+            return f"❌ Query error: {e}"
+        finally:
+            conn.close()
+        
+        # Test 5: Admin user check
+        try:
+            conn = get_db_connection()
+            session_table = 'user_sessions' if os.getenv('AZURE_SQL_CONNECTION_STRING') else 'sessions'
+            
+            user_session = conn.execute(f'''
+                SELECT s.user_id, u.username 
+                FROM {session_table} s 
+                JOIN users u ON s.user_id = u.id 
+                WHERE s.session_token = ? AND s.is_active = ?
+            ''', (session_token, True)).fetchone()
+            
+            if not user_session:
+                return f"❌ No user session found in {session_table}"
+            
+            username = user_session[1] if hasattr(user_session, '__getitem__') else user_session.username
+            
+            if username != 'admin':
+                return f"❌ User is not admin: {username}"
+                
+            conn.close()
+            return f"✅ All tests passed! User count: {user_count}, Admin user: {username}"
+            
+        except Exception as e:
+            return f"❌ Admin check error: {e}"
+        
+    except Exception as e:
+        return f"❌ Critical error: {e}"
+
 @app.route('/admin')
 def admin_dashboard():
     """Admin dashboard"""
