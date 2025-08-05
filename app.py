@@ -586,6 +586,63 @@ def debug_session():
     except Exception as e:
         return {'error': str(e), 'traceback': str(e.__traceback__)}
 
+@app.route('/test-azure-connection-corrected')
+def test_azure_connection_corrected():
+    """Test Azure SQL connection with corrected password"""
+    try:
+        import pyodbc
+        
+        # Build connection string with correct password
+        correct_connection_string = "Driver={ODBC Driver 17 for SQL Server};Server=tcp:ai-learning-sql-centralus.database.windows.net,1433;Database=ai-learning-db;Uid=ailearningadmin;Pwd=AILearning2025!;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        
+        print("🔄 Testing Azure SQL with corrected password...")
+        print(f"Connection string: {correct_connection_string[:50]}...")
+        
+        # Try direct pyodbc connection
+        conn = pyodbc.connect(correct_connection_string)
+        cursor = conn.cursor()
+        
+        # Test basic query
+        cursor.execute("SELECT 1 as test")
+        result = cursor.fetchone()
+        
+        # Test INFORMATION_SCHEMA access
+        cursor.execute("""
+            SELECT COUNT(*) as table_count
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_TYPE = 'BASE TABLE'
+        """)
+        table_count = cursor.fetchone()[0]
+        
+        # Check if user_sessions table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'user_sessions'
+        """)
+        user_sessions_exists = cursor.fetchone()[0] > 0
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'connection_test': 'OK',
+            'basic_query': result[0],
+            'total_tables': table_count,
+            'user_sessions_table_exists': user_sessions_exists,
+            'message': 'Azure SQL connection successful with corrected password!',
+            'password_used': 'AILearning2025!'
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Azure SQL connection failed: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'error_type': type(e).__name__,
+            'password_tested': 'AILearning2025!'
+        })
+
 @app.route('/test-azure-connection')
 def test_azure_connection():
     """Test Azure SQL connection directly to diagnose issues"""
@@ -629,6 +686,69 @@ def test_azure_connection():
             'traceback': traceback.format_exc(),
             'error_type': type(e).__name__,
             'connection_string_present': bool(AZURE_CONNECTION_STRING)
+        })
+
+@app.route('/fix-azure-connection-and-create-tables')
+def fix_azure_connection_and_create_tables():
+    """Fix Azure SQL connection with correct password and create tables"""
+    try:
+        import pyodbc
+        
+        # Use correct connection string
+        correct_connection_string = "Driver={ODBC Driver 17 for SQL Server};Server=tcp:ai-learning-sql-centralus.database.windows.net,1433;Database=ai-learning-db;Uid=ailearningadmin;Pwd=AILearning2025!;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        
+        conn = pyodbc.connect(correct_connection_string)
+        cursor = conn.cursor()
+        
+        # Check if user_sessions table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'user_sessions'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        # Create table if it doesn't exist
+        if not table_exists:
+            cursor.execute("""
+                CREATE TABLE user_sessions (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    session_token NVARCHAR(255) NOT NULL UNIQUE,
+                    created_at DATETIME DEFAULT GETDATE(),
+                    expires_at DATETIME NOT NULL,
+                    is_active BIT DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            conn.commit()
+            message = '✅ user_sessions table created successfully'
+        else:
+            message = '✅ user_sessions table already exists'
+        
+        # Test table access
+        cursor.execute('SELECT COUNT(*) FROM user_sessions')
+        count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'table_existed': table_exists,
+            'records_count': count,
+            'connection_method': 'corrected_password',
+            'password_used': 'AILearning2025!',
+            'next_step': 'Update AZURE_SQL_CONNECTION_STRING environment variable in Azure App Service'
+        })
+            
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Table creation failed: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'error_type': type(e).__name__,
+            'password_tested': 'AILearning2025!'
         })
 
 @app.route('/create-tables-azure')
