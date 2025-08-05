@@ -50,248 +50,266 @@ MAX_ATTEMPTS = 5
 active_sessions = {}
 session_lock = threading.Lock()
 
+def is_azure_sql():
+    """Check if all Azure SQL environment variables are set"""
+    azure_server = os.environ.get('AZURE_SQL_SERVER')
+    azure_database = os.environ.get('AZURE_SQL_DATABASE')
+    azure_username = os.environ.get('AZURE_SQL_USERNAME')
+    azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+    
+    return all([azure_server, azure_database, azure_username, azure_password])
+
+def get_session_table():
+    """Get the appropriate session table name based on database backend"""
+    return 'user_sessions' if is_azure_sql() else 'sessions'
+
 def initialize_database():
     """Initialize database schema if missing"""
+    logger.info("Initializing database schema...")
+    
     conn = get_db_connection()
     try:
-        # Check if we're using Azure SQL by checking environment variables
-        azure_server = os.environ.get('AZURE_SQL_SERVER')
-        azure_database = os.environ.get('AZURE_SQL_DATABASE')
-        azure_username = os.environ.get('AZURE_SQL_USERNAME')
-        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-        
-        is_azure = all([azure_server, azure_database, azure_username, azure_password])
-        
-        if is_azure:
-            # For Azure SQL, create missing tables including user_sessions
-            print("🔄 Initializing Azure SQL database schema...")
-            
-            # Create user_sessions table for Azure SQL (equivalent to sessions table in SQLite)
-            try:
-                # Step 1: Check if table exists
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT COUNT(*) 
-                    FROM INFORMATION_SCHEMA.TABLES 
-                    WHERE TABLE_NAME = 'user_sessions'
-                """)
-                table_exists = cursor.fetchone()[0] > 0
-                
-                # Step 2: Create table if it doesn't exist
-                if not table_exists:
-                    print("📝 Creating user_sessions table in Azure SQL...")
-                    cursor.execute("""
-                        CREATE TABLE user_sessions (
-                            id INT IDENTITY(1,1) PRIMARY KEY,
-                            session_token NVARCHAR(255) UNIQUE NOT NULL,
-                            user_id INT NOT NULL,
-                            ip_address NVARCHAR(45),
-                            user_agent NVARCHAR(MAX),
-                            created_at DATETIME DEFAULT GETDATE(),
-                            expires_at DATETIME NOT NULL,
-                            is_active BIT DEFAULT 1,
-                            last_activity DATETIME DEFAULT GETDATE(),
-                            FOREIGN KEY (user_id) REFERENCES users(id)
-                        )
-                    """)
-                    conn.commit()
-                    print("✅ user_sessions table created successfully in Azure SQL")
-                else:
-                    print("✅ user_sessions table already exists in Azure SQL")
-                
-            except Exception as e:
-                print(f"⚠️ Error with user_sessions table: {e}")
-                import traceback
-                print(f"Full traceback: {traceback.format_exc()}")
-            
-            return True
+        if is_azure_sql():
+            # Azure SQL Database schema initialization
+            _initialize_azure_sql_schema(conn)
         else:
-            # For SQLite, create missing tables
-            print("🔄 Initializing SQLite database schema...")
-            
-            # Create users table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    level INTEGER DEFAULT 1,
-                    points INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Create sessions table (for SQLite compatibility)
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_token TEXT UNIQUE NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    ip_address TEXT,
-                    user_agent TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP NOT NULL,
-                    is_active INTEGER DEFAULT 1,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            ''')
-            
-            # Create learning_entries table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS learning_entries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    difficulty TEXT,
-                    hours_spent REAL,
-                    completed_date DATE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            ''')
-            
-            # Create courses table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS courses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    difficulty TEXT,
-                    duration_hours REAL,
-                    url TEXT,
-                    category TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Create security_logs table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS security_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ip_address TEXT,
-                    username TEXT,
-                    action TEXT,
-                    success INTEGER,
-                    user_agent TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            conn.commit()
-            print("✅ SQLite database schema initialized")
-            return True
-            
+            # SQLite Database schema initialization
+            _initialize_sqlite_schema(conn)
+        
+        logger.info("Database schema initialization completed successfully")
+        return True
+        
     except Exception as e:
-        print(f"❌ Error initializing database: {e}")
+        logger.error(f"Error initializing database: {e}")
         return False
     finally:
         conn.close()
 
+def _initialize_azure_sql_schema(conn):
+    """Initialize Azure SQL database schema"""
+    logger.info("Initializing Azure SQL database schema")
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Check if user_sessions table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'user_sessions'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        # Create user_sessions table if it doesn't exist
+        if not table_exists:
+            logger.info("Creating user_sessions table in Azure SQL")
+            cursor.execute("""
+                CREATE TABLE user_sessions (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    session_token NVARCHAR(255) UNIQUE NOT NULL,
+                    user_id INT NOT NULL,
+                    ip_address NVARCHAR(45),
+                    user_agent NVARCHAR(MAX),
+                    created_at DATETIME DEFAULT GETDATE(),
+                    expires_at DATETIME NOT NULL,
+                    is_active BIT DEFAULT 1,
+                    last_activity DATETIME DEFAULT GETDATE(),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            conn.commit()
+            logger.info("user_sessions table created successfully in Azure SQL")
+        else:
+            logger.info("user_sessions table already exists in Azure SQL")
+        
+    except Exception as e:
+        logger.error(f"Error with Azure SQL schema initialization: {e}")
+        raise
+
+def _initialize_sqlite_schema(conn):
+    """Initialize SQLite database schema"""
+    logger.info("Initializing SQLite database schema")
+    
+    # Create users table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            level INTEGER DEFAULT 1,
+            points INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Create sessions table (for SQLite compatibility)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_token TEXT UNIQUE NOT NULL,
+            user_id INTEGER NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Create learning_entries table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS learning_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            difficulty TEXT,
+            hours_spent REAL,
+            completed_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Create courses table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS courses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            difficulty TEXT,
+            duration_hours REAL,
+            url TEXT,
+            category TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Create security_logs table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS security_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT,
+            username TEXT,
+            action TEXT,
+            success INTEGER,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    logger.info("SQLite database schema initialized successfully")
+
 def get_db_connection():
     """Get database connection based on environment configuration"""
+    if is_azure_sql():
+        # Azure SQL Database connection
+        logger.info("Using Azure SQL Database with environment variables")
+        return _get_azure_sql_connection()
+    else:
+        # Local SQLite Database connection
+        logger.info(f"Using local SQLite database: {DATABASE_PATH}")
+        return _get_sqlite_connection()
+
+def _get_azure_sql_connection():
+    """Get Azure SQL database connection"""
     try:
-        # Check if Azure SQL environment variables are set
+        import pyodbc
+        
         azure_server = os.environ.get('AZURE_SQL_SERVER')
         azure_database = os.environ.get('AZURE_SQL_DATABASE')
         azure_username = os.environ.get('AZURE_SQL_USERNAME')
         azure_password = os.environ.get('AZURE_SQL_PASSWORD')
         
-        # If all Azure SQL variables are set, use Azure SQL
-        if all([azure_server, azure_database, azure_username, azure_password]):
-            print("🔄 Using Azure SQL Database...")
-            import pyodbc
-            
-            # Build connection string from environment variables
-            azure_connection_string = (
-                f"Driver={{ODBC Driver 17 for SQL Server}};"
-                f"Server=tcp:{azure_server},1433;"
-                f"Database={azure_database};"
-                f"Uid={azure_username};"
-                f"Pwd={azure_password};"
-                f"Encrypt=yes;"
-                f"TrustServerCertificate=no;"
-                f"Connection Timeout=30;"
-            )
-            
-            print(f"📊 Connecting to Azure SQL Database: {azure_database}")
-            conn = pyodbc.connect(azure_connection_string)
-            
-            # Simple row wrapper that supports both index and key access
-            class SimpleRow:
-                def __init__(self, cursor, row):
-                    self.columns = [column[0] for column in cursor.description]
-                    self.values = list(row)
-                    self._dict = dict(zip(self.columns, self.values))
-                    
-                def __getitem__(self, key):
-                    if isinstance(key, int):
-                        return self.values[key]
-                    return self._dict[key]
-                    
-                def __contains__(self, key):
-                    return key in self._dict
-                    
-                def keys(self):
-                    return self._dict.keys()
-                    
-                def get(self, key, default=None):
-                    return self._dict.get(key, default)
-            
-            # Wrap execute to return rows with dict-like access
-            original_execute = conn.execute
-            def enhanced_execute(query, params=()):
-                cursor = conn.cursor()
-                
-                # Basic query conversions for common SQLite -> SQL Server differences
-                if 'AUTOINCREMENT' in query.upper():
-                    query = query.replace('AUTOINCREMENT', 'IDENTITY(1,1)')
-                    query = query.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'INT IDENTITY(1,1) PRIMARY KEY')
-                
-                cursor.execute(query, params)
-                
-                # Wrap fetchone and fetchall
-                original_fetchone = cursor.fetchone
-                original_fetchall = cursor.fetchall
-                
-                def fetchone():
-                    row = original_fetchone()
-                    return SimpleRow(cursor, row) if row else None
-                    
-                def fetchall():
-                    rows = original_fetchall()
-                    return [SimpleRow(cursor, row) for row in rows] if rows else []
-                
-                cursor.fetchone = fetchone
-                cursor.fetchall = fetchall
-                return cursor
-            
-            # Add cursor method for direct Azure SQL operations
-            def get_cursor():
-                return conn.cursor()
-            
-            conn.execute = enhanced_execute
-            conn.cursor = get_cursor
-            print("✅ Azure SQL Database connection established")
-            return conn
+        # Build connection string from environment variables
+        azure_connection_string = (
+            f"Driver={{ODBC Driver 17 for SQL Server}};"
+            f"Server=tcp:{azure_server},1433;"
+            f"Database={azure_database};"
+            f"Uid={azure_username};"
+            f"Pwd={azure_password};"
+            f"Encrypt=yes;"
+            f"TrustServerCertificate=no;"
+            f"Connection Timeout=30;"
+        )
         
-        # Fallback: check for legacy AZURE_CONNECTION_STRING
-        elif AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower():
-            print("⚠️  Using legacy AZURE_CONNECTION_STRING - please migrate to individual environment variables")
-            import pyodbc
-            conn = pyodbc.connect(AZURE_CONNECTION_STRING)
-            print("✅ Azure SQL Database connection established (legacy)")
-            return conn
-            
+        logger.info(f"Connecting to Azure SQL Database: {azure_database}")
+        conn = pyodbc.connect(azure_connection_string)
+        
+        # Apply Azure SQL connection wrapper for SQLite compatibility
+        return _wrap_azure_sql_connection(conn)
+        
     except Exception as e:
-        print(f"⚠️  Azure SQL connection failed: {e}")
-        print("🔄 Falling back to local SQLite database...")
-    
-    # Fallback to local SQLite
-    print(f"📊 Using local SQLite database: {DATABASE_PATH}")
+        logger.error(f"Azure SQL connection failed: {e}")
+        raise Exception(f"Failed to connect to Azure SQL Database: {e}")
+
+def _get_sqlite_connection():
+    """Get SQLite database connection"""
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
+    return conn
+
+def _wrap_azure_sql_connection(conn):
+    """Wrap Azure SQL connection to provide SQLite-like interface"""
+    # Simple row wrapper that supports both index and key access
+    class SimpleRow:
+        def __init__(self, cursor, row):
+            self.columns = [column[0] for column in cursor.description]
+            self.values = list(row)
+            self._dict = dict(zip(self.columns, self.values))
+            
+        def __getitem__(self, key):
+            if isinstance(key, int):
+                return self.values[key]
+            return self._dict[key]
+            
+        def __contains__(self, key):
+            return key in self._dict
+            
+        def keys(self):
+            return self._dict.keys()
+            
+        def get(self, key, default=None):
+            return self._dict.get(key, default)
+    
+    # Wrap execute to return rows with dict-like access
+    original_execute = conn.execute
+    def enhanced_execute(query, params=()):
+        cursor = conn.cursor()
+        
+        # Basic query conversions for common SQLite -> SQL Server differences
+        if 'AUTOINCREMENT' in query.upper():
+            query = query.replace('AUTOINCREMENT', 'IDENTITY(1,1)')
+            query = query.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'INT IDENTITY(1,1) PRIMARY KEY')
+        
+        cursor.execute(query, params)
+        
+        # Wrap fetchone and fetchall
+        original_fetchone = cursor.fetchone
+        original_fetchall = cursor.fetchall
+        
+        def fetchone():
+            row = original_fetchone()
+            return SimpleRow(cursor, row) if row else None
+            
+        def fetchall():
+            rows = original_fetchall()
+            return [SimpleRow(cursor, row) for row in rows] if rows else []
+        
+        cursor.fetchone = fetchone
+        cursor.fetchall = fetchall
+        return cursor
+    
+    # Add cursor method for direct Azure SQL operations
+    def get_cursor():
+        return conn.cursor()
+    
+    conn.execute = enhanced_execute
+    conn.cursor = get_cursor
+    logger.info("Azure SQL Database connection established with SQLite compatibility wrapper")
     return conn
 
 def sanitize_input(input_string):
@@ -315,7 +333,7 @@ def record_failed_attempt(ip_address, username=None):
         ''', (ip_address, username, 'login_attempt', False, request.headers.get('User-Agent')))
         conn.commit()
     except Exception as e:
-        print(f"Error recording failed attempt: {e}")
+        logger.error(f"Error recording failed attempt: {e}")
     finally:
         conn.close()
 
@@ -339,40 +357,35 @@ def create_user_session(user_id, ip_address, user_agent):
     """Create a new user session"""
     session_token = secrets.token_urlsafe(32)
     expires_at = datetime.now() + timedelta(hours=24)
+    session_table = get_session_table()  # Use centralized session table detection
     
     conn = get_db_connection()
     try:
-        # Check if we're using Azure SQL by checking environment variables
-        azure_server = os.environ.get('AZURE_SQL_SERVER')
-        azure_database = os.environ.get('AZURE_SQL_DATABASE')
-        azure_username = os.environ.get('AZURE_SQL_USERNAME')
-        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-        
-        is_azure = all([azure_server, azure_database, azure_username, azure_password])
-        
         # Invalidate old sessions for this user
-        if is_azure:
-            conn.execute('''
-                UPDATE user_sessions 
+        if is_azure_sql():
+            # Azure SQL Database session creation
+            conn.execute(f'''
+                UPDATE {session_table} 
                 SET is_active = 0 
                 WHERE user_id = ? AND is_active = 1
             ''', (user_id,))
             
             # Create new session with all required columns
-            conn.execute('''
-                INSERT INTO user_sessions (session_token, user_id, ip_address, user_agent, expires_at, last_activity)
+            conn.execute(f'''
+                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at, last_activity)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (session_token, user_id, ip_address, user_agent, expires_at, datetime.now()))
         else:
-            conn.execute('''
-                UPDATE sessions 
+            # SQLite Database session creation
+            conn.execute(f'''
+                UPDATE {session_table} 
                 SET is_active = 0 
                 WHERE user_id = ? AND is_active = 1
             ''', (user_id,))
             
             # Create new session
-            conn.execute('''
-                INSERT INTO sessions (session_token, user_id, ip_address, user_agent, expires_at)
+            conn.execute(f'''
+                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at)
                 VALUES (?, ?, ?, ?, ?)
             ''', (session_token, user_id, ip_address, user_agent, expires_at))
         
@@ -389,7 +402,7 @@ def create_user_session(user_id, ip_address, user_agent):
         return session_token
         
     except Exception as e:
-        print(f"Error creating session: {e}")
+        logger.error(f"Error creating session: {e}")
         conn.rollback()
         return None
     finally:
@@ -412,16 +425,9 @@ def get_current_user():
     
     # Get user from database
     conn = get_db_connection()
+    session_table = get_session_table()  # Use centralized session table detection
+    
     try:
-        # Check if we're using Azure SQL by checking environment variables
-        azure_server = os.environ.get('AZURE_SQL_SERVER')
-        azure_database = os.environ.get('AZURE_SQL_DATABASE')
-        azure_username = os.environ.get('AZURE_SQL_USERNAME')
-        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-        
-        is_azure = all([azure_server, azure_database, azure_username, azure_password])
-        session_table = 'user_sessions' if is_azure else 'sessions'
-        
         user_session = conn.execute(f'''
             SELECT s.*, u.username, u.level, u.points 
             FROM {session_table} s 
@@ -430,9 +436,9 @@ def get_current_user():
         ''', (session_token, True)).fetchone()
         
         if user_session:
-            # Update last activity if column exists (Azure SQL)
+            # Update last activity if column exists (Azure SQL only)
             try:
-                if session_table == 'user_sessions':
+                if is_azure_sql():
                     conn.execute(f'''
                         UPDATE {session_table} 
                         SET last_activity = ? 
@@ -440,7 +446,7 @@ def get_current_user():
                     ''', (datetime.now(), session_token))
                     conn.commit()
             except Exception as e:
-                print(f"Warning: Could not update last_activity: {e}")
+                logger.warning(f"Could not update last_activity: {e}")
             
             user_result = {
                 'id': user_session['user_id'],
@@ -453,7 +459,7 @@ def get_current_user():
         return None
         
     except Exception as e:
-        print(f"Error getting current user: {e}")
+        logger.error(f"Error getting current user: {e}")
         return None
     finally:
         conn.close()
@@ -461,16 +467,9 @@ def get_current_user():
 def invalidate_session(session_token):
     """Invalidate a user session"""
     conn = get_db_connection()
+    session_table = get_session_table()  # Use centralized session table detection
+    
     try:
-        # Check if we're using Azure SQL by checking environment variables
-        azure_server = os.environ.get('AZURE_SQL_SERVER')
-        azure_database = os.environ.get('AZURE_SQL_DATABASE')
-        azure_username = os.environ.get('AZURE_SQL_USERNAME')
-        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-        
-        is_azure = all([azure_server, azure_database, azure_username, azure_password])
-        session_table = 'user_sessions' if is_azure else 'sessions'
-        
         conn.execute(f'''
             UPDATE {session_table} 
             SET is_active = ? 
@@ -483,7 +482,7 @@ def invalidate_session(session_token):
             active_sessions.pop(session_token, None)
             
     except Exception as e:
-        print(f"Error invalidating session: {e}")
+        logger.error(f"Error invalidating session: {e}")
     finally:
         conn.close()
 
@@ -1002,14 +1001,7 @@ def test_admin_login_direct():
         
         # Step 5: Test session retrieval
         try:
-            # Check if we're using Azure SQL by checking environment variables
-            azure_server = os.environ.get('AZURE_SQL_SERVER')
-            azure_database = os.environ.get('AZURE_SQL_DATABASE')
-            azure_username = os.environ.get('AZURE_SQL_USERNAME')
-            azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-            
-            is_azure = all([azure_server, azure_database, azure_username, azure_password])
-            session_table = 'user_sessions' if is_azure else 'sessions'
+            session_table = get_session_table()  # Use centralized session table detection
             
             user_session = conn.execute(f'''
                 SELECT s.*, u.username, u.level, u.points 
@@ -1044,7 +1036,7 @@ def test_admin_login_direct():
             'session_table_used': session_table,
             'session_token_created': session_token[:10] + '...',
             'user_level': admin_user.get('level', 'N/A'),
-            'is_azure_sql': is_azure
+            'is_azure_sql': is_azure_sql()
         })
         
     except Exception as e:
@@ -1089,14 +1081,7 @@ def admin_test():
         # Test 5: Admin user check
         try:
             conn = get_db_connection()
-            # Check if we're using Azure SQL by checking environment variables
-            azure_server = os.environ.get('AZURE_SQL_SERVER')
-            azure_database = os.environ.get('AZURE_SQL_DATABASE')
-            azure_username = os.environ.get('AZURE_SQL_USERNAME')
-            azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-            
-            is_azure = all([azure_server, azure_database, azure_username, azure_password])
-            session_table = 'user_sessions' if is_azure else 'sessions'
+            session_table = get_session_table()  # Use centralized session table detection
             
             user_session = conn.execute(f'''
                 SELECT s.user_id, u.username 
@@ -1145,16 +1130,9 @@ def admin_dashboard():
             return redirect(url_for('login'))
         
         try:
-            # Check if user exists in database - use both table names for compatibility
+            # Check if user exists in database - use centralized session table detection
             user_data = None
-            # Check if we're using Azure SQL by checking environment variables
-            azure_server = os.environ.get('AZURE_SQL_SERVER')
-            azure_database = os.environ.get('AZURE_SQL_DATABASE')
-            azure_username = os.environ.get('AZURE_SQL_USERNAME')
-            azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-            
-            is_azure = all([azure_server, azure_database, azure_username, azure_password])
-            session_table = 'user_sessions' if is_azure else 'sessions'
+            session_table = get_session_table()
             
             try:
                 user_session = conn.execute(f'''
@@ -1172,7 +1150,7 @@ def admin_dashboard():
                         'points': user_session[3]
                     }
             except Exception as db_error:
-                print(f"Database lookup error: {db_error}")
+                logger.error(f"Database lookup error: {db_error}")
                 # Fallback: check if username is admin based on session memory
                 session_data = active_sessions.get(session_token, {})
                 if session_data:
@@ -1187,7 +1165,7 @@ def admin_dashboard():
                                 'points': user_record[3]
                             }
                     except Exception as user_error:
-                        print(f"User lookup error: {user_error}")
+                        logger.error(f"User lookup error: {user_error}")
             
             # Check if user is admin
             if not user_data or user_data.get('username') != 'admin':
@@ -1201,7 +1179,7 @@ def admin_dashboard():
                 if hasattr(result, 'keys') and 'count' in result:
                     user_count = result['count']
             except Exception as e:
-                print(f"Error getting user count: {e}")
+                logger.error(f"Error getting user count: {e}")
                 user_count = 0
                 
             try:
@@ -1210,7 +1188,7 @@ def admin_dashboard():
                 if hasattr(result, 'keys') and 'count' in result:
                     course_count = result['count']
             except Exception as e:
-                print(f"Error getting course count: {e}")
+                logger.error(f"Error getting course count: {e}")
                 course_count = 0
                 
             try:
@@ -1219,7 +1197,7 @@ def admin_dashboard():
                 if hasattr(result, 'keys') and 'count' in result:
                     learning_count = result['count']
             except Exception as e:
-                print(f"Error getting learning count: {e}")
+                logger.error(f"Error getting learning count: {e}")
                 learning_count = 0
             
             # Get recent users
@@ -1232,7 +1210,7 @@ def admin_dashboard():
                     LIMIT 5
                 ''').fetchall()
             except Exception as e:
-                print(f"Error getting recent users: {e}")
+                logger.error(f"Error getting recent users: {e}")
             
             return render_template('admin/index.html',
                                  total_users=user_count,
@@ -1241,14 +1219,14 @@ def admin_dashboard():
                                  recent_users=recent_users)
         
         except Exception as e:
-            print(f"Error in admin dashboard: {e}")
+            logger.error(f"Error in admin dashboard: {e}")
             flash('Database error occurred. Please check the logs.', 'error')
             return redirect(url_for('login'))
         finally:
             conn.close()
     
     except Exception as e:
-        print(f"Critical error in admin dashboard: {e}")
+        logger.error(f"Critical error in admin dashboard: {e}")
         flash('System error. Please try again.', 'error')
         return redirect(url_for('login'))
 
@@ -1517,7 +1495,7 @@ def create_admin_now():
         conn.close()
 
 # Initialize database on startup
-print("🚀 Initializing AI Learning Tracker...")
+logger.info("Initializing AI Learning Tracker...")
 initialize_database()
 
 if __name__ == '__main__':
