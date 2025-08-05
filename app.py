@@ -54,8 +54,13 @@ def initialize_database():
     """Initialize database schema if missing"""
     conn = get_db_connection()
     try:
-        # Check if we're using Azure SQL or SQLite
-        is_azure = AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower()
+        # Check if we're using Azure SQL by checking environment variables
+        azure_server = os.environ.get('AZURE_SQL_SERVER')
+        azure_database = os.environ.get('AZURE_SQL_DATABASE')
+        azure_username = os.environ.get('AZURE_SQL_USERNAME')
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        
+        is_azure = all([azure_server, azure_database, azure_username, azure_password])
         
         if is_azure:
             # For Azure SQL, create missing tables including user_sessions
@@ -187,20 +192,31 @@ def initialize_database():
 def get_db_connection():
     """Get database connection based on environment configuration"""
     try:
-        # Always prefer Azure SQL in production
-        if AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower():
+        # Check if Azure SQL environment variables are set
+        azure_server = os.environ.get('AZURE_SQL_SERVER')
+        azure_database = os.environ.get('AZURE_SQL_DATABASE')
+        azure_username = os.environ.get('AZURE_SQL_USERNAME')
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        
+        # If all Azure SQL variables are set, use Azure SQL
+        if all([azure_server, azure_database, azure_username, azure_password]):
             print("🔄 Using Azure SQL Database...")
             import pyodbc
             
-            # Parse connection string to get database name
-            db_name = None
-            for part in AZURE_CONNECTION_STRING.split(';'):
-                if 'Database=' in part:
-                    db_name = part.split('=')[1]
-                    break
+            # Build connection string from environment variables
+            azure_connection_string = (
+                f"Driver={{ODBC Driver 17 for SQL Server}};"
+                f"Server=tcp:{azure_server},1433;"
+                f"Database={azure_database};"
+                f"Uid={azure_username};"
+                f"Pwd={azure_password};"
+                f"Encrypt=yes;"
+                f"TrustServerCertificate=no;"
+                f"Connection Timeout=30;"
+            )
             
-            print(f"📊 Connecting to Azure SQL Database: {db_name}")
-            conn = pyodbc.connect(AZURE_CONNECTION_STRING)
+            print(f"📊 Connecting to Azure SQL Database: {azure_database}")
+            conn = pyodbc.connect(azure_connection_string)
             
             # Simple row wrapper that supports both index and key access
             class SimpleRow:
@@ -258,6 +274,14 @@ def get_db_connection():
             conn.execute = enhanced_execute
             conn.cursor = get_cursor
             print("✅ Azure SQL Database connection established")
+            return conn
+        
+        # Fallback: check for legacy AZURE_CONNECTION_STRING
+        elif AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower():
+            print("⚠️  Using legacy AZURE_CONNECTION_STRING - please migrate to individual environment variables")
+            import pyodbc
+            conn = pyodbc.connect(AZURE_CONNECTION_STRING)
+            print("✅ Azure SQL Database connection established (legacy)")
             return conn
             
     except Exception as e:
@@ -318,8 +342,13 @@ def create_user_session(user_id, ip_address, user_agent):
     
     conn = get_db_connection()
     try:
-        # Check if we're using Azure SQL or SQLite
-        is_azure = AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower()
+        # Check if we're using Azure SQL by checking environment variables
+        azure_server = os.environ.get('AZURE_SQL_SERVER')
+        azure_database = os.environ.get('AZURE_SQL_DATABASE')
+        azure_username = os.environ.get('AZURE_SQL_USERNAME')
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        
+        is_azure = all([azure_server, azure_database, azure_username, azure_password])
         
         # Invalidate old sessions for this user
         if is_azure:
@@ -585,6 +614,87 @@ def debug_session():
         return debug_info
     except Exception as e:
         return {'error': str(e), 'traceback': str(e.__traceback__)}
+
+@app.route('/test-environment-connection')
+def test_environment_connection():
+    """Test Azure SQL connection using environment variables"""
+    try:
+        # Check environment variables
+        azure_server = os.environ.get('AZURE_SQL_SERVER')
+        azure_database = os.environ.get('AZURE_SQL_DATABASE')
+        azure_username = os.environ.get('AZURE_SQL_USERNAME')
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        
+        env_status = {
+            'AZURE_SQL_SERVER': 'Set' if azure_server else 'Not set',
+            'AZURE_SQL_DATABASE': 'Set' if azure_database else 'Not set',
+            'AZURE_SQL_USERNAME': 'Set' if azure_username else 'Not set',
+            'AZURE_SQL_PASSWORD': 'Set' if azure_password else 'Not set'
+        }
+        
+        if not all([azure_server, azure_database, azure_username, azure_password]):
+            return jsonify({
+                'success': False,
+                'error': 'Missing required Azure SQL environment variables',
+                'environment_status': env_status,
+                'next_steps': 'Set the missing environment variables in Azure App Service'
+            })
+        
+        # Test connection using environment variables
+        import pyodbc
+        
+        connection_string = (
+            f"Driver={{ODBC Driver 17 for SQL Server}};"
+            f"Server=tcp:{azure_server},1433;"
+            f"Database={azure_database};"
+            f"Uid={azure_username};"
+            f"Pwd={azure_password};"
+            f"Encrypt=yes;"
+            f"TrustServerCertificate=no;"
+            f"Connection Timeout=30;"
+        )
+        
+        conn = pyodbc.connect(connection_string)
+        cursor = conn.cursor()
+        
+        # Test basic query
+        cursor.execute("SELECT 1 as test")
+        result = cursor.fetchone()
+        
+        # Check if user_sessions table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'user_sessions'
+        """)
+        user_sessions_exists = cursor.fetchone()[0] > 0
+        
+        # Test table access
+        cursor.execute('SELECT COUNT(*) FROM user_sessions')
+        sessions_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'environment_status': env_status,
+            'connection_test': 'OK',
+            'basic_query': result[0],
+            'user_sessions_table_exists': user_sessions_exists,
+            'sessions_count': sessions_count,
+            'message': 'Successfully connected using environment variables!',
+            'connection_method': 'environment_variables'
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': f'Connection failed: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'error_type': type(e).__name__,
+            'environment_status': env_status if 'env_status' in locals() else 'Unknown'
+        })
 
 @app.route('/test-azure-connection-corrected')
 def test_azure_connection_corrected():
