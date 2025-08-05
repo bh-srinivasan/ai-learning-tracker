@@ -543,24 +543,38 @@ def create_tables_azure():
     try:
         conn = get_db_connection()
         
-        # Create user_sessions table for Azure SQL
+        # Check if we're using Azure SQL or SQLite
+        is_azure = bool(os.getenv('AZURE_SQL_CONNECTION_STRING'))
+        
+        # Create user_sessions table with appropriate syntax
         try:
-            conn.execute('''
-                CREATE TABLE user_sessions (
-                    session_token NVARCHAR(255) PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    created_at DATETIME DEFAULT GETDATE(),
-                    is_active BIT DEFAULT 1,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-            ''')
+            if is_azure:
+                # SQL Server syntax
+                conn.execute('''
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='user_sessions' AND xtype='U')
+                    CREATE TABLE user_sessions (
+                        session_token NVARCHAR(255) PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        created_at DATETIME DEFAULT GETDATE(),
+                        is_active BIT DEFAULT 1,
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )
+                ''')
+            else:
+                # SQLite syntax  
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS user_sessions (
+                        session_token TEXT PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_active INTEGER DEFAULT 1,
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )
+                ''')
             conn.commit()
             result = "✅ user_sessions table created successfully"
         except Exception as e:
-            if 'already exists' in str(e):
-                result = "✅ user_sessions table already exists"
-            else:
-                result = f"❌ Error creating user_sessions table: {e}"
+            result = f"❌ Error creating user_sessions table: {e}"
         
         # Test table access
         try:
@@ -570,7 +584,7 @@ def create_tables_azure():
             result += f"<br>❌ Error accessing user_sessions table: {e}"
         
         conn.close()
-        return f"<h2>Azure SQL Table Creation</h2><p>{result}</p><a href='/admin-test'>Test Admin</a>"
+        return f"<h2>Azure SQL Table Creation (Azure: {is_azure})</h2><p>{result}</p><a href='/admin-test'>Test Admin</a>"
         
     except Exception as e:
         return f"<h2>❌ Error:</h2><pre>{e}</pre>"
