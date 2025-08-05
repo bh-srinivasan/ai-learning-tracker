@@ -960,6 +960,101 @@ def create_tables_azure():
             'connection_string_present': bool(AZURE_CONNECTION_STRING)
         })
 
+@app.route('/test-admin-login-direct')
+def test_admin_login_direct():
+    """Test admin login process step by step"""
+    try:
+        # Step 1: Get database connection
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'step': 1, 'error': 'Database connection failed'})
+        
+        # Step 2: Check if admin user exists
+        try:
+            admin_user = conn.execute('SELECT * FROM users WHERE username = ?', ('admin',)).fetchone()
+            if not admin_user:
+                return jsonify({'step': 2, 'error': 'Admin user not found'})
+        except Exception as e:
+            return jsonify({'step': 2, 'error': f'User lookup failed: {str(e)}'})
+        
+        # Step 3: Test password verification
+        from werkzeug.security import check_password_hash
+        test_password = 'AILearning2025!'
+        
+        try:
+            password_valid = check_password_hash(admin_user['password_hash'], test_password)
+            if not password_valid:
+                return jsonify({'step': 3, 'error': 'Password verification failed'})
+        except Exception as e:
+            return jsonify({'step': 3, 'error': f'Password check failed: {str(e)}'})
+        
+        # Step 4: Test session creation
+        try:
+            session_token = create_user_session(
+                admin_user['id'],
+                '127.0.0.1',  # test IP
+                'Test User Agent'
+            )
+            if not session_token:
+                return jsonify({'step': 4, 'error': 'Session creation failed'})
+        except Exception as e:
+            return jsonify({'step': 4, 'error': f'Session creation error: {str(e)}'})
+        
+        # Step 5: Test session retrieval
+        try:
+            # Check if we're using Azure SQL by checking environment variables
+            azure_server = os.environ.get('AZURE_SQL_SERVER')
+            azure_database = os.environ.get('AZURE_SQL_DATABASE')
+            azure_username = os.environ.get('AZURE_SQL_USERNAME')
+            azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+            
+            is_azure = all([azure_server, azure_database, azure_username, azure_password])
+            session_table = 'user_sessions' if is_azure else 'sessions'
+            
+            user_session = conn.execute(f'''
+                SELECT s.*, u.username, u.level, u.points 
+                FROM {session_table} s 
+                JOIN users u ON s.user_id = u.id 
+                WHERE s.session_token = ? AND s.is_active = ?
+            ''', (session_token, True)).fetchone()
+            
+            if not user_session:
+                return jsonify({'step': 5, 'error': f'Session not found in {session_table}'})
+                
+        except Exception as e:
+            return jsonify({'step': 5, 'error': f'Session retrieval failed: {str(e)}'})
+        
+        # Step 6: Clean up test session
+        try:
+            conn.execute(f'''
+                DELETE FROM {session_table} 
+                WHERE session_token = ?
+            ''', (session_token,))
+            conn.commit()
+        except Exception as e:
+            # Non-critical error
+            pass
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'All login steps completed successfully',
+            'admin_user_id': admin_user['id'],
+            'session_table_used': session_table,
+            'session_token_created': session_token[:10] + '...',
+            'user_level': admin_user.get('level', 'N/A'),
+            'is_azure_sql': is_azure
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': f'Test failed: {str(e)}',
+            'traceback': traceback.format_exc()
+        })
+
 @app.route('/admin-test')
 def admin_test():
     """Simple admin test to debug issues"""
