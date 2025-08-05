@@ -586,85 +586,109 @@ def debug_session():
     except Exception as e:
         return {'error': str(e), 'traceback': str(e.__traceback__)}
 
-@app.route('/create-tables-azure')
-def create_tables_azure():
-    """Create missing tables in Azure SQL"""
+@app.route('/test-azure-connection')
+def test_azure_connection():
+    """Test Azure SQL connection directly to diagnose issues"""
     try:
-        conn = get_db_connection()
+        import pyodbc
         
-        # Check if we're using Azure SQL or SQLite
-        is_azure = bool(os.getenv('AZURE_SQL_CONNECTION_STRING'))
+        # Test direct connection to Azure SQL
+        print("🔄 Testing direct Azure SQL connection...")
+        print(f"Connection string: {AZURE_CONNECTION_STRING[:50]}...")
         
-        # Create user_sessions table with appropriate syntax
-        try:
-            if is_azure:
-                # Azure SQL Server approach - check and create separately
-                cursor = conn.cursor()
-                
-                # Check if table exists
-                cursor.execute("""
-                    SELECT COUNT(*) 
-                    FROM INFORMATION_SCHEMA.TABLES 
-                    WHERE TABLE_NAME = 'user_sessions'
-                """)
-                table_exists = cursor.fetchone()[0] > 0
-                
-                if not table_exists:
-                    # Create the table
-                    cursor.execute("""
-                        CREATE TABLE user_sessions (
-                            id INT IDENTITY(1,1) PRIMARY KEY,
-                            session_token NVARCHAR(255) UNIQUE NOT NULL,
-                            user_id INT NOT NULL,
-                            ip_address NVARCHAR(45),
-                            user_agent NVARCHAR(MAX),
-                            created_at DATETIME DEFAULT GETDATE(),
-                            expires_at DATETIME NOT NULL,
-                            is_active BIT DEFAULT 1,
-                            last_activity DATETIME DEFAULT GETDATE(),
-                            FOREIGN KEY (user_id) REFERENCES users(id)
-                        )
-                    """)
-                    conn.commit()
-                    result = "✅ user_sessions table created successfully"
-                else:
-                    result = "✅ user_sessions table already exists"
-            else:
-                # SQLite syntax  
-                conn.execute('''
-                    CREATE TABLE IF NOT EXISTS user_sessions (
-                        session_token TEXT PRIMARY KEY,
-                        user_id INTEGER NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        is_active INTEGER DEFAULT 1,
-                        FOREIGN KEY (user_id) REFERENCES users(id)
-                    )
-                ''')
-                conn.commit()
-                result = "✅ user_sessions table created successfully"
-        except Exception as e:
-            result = f"❌ Error creating user_sessions table: {e}"
-            import traceback
-            result += f"<br>Full error: {traceback.format_exc()}"
+        # Try direct pyodbc connection
+        conn = pyodbc.connect(AZURE_CONNECTION_STRING)
+        cursor = conn.cursor()
         
-        # Test table access
-        try:
-            if is_azure:
-                cursor = conn.cursor()
-                cursor.execute('SELECT COUNT(*) FROM user_sessions')
-                count = cursor.fetchone()[0]
-            else:
-                count = conn.execute('SELECT COUNT(*) FROM user_sessions').fetchone()[0]
-            result += f"<br>✅ user_sessions table accessible with {count} records"
-        except Exception as e:
-            result += f"<br>❌ Error accessing user_sessions table: {e}"
+        # Test basic query
+        cursor.execute("SELECT 1 as test")
+        result = cursor.fetchone()
+        
+        # Test INFORMATION_SCHEMA access
+        cursor.execute("""
+            SELECT COUNT(*) as table_count
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_TYPE = 'BASE TABLE'
+        """)
+        table_count = cursor.fetchone()[0]
         
         conn.close()
-        return f"<h2>Azure SQL Table Creation (Azure: {is_azure})</h2><p>{result}</p><a href='/admin-test'>Test Admin</a>"
+        
+        return jsonify({
+            'success': True,
+            'connection_test': 'OK',
+            'basic_query': result[0],
+            'total_tables': table_count,
+            'message': 'Direct Azure SQL connection successful'
+        })
         
     except Exception as e:
         import traceback
-        return f"<h2>❌ Error:</h2><pre>{e}</pre><br><pre>{traceback.format_exc()}</pre>"
+        return jsonify({
+            'error': f'Direct Azure SQL connection failed: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'error_type': type(e).__name__,
+            'connection_string_present': bool(AZURE_CONNECTION_STRING)
+        })
+
+@app.route('/create-tables-azure')
+def create_tables_azure():
+    """Create missing tables in Azure SQL using direct connection"""
+    try:
+        import pyodbc
+        
+        # Use direct connection to avoid wrapper fallback
+        conn = pyodbc.connect(AZURE_CONNECTION_STRING)
+        cursor = conn.cursor()
+        
+        # Check if user_sessions table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'user_sessions'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        # Create table if it doesn't exist
+        if not table_exists:
+            cursor.execute("""
+                CREATE TABLE user_sessions (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    session_token NVARCHAR(255) NOT NULL UNIQUE,
+                    created_at DATETIME DEFAULT GETDATE(),
+                    expires_at DATETIME NOT NULL,
+                    is_active BIT DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            conn.commit()
+            message = '✅ user_sessions table created successfully'
+        else:
+            message = '✅ user_sessions table already exists'
+        
+        # Test table access
+        cursor.execute('SELECT COUNT(*) FROM user_sessions')
+        count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'table_existed': table_exists,
+            'records_count': count,
+            'connection_method': 'direct_pyodbc'
+        })
+            
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Table creation failed: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'error_type': type(e).__name__,
+            'connection_string_present': bool(AZURE_CONNECTION_STRING)
+        })
 
 @app.route('/admin-test')
 def admin_test():
