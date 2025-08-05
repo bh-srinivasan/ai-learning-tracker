@@ -163,47 +163,53 @@ def get_db_connection():
             print(f"📊 Connecting to Azure SQL Database: {db_name}")
             conn = pyodbc.connect(AZURE_CONNECTION_STRING)
             
-            # Create a wrapper to make it behave like sqlite3.Row
-            class AzureRow(dict):
+            # Simple row wrapper that supports both index and key access
+            class SimpleRow:
                 def __init__(self, cursor, row):
-                    columns = [column[0] for column in cursor.description]
-                    super().__init__(zip(columns, row))
+                    self.columns = [column[0] for column in cursor.description]
+                    self.values = list(row)
+                    self._dict = dict(zip(self.columns, self.values))
                     
                 def __getitem__(self, key):
                     if isinstance(key, int):
-                        return list(self.values())[key]
-                    return super().__getitem__(key)
+                        return self.values[key]
+                    return self._dict[key]
+                    
+                def __contains__(self, key):
+                    return key in self._dict
+                    
+                def keys(self):
+                    return self._dict.keys()
+                    
+                def get(self, key, default=None):
+                    return self._dict.get(key, default)
             
-            # Override execute method to return rows that behave like sqlite3.Row
+            # Wrap execute to return rows with dict-like access
+            original_execute = conn.execute
             def enhanced_execute(query, params=()):
                 cursor = conn.cursor()
                 
-                # Convert SQLite syntax to SQL Server syntax
-                query = query.replace('?', '%s')
-                query = query.replace('AUTOINCREMENT', 'IDENTITY(1,1)')
-                query = query.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'INT IDENTITY(1,1) PRIMARY KEY')
-                query = query.replace('TEXT', 'NVARCHAR(MAX)')
-                query = query.replace('REAL', 'FLOAT')
-                query = query.replace('BLOB', 'VARBINARY(MAX)')
+                # Basic query conversions for common SQLite -> SQL Server differences
+                if 'AUTOINCREMENT' in query.upper():
+                    query = query.replace('AUTOINCREMENT', 'IDENTITY(1,1)')
+                    query = query.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'INT IDENTITY(1,1) PRIMARY KEY')
                 
                 cursor.execute(query, params)
                 
-                def create_fetchone_wrapper(cursor):
-                    original_fetchone = cursor.fetchone
-                    def fetchone():
-                        row = original_fetchone()
-                        return AzureRow(cursor, row) if row else None
-                    return fetchone
+                # Wrap fetchone and fetchall
+                original_fetchone = cursor.fetchone
+                original_fetchall = cursor.fetchall
                 
-                def create_fetchall_wrapper(cursor):
-                    original_fetchall = cursor.fetchall
-                    def fetchall():
-                        rows = original_fetchall()
-                        return [AzureRow(cursor, row) for row in rows] if rows else []
-                    return fetchall
+                def fetchone():
+                    row = original_fetchone()
+                    return SimpleRow(cursor, row) if row else None
+                    
+                def fetchall():
+                    rows = original_fetchall()
+                    return [SimpleRow(cursor, row) for row in rows] if rows else []
                 
-                cursor.fetchone = create_fetchone_wrapper(cursor)
-                cursor.fetchall = create_fetchall_wrapper(cursor)
+                cursor.fetchone = fetchone
+                cursor.fetchall = fetchall
                 return cursor
             
             conn.execute = enhanced_execute
