@@ -58,8 +58,31 @@ def initialize_database():
         is_azure = AZURE_CONNECTION_STRING and 'azure' in AZURE_CONNECTION_STRING.lower()
         
         if is_azure:
-            # For Azure SQL, ensure proper table names (user_sessions vs sessions)
-            print("✅ Using Azure SQL - schema should already exist")
+            # For Azure SQL, create missing tables including user_sessions
+            print("🔄 Initializing Azure SQL database schema...")
+            
+            # Create user_sessions table for Azure SQL (equivalent to sessions table in SQLite)
+            try:
+                conn.execute('''
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='user_sessions' AND xtype='U')
+                    CREATE TABLE user_sessions (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        session_token NVARCHAR(255) UNIQUE NOT NULL,
+                        user_id INT NOT NULL,
+                        ip_address NVARCHAR(45),
+                        user_agent NVARCHAR(MAX),
+                        created_at DATETIME DEFAULT GETDATE(),
+                        expires_at DATETIME NOT NULL,
+                        is_active BIT DEFAULT 1,
+                        last_activity DATETIME DEFAULT GETDATE(),
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )
+                ''')
+                conn.commit()
+                print("✅ user_sessions table created/verified in Azure SQL")
+            except Exception as e:
+                print(f"⚠️ Error creating user_sessions table: {e}")
+            
             return True
         else:
             # For SQLite, create missing tables
@@ -285,11 +308,11 @@ def create_user_session(user_id, ip_address, user_agent):
                 WHERE user_id = ? AND is_active = 1
             ''', (user_id,))
             
-            # Create new session
+            # Create new session with all required columns
             conn.execute('''
-                INSERT INTO user_sessions (session_token, user_id, ip_address, user_agent, expires_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (session_token, user_id, ip_address, user_agent, expires_at))
+                INSERT INTO user_sessions (session_token, user_id, ip_address, user_agent, expires_at, last_activity)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (session_token, user_id, ip_address, user_agent, expires_at, datetime.now()))
         else:
             conn.execute('''
                 UPDATE sessions 
@@ -351,12 +374,17 @@ def get_current_user():
         ''', (session_token, True)).fetchone()
         
         if user_session:
-            conn.execute(f'''
-                UPDATE {session_table} 
-                SET last_activity = ? 
-                WHERE session_token = ?
-            ''', (datetime.now(), session_token))
-            conn.commit()
+            # Update last activity if column exists (Azure SQL)
+            try:
+                if session_table == 'user_sessions':
+                    conn.execute(f'''
+                        UPDATE {session_table} 
+                        SET last_activity = ? 
+                        WHERE session_token = ?
+                    ''', (datetime.now(), session_token))
+                    conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not update last_activity: {e}")
             
             user_result = {
                 'id': user_session['user_id'],
