@@ -742,6 +742,15 @@ def test_azure_connection_corrected():
         """)
         table_count = cursor.fetchone()[0]
         
+        # List all tables
+        cursor.execute("""
+            SELECT TABLE_NAME 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_TYPE = 'BASE TABLE'
+            ORDER BY TABLE_NAME
+        """)
+        tables = [row[0] for row in cursor.fetchall()]
+        
         # Check if user_sessions table exists
         cursor.execute("""
             SELECT COUNT(*) 
@@ -750,6 +759,14 @@ def test_azure_connection_corrected():
         """)
         user_sessions_exists = cursor.fetchone()[0] > 0
         
+        # Check if users table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'users'
+        """)
+        users_exists = cursor.fetchone()[0] > 0
+        
         conn.close()
         
         return jsonify({
@@ -757,7 +774,9 @@ def test_azure_connection_corrected():
             'connection_test': 'OK',
             'basic_query': result[0],
             'total_tables': table_count,
+            'all_tables': tables,
             'user_sessions_table_exists': user_sessions_exists,
+            'users_table_exists': users_exists,
             'message': 'Azure SQL connection successful with environment password!'
         })
         
@@ -1137,6 +1156,214 @@ def admin_dashboard():
         print(f"Critical error in admin dashboard: {e}")
         flash('System error. Please try again.', 'error')
         return redirect(url_for('login'))
+
+@app.route('/initialize-azure-database-complete')
+def initialize_azure_database_complete():
+    """Initialize all missing tables in Azure SQL database"""
+    try:
+        import pyodbc
+        
+        # Use environment variables for connection
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        if not azure_password:
+            return jsonify({
+                'error': 'AZURE_SQL_PASSWORD environment variable not set',
+                'suggestion': 'Set the password in Azure App Service environment variables'
+            })
+        
+        connection_string = f"Driver={{ODBC Driver 17 for SQL Server}};Server=tcp:ai-learning-sql-centralus.database.windows.net,1433;Database=ai-learning-db;Uid=ailearningadmin;Pwd={azure_password};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        
+        conn = pyodbc.connect(connection_string)
+        cursor = conn.cursor()
+        
+        results = []
+        
+        # Create users table
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'users')
+                BEGIN
+                    CREATE TABLE users (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        username NVARCHAR(255) UNIQUE NOT NULL,
+                        password_hash NVARCHAR(255) NOT NULL,
+                        level NVARCHAR(50) DEFAULT 'Beginner',
+                        points INT DEFAULT 0,
+                        created_at DATETIME DEFAULT GETDATE(),
+                        updated_at DATETIME DEFAULT GETDATE()
+                    )
+                END
+            """)
+            conn.commit()
+            results.append("✅ users table created/verified")
+        except Exception as e:
+            results.append(f"❌ users table error: {str(e)}")
+        
+        # Create user_sessions table
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'user_sessions')
+                BEGIN
+                    CREATE TABLE user_sessions (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        session_token NVARCHAR(255) UNIQUE NOT NULL,
+                        user_id INT NOT NULL,
+                        ip_address NVARCHAR(45),
+                        user_agent NVARCHAR(MAX),
+                        created_at DATETIME DEFAULT GETDATE(),
+                        expires_at DATETIME NOT NULL,
+                        is_active BIT DEFAULT 1,
+                        last_activity DATETIME DEFAULT GETDATE(),
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )
+                END
+            """)
+            conn.commit()
+            results.append("✅ user_sessions table created/verified")
+        except Exception as e:
+            results.append(f"❌ user_sessions table error: {str(e)}")
+        
+        # Create learning_entries table
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'learning_entries')
+                BEGIN
+                    CREATE TABLE learning_entries (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        title NVARCHAR(255) NOT NULL,
+                        description NVARCHAR(MAX),
+                        difficulty NVARCHAR(50),
+                        hours_spent FLOAT,
+                        completed_date DATE,
+                        created_at DATETIME DEFAULT GETDATE(),
+                        date_added DATETIME DEFAULT GETDATE(),
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )
+                END
+            """)
+            conn.commit()
+            results.append("✅ learning_entries table created/verified")
+        except Exception as e:
+            results.append(f"❌ learning_entries table error: {str(e)}")
+        
+        # Create courses table
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'courses')
+                BEGIN
+                    CREATE TABLE courses (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        title NVARCHAR(255) NOT NULL,
+                        description NVARCHAR(MAX),
+                        difficulty NVARCHAR(50),
+                        duration_hours FLOAT,
+                        url NVARCHAR(MAX),
+                        category NVARCHAR(100),
+                        level NVARCHAR(50) DEFAULT 'Beginner',
+                        created_at DATETIME DEFAULT GETDATE()
+                    )
+                END
+            """)
+            conn.commit()
+            results.append("✅ courses table created/verified")
+        except Exception as e:
+            results.append(f"❌ courses table error: {str(e)}")
+        
+        # Create user_courses table
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'user_courses')
+                BEGIN
+                    CREATE TABLE user_courses (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        course_id INT NOT NULL,
+                        completed BIT DEFAULT 0,
+                        completed_date DATETIME,
+                        created_at DATETIME DEFAULT GETDATE(),
+                        FOREIGN KEY (user_id) REFERENCES users(id),
+                        FOREIGN KEY (course_id) REFERENCES courses(id),
+                        UNIQUE(user_id, course_id)
+                    )
+                END
+            """)
+            conn.commit()
+            results.append("✅ user_courses table created/verified")
+        except Exception as e:
+            results.append(f"❌ user_courses table error: {str(e)}")
+        
+        # Create security_logs table
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'security_logs')
+                BEGIN
+                    CREATE TABLE security_logs (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        ip_address NVARCHAR(45),
+                        username NVARCHAR(255),
+                        action NVARCHAR(100),
+                        success BIT,
+                        user_agent NVARCHAR(MAX),
+                        created_at DATETIME DEFAULT GETDATE()
+                    )
+                END
+            """)
+            conn.commit()
+            results.append("✅ security_logs table created/verified")
+        except Exception as e:
+            results.append(f"❌ security_logs table error: {str(e)}")
+        
+        # Create admin user if it doesn't exist
+        try:
+            from werkzeug.security import generate_password_hash
+            
+            # Check if admin user exists
+            cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
+            admin_exists = cursor.fetchone()[0] > 0
+            
+            if not admin_exists:
+                admin_password = "AILearning2025!"
+                password_hash = generate_password_hash(admin_password)
+                
+                cursor.execute("""
+                    INSERT INTO users (username, password_hash, level, points)
+                    VALUES (?, ?, ?, ?)
+                """, ('admin', password_hash, 'Expert', 1000))
+                conn.commit()
+                results.append("✅ Admin user created successfully")
+            else:
+                results.append("✅ Admin user already exists")
+        except Exception as e:
+            results.append(f"❌ Admin user creation error: {str(e)}")
+        
+        # Final verification - list all tables
+        cursor.execute("""
+            SELECT TABLE_NAME 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_TYPE = 'BASE TABLE'
+            ORDER BY TABLE_NAME
+        """)
+        all_tables = [row[0] for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Database initialization completed',
+            'results': results,
+            'all_tables': all_tables,
+            'total_tables': len(all_tables)
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': f'Database initialization failed: {str(e)}',
+            'traceback': traceback.format_exc(),
+            'error_type': type(e).__name__
+        })
 
 @app.route('/create-admin-emergency')
 def create_admin_emergency():
