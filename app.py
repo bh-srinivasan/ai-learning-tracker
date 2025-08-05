@@ -588,15 +588,21 @@ def debug_session():
 
 @app.route('/test-azure-connection-corrected')
 def test_azure_connection_corrected():
-    """Test Azure SQL connection with corrected password"""
+    """Test Azure SQL connection with environment-based password"""
     try:
         import pyodbc
         
-        # Build connection string with correct password
-        correct_connection_string = "Driver={ODBC Driver 17 for SQL Server};Server=tcp:ai-learning-sql-centralus.database.windows.net,1433;Database=ai-learning-db;Uid=ailearningadmin;Pwd=AILearning2025!;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        # Build connection string using environment variables only
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        if not azure_password:
+            return jsonify({
+                'error': 'AZURE_SQL_PASSWORD environment variable not set',
+                'suggestion': 'Set the password in Azure App Service environment variables'
+            })
         
-        print("🔄 Testing Azure SQL with corrected password...")
-        print(f"Connection string: {correct_connection_string[:50]}...")
+        correct_connection_string = f"Driver={{ODBC Driver 17 for SQL Server}};Server=tcp:ai-learning-sql-centralus.database.windows.net,1433;Database=ai-learning-db;Uid=ailearningadmin;Pwd={azure_password};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        
+        print("🔄 Testing Azure SQL with environment password...")
         
         # Try direct pyodbc connection
         conn = pyodbc.connect(correct_connection_string)
@@ -630,8 +636,7 @@ def test_azure_connection_corrected():
             'basic_query': result[0],
             'total_tables': table_count,
             'user_sessions_table_exists': user_sessions_exists,
-            'message': 'Azure SQL connection successful with corrected password!',
-            'password_used': 'AILearning2025!'
+            'message': 'Azure SQL connection successful with environment password!'
         })
         
     except Exception as e:
@@ -639,8 +644,7 @@ def test_azure_connection_corrected():
         return jsonify({
             'error': f'Azure SQL connection failed: {str(e)}',
             'traceback': traceback.format_exc(),
-            'error_type': type(e).__name__,
-            'password_tested': 'AILearning2025!'
+            'error_type': type(e).__name__
         })
 
 @app.route('/test-azure-connection')
@@ -690,12 +694,19 @@ def test_azure_connection():
 
 @app.route('/fix-azure-connection-and-create-tables')
 def fix_azure_connection_and_create_tables():
-    """Fix Azure SQL connection with correct password and create tables"""
+    """Fix Azure SQL connection with environment password and create tables"""
     try:
         import pyodbc
         
-        # Use correct connection string
-        correct_connection_string = "Driver={ODBC Driver 17 for SQL Server};Server=tcp:ai-learning-sql-centralus.database.windows.net,1433;Database=ai-learning-db;Uid=ailearningadmin;Pwd=AILearning2025!;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        # Use environment variable for password
+        azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+        if not azure_password:
+            return jsonify({
+                'error': 'AZURE_SQL_PASSWORD environment variable not set',
+                'suggestion': 'Set the password in Azure App Service environment variables'
+            })
+        
+        correct_connection_string = f"Driver={{ODBC Driver 17 for SQL Server}};Server=tcp:ai-learning-sql-centralus.database.windows.net,1433;Database=ai-learning-db;Uid=ailearningadmin;Pwd={azure_password};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
         
         conn = pyodbc.connect(correct_connection_string)
         cursor = conn.cursor()
@@ -737,8 +748,7 @@ def fix_azure_connection_and_create_tables():
             'message': message,
             'table_existed': table_exists,
             'records_count': count,
-            'connection_method': 'corrected_password',
-            'password_used': 'AILearning2025!',
+            'connection_method': 'environment_password',
             'next_step': 'Update AZURE_SQL_CONNECTION_STRING environment variable in Azure App Service'
         })
             
@@ -747,8 +757,7 @@ def fix_azure_connection_and_create_tables():
         return jsonify({
             'error': f'Table creation failed: {str(e)}',
             'traceback': traceback.format_exc(),
-            'error_type': type(e).__name__,
-            'password_tested': 'AILearning2025!'
+            'error_type': type(e).__name__
         })
 
 @app.route('/create-tables-azure')
