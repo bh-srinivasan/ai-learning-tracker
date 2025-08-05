@@ -63,25 +63,41 @@ def initialize_database():
             
             # Create user_sessions table for Azure SQL (equivalent to sessions table in SQLite)
             try:
-                conn.execute('''
-                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='user_sessions' AND xtype='U')
-                    CREATE TABLE user_sessions (
-                        id INT IDENTITY(1,1) PRIMARY KEY,
-                        session_token NVARCHAR(255) UNIQUE NOT NULL,
-                        user_id INT NOT NULL,
-                        ip_address NVARCHAR(45),
-                        user_agent NVARCHAR(MAX),
-                        created_at DATETIME DEFAULT GETDATE(),
-                        expires_at DATETIME NOT NULL,
-                        is_active BIT DEFAULT 1,
-                        last_activity DATETIME DEFAULT GETDATE(),
-                        FOREIGN KEY (user_id) REFERENCES users(id)
-                    )
-                ''')
-                conn.commit()
-                print("✅ user_sessions table created/verified in Azure SQL")
+                # Step 1: Check if table exists
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_NAME = 'user_sessions'
+                """)
+                table_exists = cursor.fetchone()[0] > 0
+                
+                # Step 2: Create table if it doesn't exist
+                if not table_exists:
+                    print("📝 Creating user_sessions table in Azure SQL...")
+                    cursor.execute("""
+                        CREATE TABLE user_sessions (
+                            id INT IDENTITY(1,1) PRIMARY KEY,
+                            session_token NVARCHAR(255) UNIQUE NOT NULL,
+                            user_id INT NOT NULL,
+                            ip_address NVARCHAR(45),
+                            user_agent NVARCHAR(MAX),
+                            created_at DATETIME DEFAULT GETDATE(),
+                            expires_at DATETIME NOT NULL,
+                            is_active BIT DEFAULT 1,
+                            last_activity DATETIME DEFAULT GETDATE(),
+                            FOREIGN KEY (user_id) REFERENCES users(id)
+                        )
+                    """)
+                    conn.commit()
+                    print("✅ user_sessions table created successfully in Azure SQL")
+                else:
+                    print("✅ user_sessions table already exists in Azure SQL")
+                
             except Exception as e:
-                print(f"⚠️ Error creating user_sessions table: {e}")
+                print(f"⚠️ Error with user_sessions table: {e}")
+                import traceback
+                print(f"Full traceback: {traceback.format_exc()}")
             
             return True
         else:
@@ -235,7 +251,12 @@ def get_db_connection():
                 cursor.fetchall = fetchall
                 return cursor
             
+            # Add cursor method for direct Azure SQL operations
+            def get_cursor():
+                return conn.cursor()
+            
             conn.execute = enhanced_execute
+            conn.cursor = get_cursor
             print("✅ Azure SQL Database connection established")
             return conn
             
@@ -577,17 +598,37 @@ def create_tables_azure():
         # Create user_sessions table with appropriate syntax
         try:
             if is_azure:
-                # SQL Server syntax
-                conn.execute('''
-                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='user_sessions' AND xtype='U')
-                    CREATE TABLE user_sessions (
-                        session_token NVARCHAR(255) PRIMARY KEY,
-                        user_id INT NOT NULL,
-                        created_at DATETIME DEFAULT GETDATE(),
-                        is_active BIT DEFAULT 1,
-                        FOREIGN KEY (user_id) REFERENCES users(id)
-                    )
-                ''')
+                # Azure SQL Server approach - check and create separately
+                cursor = conn.cursor()
+                
+                # Check if table exists
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_NAME = 'user_sessions'
+                """)
+                table_exists = cursor.fetchone()[0] > 0
+                
+                if not table_exists:
+                    # Create the table
+                    cursor.execute("""
+                        CREATE TABLE user_sessions (
+                            id INT IDENTITY(1,1) PRIMARY KEY,
+                            session_token NVARCHAR(255) UNIQUE NOT NULL,
+                            user_id INT NOT NULL,
+                            ip_address NVARCHAR(45),
+                            user_agent NVARCHAR(MAX),
+                            created_at DATETIME DEFAULT GETDATE(),
+                            expires_at DATETIME NOT NULL,
+                            is_active BIT DEFAULT 1,
+                            last_activity DATETIME DEFAULT GETDATE(),
+                            FOREIGN KEY (user_id) REFERENCES users(id)
+                        )
+                    """)
+                    conn.commit()
+                    result = "✅ user_sessions table created successfully"
+                else:
+                    result = "✅ user_sessions table already exists"
             else:
                 # SQLite syntax  
                 conn.execute('''
@@ -599,14 +640,21 @@ def create_tables_azure():
                         FOREIGN KEY (user_id) REFERENCES users(id)
                     )
                 ''')
-            conn.commit()
-            result = "✅ user_sessions table created successfully"
+                conn.commit()
+                result = "✅ user_sessions table created successfully"
         except Exception as e:
             result = f"❌ Error creating user_sessions table: {e}"
+            import traceback
+            result += f"<br>Full error: {traceback.format_exc()}"
         
         # Test table access
         try:
-            count = conn.execute('SELECT COUNT(*) FROM user_sessions').fetchone()[0]
+            if is_azure:
+                cursor = conn.cursor()
+                cursor.execute('SELECT COUNT(*) FROM user_sessions')
+                count = cursor.fetchone()[0]
+            else:
+                count = conn.execute('SELECT COUNT(*) FROM user_sessions').fetchone()[0]
             result += f"<br>✅ user_sessions table accessible with {count} records"
         except Exception as e:
             result += f"<br>❌ Error accessing user_sessions table: {e}"
@@ -615,7 +663,8 @@ def create_tables_azure():
         return f"<h2>Azure SQL Table Creation (Azure: {is_azure})</h2><p>{result}</p><a href='/admin-test'>Test Admin</a>"
         
     except Exception as e:
-        return f"<h2>❌ Error:</h2><pre>{e}</pre>"
+        import traceback
+        return f"<h2>❌ Error:</h2><pre>{e}</pre><br><pre>{traceback.format_exc()}</pre>"
 
 @app.route('/admin-test')
 def admin_test():
