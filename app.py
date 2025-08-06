@@ -262,6 +262,7 @@ def _get_sqlite_connection():
 
 def _wrap_azure_sql_connection(conn):
     """Wrap Azure SQL connection to provide SQLite-like interface"""
+    
     # Simple row wrapper that supports both index and key access
     class SimpleRow:
         def __init__(self, cursor, row):
@@ -283,42 +284,55 @@ def _wrap_azure_sql_connection(conn):
         def get(self, key, default=None):
             return self._dict.get(key, default)
     
-    # Wrap execute to return rows with dict-like access
-    original_execute = conn.execute
-    def enhanced_execute(query, params=()):
-        cursor = conn.cursor()
-        
-        # Basic query conversions for common SQLite -> SQL Server differences
-        if 'AUTOINCREMENT' in query.upper():
-            query = query.replace('AUTOINCREMENT', 'IDENTITY(1,1)')
-            query = query.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'INT IDENTITY(1,1) PRIMARY KEY')
-        
-        cursor.execute(query, params)
-        
-        # Wrap fetchone and fetchall
-        original_fetchone = cursor.fetchone
-        original_fetchall = cursor.fetchall
-        
-        def fetchone():
-            row = original_fetchone()
-            return SimpleRow(cursor, row) if row else None
+    # Create wrapper class instead of modifying read-only attributes
+    class AzureSQLConnectionWrapper:
+        def __init__(self, connection):
+            self._conn = connection
             
-        def fetchall():
-            rows = original_fetchall()
-            return [SimpleRow(cursor, row) for row in rows] if rows else []
+        def execute(self, query, params=()):
+            cursor = self._conn.cursor()
+            
+            # Basic query conversions for common SQLite -> SQL Server differences
+            if 'AUTOINCREMENT' in query.upper():
+                query = query.replace('AUTOINCREMENT', 'IDENTITY(1,1)')
+                query = query.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'INT IDENTITY(1,1) PRIMARY KEY')
+            
+            cursor.execute(query, params)
+            
+            # Wrap fetchone and fetchall
+            original_fetchone = cursor.fetchone
+            original_fetchall = cursor.fetchall
+            
+            def fetchone():
+                row = original_fetchone()
+                return SimpleRow(cursor, row) if row else None
+                
+            def fetchall():
+                rows = original_fetchall()
+                return [SimpleRow(cursor, row) for row in rows] if rows else []
+            
+            cursor.fetchone = fetchone
+            cursor.fetchall = fetchall
+            return cursor
         
-        cursor.fetchone = fetchone
-        cursor.fetchall = fetchall
-        return cursor
+        def cursor(self):
+            return self._conn.cursor()
+        
+        def commit(self):
+            return self._conn.commit()
+        
+        def rollback(self):
+            return self._conn.rollback()
+        
+        def close(self):
+            return self._conn.close()
+        
+        def __getattr__(self, name):
+            # Delegate any other attributes to the underlying connection
+            return getattr(self._conn, name)
     
-    # Add cursor method for direct Azure SQL operations
-    def get_cursor():
-        return conn.cursor()
-    
-    conn.execute = enhanced_execute
-    conn.cursor = get_cursor
     logger.info("Azure SQL Database connection established with SQLite compatibility wrapper")
-    return conn
+    return AzureSQLConnectionWrapper(conn)
 
 def sanitize_input(input_string):
     """Sanitize input to prevent XSS and injection attacks"""
