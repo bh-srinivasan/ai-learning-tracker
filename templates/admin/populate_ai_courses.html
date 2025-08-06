@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Populate AI Courses - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-robot"></i> Populate AI Courses</h2>
+                <a href="{{ url_for('admin_course_configs') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Configs
+                </a>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-download"></i> Add Predefined AI Courses</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">
+                        This will add a collection of predefined AI and machine learning courses to your database. 
+                        The courses include topics like:
+                    </p>
+                    
+                    <ul class="list-group list-group-flush mb-4">
+                        <li class="list-group-item">
+                            <i class="fas fa-brain text-primary"></i>
+                            <strong>Introduction to Machine Learning</strong> - Fundamentals and applications
+                        </li>
+                        <li class="list-group-item">
+                            <i class="fas fa-network-wired text-info"></i>
+                            <strong>Deep Learning with PyTorch</strong> - Neural networks and frameworks
+                        </li>
+                        <li class="list-group-item">
+                            <i class="fas fa-comments text-success"></i>
+                            <strong>Natural Language Processing</strong> - Text analysis and understanding
+                        </li>
+                        <li class="list-group-item">
+                            <i class="fas fa-eye text-warning"></i>
+                            <strong>Computer Vision Fundamentals</strong> - Image processing and analysis
+                        </li>
+                        <li class="list-group-item">
+                            <i class="fas fa-balance-scale text-danger"></i>
+                            <strong>AI Ethics and Responsible AI</strong> - Ethical considerations in AI
+                        </li>
+                    </ul>
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Note:</strong> Only new courses will be added. Existing courses with the same title will be skipped.
+                    </div>
+
+                    <form method="POST" class="text-center">
+                        <button type="submit" class="btn btn-success btn-lg" onclick="return confirm('Are you sure you want to populate AI courses? This action will add new courses to the database.')">
+                            <i class="fas fa-plus-circle"></i> Populate AI Courses
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-lightbulb"></i> Additional Options</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <a href="{{ url_for('admin_add_course') }}" class="btn btn-outline-primary btn-block">
+                                <i class="fas fa-plus"></i> Add Custom Course
+                            </a>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="{{ url_for('admin_search_and_import_courses') }}" class="btn btn-outline-success btn-block">
+                                <i class="fas fa-search"></i> Search & Import Courses
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

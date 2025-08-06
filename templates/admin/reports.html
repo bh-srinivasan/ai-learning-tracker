@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Reports{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-chart-bar"></i> Admin Reports</h2>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4">
+                <!-- User Statistics -->
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h4>{{ reports.user_stats.total_users }}</h4>
+                                    <p class="mb-0">Total Users</p>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-users fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <small>{{ reports.user_stats.active_users }} active (30 days)</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Learning Statistics -->
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h4>{{ reports.learning_stats.total_entries }}</h4>
+                                    <p class="mb-0">Learning Entries</p>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-book-open fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <small>{{ reports.learning_stats.users_with_entries }} users with entries</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Course Statistics -->
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h4>{{ reports.course_stats.total_courses }}</h4>
+                                    <p class="mb-0">Total Courses</p>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-graduation-cap fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <small>{{ reports.course_stats.published_courses }} published</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Average Rating -->
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h4>{{ "%.1f"|format(reports.learning_stats.avg_rating or 0) }}</h4>
+                                    <p class="mb-0">Avg Rating</p>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-star fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <small>{{ reports.learning_stats.total_time_spent or 0 }} total hours</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Top Learners -->
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-trophy"></i> Top Learners</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if reports.top_learners %}
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Rank</th>
+                                                <th>User</th>
+                                                <th>Level</th>
+                                                <th>Entries</th>
+                                                <th>Total Time (hrs)</th>
+                                                <th>Progress</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for learner in reports.top_learners %}
+                                            <tr>
+                                                <td>
+                                                    {% if loop.index == 1 %}
+                                                        <i class="fas fa-crown text-warning"></i> {{ loop.index }}
+                                                    {% elif loop.index == 2 %}
+                                                        <i class="fas fa-medal text-secondary"></i> {{ loop.index }}
+                                                    {% elif loop.index == 3 %}
+                                                        <i class="fas fa-award text-warning"></i> {{ loop.index }}
+                                                    {% else %}
+                                                        {{ loop.index }}
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <strong>{{ learner.username }}</strong>
+                                                </td>
+                                                <td>
+                                                    <span class="badge badge-primary">Level {{ learner.level }}</span>
+                                                </td>
+                                                <td>{{ learner.entry_count }}</td>
+                                                <td>{{ learner.total_time or 0 }}</td>
+                                                <td>
+                                                    <div class="progress" style="height: 20px;">
+                                                        <div class="progress-bar" 
+                                                             role="progressbar" 
+                                                             style="width: {{ (learner.entry_count / reports.learning_stats.total_entries * 100) if reports.learning_stats.total_entries > 0 else 0 }}%"
+                                                             aria-valuenow="{{ learner.entry_count }}" 
+                                                             aria-valuemin="0" 
+                                                             aria-valuemax="{{ reports.learning_stats.total_entries }}">
+                                                            {{ "%.1f"|format((learner.entry_count / reports.learning_stats.total_entries * 100) if reports.learning_stats.total_entries > 0 else 0) }}%
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <p class="text-muted">No learning data available yet.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-chart-pie"></i> Quick Stats</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between">
+                                    <span>New Users (7 days)</span>
+                                    <span class="badge badge-success">{{ reports.user_stats.new_users }}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between">
+                                    <span>Active Users (30 days)</span>
+                                    <span class="badge badge-primary">{{ reports.user_stats.active_users }}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between">
+                                    <span>Published Courses</span>
+                                    <span class="badge badge-info">{{ reports.course_stats.published_courses }}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between">
+                                    <span>Avg Course Points</span>
+                                    <span class="badge badge-warning">{{ "%.0f"|format(reports.course_stats.avg_points or 0) }}</span>
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <div class="text-center">
+                                <h6>Engagement Rate</h6>
+                                <div class="progress mb-2" style="height: 25px;">
+                                    <div class="progress-bar bg-success" 
+                                         role="progressbar" 
+                                         style="width: {{ (reports.learning_stats.users_with_entries / reports.user_stats.total_users * 100) if reports.user_stats.total_users > 0 else 0 }}%">
+                                        {{ "%.1f"|format((reports.learning_stats.users_with_entries / reports.user_stats.total_users * 100) if reports.user_stats.total_users > 0 else 0) }}%
+                                    </div>
+                                </div>
+                                <small class="text-muted">Users with learning entries</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Export Options -->
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-download"></i> Export Options</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary btn-sm" onclick="window.print()">
+                                    <i class="fas fa-print"></i> Print Report
+                                </button>
+                                <button class="btn btn-outline-success btn-sm" disabled>
+                                    <i class="fas fa-file-excel"></i> Export to Excel
+                                </button>
+                                <button class="btn btn-outline-info btn-sm" disabled>
+                                    <i class="fas fa-file-pdf"></i> Export to PDF
+                                </button>
+                            </div>
+                            <small class="text-muted mt-2 d-block">Export features coming soon!</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .btn, .card-footer, .no-print {
+        display: none !important;
+    }
+    .card {
+        border: 1px solid #dee2e6 !important;
+        page-break-inside: avoid;
+    }
+}
+</style>
+{% endblock %}

@@ -52,42 +52,39 @@ Tracker{% endblock %} {% block content %}
         <div class="row">
           <div class="col-md-3 mb-2">
             <a
-              href="{{ url_for('admin_add_user') }}"
+              href="#"
               class="btn btn-primary w-100"
+              onclick="alert('Add User feature coming soon!')"
             >
               <i class="fas fa-user-plus"></i> Add User
             </a>
           </div>
           <div class="col-md-3 mb-2">
             <a
-              href="{{ url_for('admin_add_course') }}"
+              href="#"
               class="btn btn-success w-100"
+              onclick="alert('Add Course feature coming soon!')"
             >
               <i class="fas fa-plus"></i> Add Course
             </a>
           </div>
           <div class="col-md-3 mb-2">
             <a
-              href="{{ url_for('admin_course_configs') }}"
+              href="#"
               class="btn btn-warning w-100"
+              onclick="alert('Search & Import feature coming soon!')"
             >
               <i class="fas fa-search"></i> Search & Import
             </a>
           </div>
           <div class="col-md-3 mb-2">
-            <form
-              method="POST"
-              action="{{ url_for('admin_populate_ai_courses') }}"
-              class="d-inline w-100"
+            <button
+              type="button"
+              class="btn btn-info w-100"
+              onclick="alert('Populate AI Courses feature coming soon!')"
             >
-              <button
-                type="submit"
-                class="btn btn-info w-100"
-                onclick="return confirm('Add AI courses from multiple verified sources (Microsoft, Coursera, edX, etc.)?')"
-              >
-                <i class="fas fa-plus-circle"></i> Add Courses
-              </button>
-            </form>
+              <i class="fas fa-plus-circle"></i> Add Courses
+            </button>
           </div>
         </div>
 
@@ -101,24 +98,27 @@ Tracker{% endblock %} {% block content %}
           </div>
           <div class="col-md-4 mb-2">
             <a
-              href="{{ url_for('admin_change_password') }}"
+              href="#"
               class="btn btn-outline-primary w-100"
+              onclick="alert('Change Password feature coming soon!')"
             >
               <i class="fas fa-key"></i> Change Admin Password
             </a>
           </div>
           <div class="col-md-4 mb-2">
             <a
-              href="{{ url_for('admin_security') }}"
+              href="#"
               class="btn btn-outline-secondary w-100"
+              onclick="alert('Security Events feature coming soon!')"
             >
               <i class="fas fa-shield-alt"></i> Security Events
             </a>
           </div>
           <div class="col-md-4 mb-2">
             <a
-              href="{{ url_for('admin_sessions') }}"
+              href="#"
               class="btn btn-outline-secondary w-100"
+              onclick="alert('Active Sessions feature coming soon!')"
             >
               <i class="fas fa-users-cog"></i> Active Sessions
             </a>
@@ -138,8 +138,9 @@ Tracker{% endblock %} {% block content %}
       >
         <h5 class="mb-0"><i class="fas fa-users"></i> Recent Users</h5>
         <a
-          href="{{ url_for('admin_users') }}"
+          href="#"
           class="btn btn-sm btn-outline-primary"
+          onclick="alert('View All Users feature coming soon!')"
           >View All</a
         >
       </div>

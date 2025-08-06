@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Search & Import Courses - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-10 offset-md-1">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-search"></i> Search & Import Courses</h2>
+                <a href="{{ url_for('admin_course_configs') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Configs
+                </a>
+            </div>
+
+            <!-- Search Form -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-search"></i> Search for Courses</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="form-group">
+                            <label for="search_query">Search Query</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="search_query" 
+                                   name="search_query" 
+                                   placeholder="Enter keywords (e.g., 'machine learning', 'python', 'data science')"
+                                   value="{{ search_query if search_query else '' }}"
+                                   required>
+                            <small class="form-text text-muted">
+                                Search for courses by topic, technology, or skill area.
+                            </small>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search Courses
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Search Results -->
+            {% if search_results %}
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list"></i> Search Results for "{{ search_query }}"
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if search_results %}
+                        <div class="row">
+                            {% for course in search_results %}
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-book text-primary"></i> {{ course.title }}
+                                        </h6>
+                                        <p class="card-text">{{ course.description }}</p>
+                                        
+                                        <div class="row text-center mb-3">
+                                            <div class="col-4">
+                                                <small class="text-muted">Points</small><br>
+                                                <span class="badge badge-primary">{{ course.points }}</span>
+                                            </div>
+                                            <div class="col-4">
+                                                <small class="text-muted">Difficulty</small><br>
+                                                <span class="badge {{ 'badge-success' if course.difficulty == 'Beginner' else 'badge-warning' if course.difficulty == 'Intermediate' else 'badge-danger' }}">
+                                                    {{ course.difficulty }}
+                                                </span>
+                                            </div>
+                                            <div class="col-4">
+                                                <small class="text-muted">Category</small><br>
+                                                <span class="badge badge-info">{{ course.category }}</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <small class="text-muted">Provider:</small>
+                                            <span class="badge badge-secondary">{{ course.provider }}</span>
+                                        </div>
+                                        
+                                        {% if course.url %}
+                                        <div class="mb-3">
+                                            <a href="{{ course.url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                                <i class="fas fa-external-link-alt"></i> View Course
+                                            </a>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="card-footer">
+                                        <form method="POST" action="{{ url_for('admin_add_course') }}" class="d-inline">
+                                            <input type="hidden" name="title" value="{{ course.title }}">
+                                            <input type="hidden" name="description" value="{{ course.description }}">
+                                            <input type="hidden" name="points" value="{{ course.points }}">
+                                            <input type="hidden" name="difficulty" value="{{ course.difficulty }}">
+                                            <input type="hidden" name="category" value="{{ course.category }}">
+                                            <input type="hidden" name="url" value="{{ course.url }}">
+                                            <input type="hidden" name="status" value="published">
+                                            <button type="submit" class="btn btn-success btn-sm" 
+                                                    onclick="return confirm('Import this course to your database?')">
+                                                <i class="fas fa-download"></i> Import Course
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            No courses found for your search query. Try different keywords.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Information Card -->
+            {% if not search_results %}
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-info-circle"></i> How to Use</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-lightbulb text-warning"></i> Search Tips</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-check text-success"></i> Use specific keywords like "machine learning", "python", "data science"</li>
+                                <li><i class="fas fa-check text-success"></i> Try technology names like "TensorFlow", "Azure", "SQL"</li>
+                                <li><i class="fas fa-check text-success"></i> Search for skill levels like "beginner", "advanced"</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><i class="fas fa-cog text-primary"></i> Features</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-download text-info"></i> Import courses directly from search results</li>
+                                <li><i class="fas fa-eye text-secondary"></i> Preview course details before importing</li>
+                                <li><i class="fas fa-link text-warning"></i> Access original course links</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-primary mt-3">
+                        <i class="fas fa-rocket"></i>
+                        <strong>Future Enhancement:</strong> This feature will integrate with Microsoft Learn API to provide real course search and import functionality.
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
