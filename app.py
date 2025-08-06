@@ -1550,7 +1550,7 @@ def test_admin_login_direct():
         
         # Step 3: Test password verification
         from werkzeug.security import check_password_hash
-        test_password = 'AILearning2025!'
+        test_password = os.environ.get('ADMIN_PASSWORD', 'DefaultSecurePassword123!')
         
         try:
             password_valid = check_password_hash(admin_user['password_hash'], test_password)
@@ -1968,7 +1968,7 @@ def initialize_azure_database_complete():
             admin_exists = cursor.fetchone()[0] > 0
             
             if not admin_exists:
-                admin_password = "AILearning2025!"
+                admin_password = os.environ.get('ADMIN_PASSWORD', 'DefaultSecurePassword123!')
                 password_hash = generate_password_hash(admin_password)
                 
                 cursor.execute("""
@@ -3130,6 +3130,28 @@ def admin_reports_purge_reports():
 # Create Blueprint-style route aliases for template compatibility
 app.add_url_rule('/admin/reports/upload-reports-list', 'admin_reports.upload_reports_list', admin_reports_upload_reports_list, methods=['GET'])
 app.add_url_rule('/admin/reports/purge-reports', 'admin_reports.purge_reports', admin_reports_purge_reports, methods=['POST'])
+
+@app.route('/debug/env')
+def debug_environment():
+    """Debug endpoint to check environment variables in Azure"""
+    # Only allow this in development or with special admin access
+    if os.environ.get('ENV') == 'production' and not session.get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Check key environment variables
+    env_info = {
+        'environment': os.environ.get('ENV', 'not_set'),
+        'azure_sql_server': os.environ.get('AZURE_SQL_SERVER', 'not_set'),
+        'azure_sql_database': os.environ.get('AZURE_SQL_DATABASE', 'not_set'), 
+        'azure_sql_username': os.environ.get('AZURE_SQL_USERNAME', 'not_set'),
+        'azure_sql_password_set': 'yes' if os.environ.get('AZURE_SQL_PASSWORD') else 'no',
+        'admin_password_set': 'yes' if os.environ.get('ADMIN_PASSWORD') else 'no',
+        'website_site_name': os.environ.get('WEBSITE_SITE_NAME', 'not_set'),
+        'pythonpath': os.environ.get('PYTHONPATH', 'not_set'),
+        'total_env_vars': len(os.environ)
+    }
+    
+    return jsonify(env_info)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

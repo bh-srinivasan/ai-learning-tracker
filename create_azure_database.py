@@ -18,7 +18,7 @@ class AzureSQLSetup:
         self.server_name = "ai-learning-sql-server"
         self.database_name = "ai-learning-db"
         self.admin_username = "ailearningadmin"
-        self.admin_password = "AILearning2025!"
+        self.admin_password = os.environ.get('ADMIN_PASSWORD', 'DefaultSecurePassword123!')
         
     def run_az_command(self, command):
         """Run Azure CLI command and return result"""
@@ -231,7 +231,7 @@ AZURE_SQL_PASSWORD={connection_info['password']}
 # ===============================================
 # ADMIN CONFIGURATION
 # ===============================================
-ADMIN_PASSWORD=AILearning2025!
+ADMIN_PASSWORD=YourSecureAdminPassword123!
 
 # ===============================================
 # LOCAL DEVELOPMENT (FALLBACK)
