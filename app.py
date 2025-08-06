@@ -1,6 +1,6 @@
 """
 AI Learning Tracker - Clean Application Module
-Fixed version with duplicate routes removed
+Refactored version with centralized database logic and clear separation between SQLite and Azure SQL
 """
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g, jsonify
@@ -39,7 +39,6 @@ app.config.update({
 
 # Database configuration
 DATABASE_PATH = os.environ.get('DATABASE_PATH', 'ai_learning.db')
-AZURE_CONNECTION_STRING = os.environ.get('AZURE_SQL_CONNECTION_STRING')
 
 # Rate limiting
 failed_attempts = defaultdict(list)
@@ -49,6 +48,15 @@ MAX_ATTEMPTS = 5
 # Session management
 active_sessions = {}
 session_lock = threading.Lock()
+
+def is_azure_sql():
+    """Check if all Azure SQL environment variables are set"""
+    azure_server = os.environ.get('AZURE_SQL_SERVER')
+    azure_database = os.environ.get('AZURE_SQL_DATABASE')
+    azure_username = os.environ.get('AZURE_SQL_USERNAME')
+    azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+    
+    return all([azure_server, azure_database, azure_username, azure_password])
 
 def is_azure_sql():
     """Check if all Azure SQL environment variables are set"""
@@ -361,29 +369,22 @@ def create_user_session(user_id, ip_address, user_agent):
     
     conn = get_db_connection()
     try:
+        session_table = get_session_table()  # Use centralized session table detection
+        
         # Invalidate old sessions for this user
+        conn.execute(f'''
+            UPDATE {session_table} 
+            SET is_active = 0 
+            WHERE user_id = ? AND is_active = 1
+        ''', (user_id,))
+        
+        # Create new session - Azure SQL has additional last_activity column
         if is_azure_sql():
-            # Azure SQL Database session creation
-            conn.execute(f'''
-                UPDATE {session_table} 
-                SET is_active = 0 
-                WHERE user_id = ? AND is_active = 1
-            ''', (user_id,))
-            
-            # Create new session with all required columns
             conn.execute(f'''
                 INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at, last_activity)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (session_token, user_id, ip_address, user_agent, expires_at, datetime.now()))
         else:
-            # SQLite Database session creation
-            conn.execute(f'''
-                UPDATE {session_table} 
-                SET is_active = 0 
-                WHERE user_id = ? AND is_active = 1
-            ''', (user_id,))
-            
-            # Create new session
             conn.execute(f'''
                 INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at)
                 VALUES (?, ?, ?, ?, ?)
@@ -609,10 +610,9 @@ def debug_session():
         session_token = session.get('session_token')
         debug_info = {
             'session_token': session_token,
-            'azure_sql_env': os.getenv('AZURE_SQL_CONNECTION_STRING'),
-            'sqlserver_env': os.getenv('SQLAZURECONNSTR_DEFAULTCONNECTION'),
+            'is_azure_sql': is_azure_sql(),
+            'session_table': get_session_table(),
             'all_env_vars': [k for k in os.environ.keys() if 'SQL' in k.upper() or 'CONNECTION' in k.upper()],
-            'has_azure_sql': bool(os.getenv('AZURE_SQL_CONNECTION_STRING')),
             'session_memory_count': len(active_sessions),
             'session_in_memory': session_token in active_sessions if session_token else False,
         }
@@ -787,18 +787,17 @@ def test_azure_connection_corrected():
             'error_type': type(e).__name__
         })
 
-@app.route('/test-azure-connection')
-def test_azure_connection():
-    """Test Azure SQL connection directly to diagnose issues"""
+@app.route('/test-azure-connection-updated')
+def test_azure_connection_updated():
+    """Test Azure SQL connection using environment variables"""
+    if not is_azure_sql():
+        return jsonify({
+            'error': 'Azure SQL environment variables not set',
+            'suggestion': 'Set AZURE_SQL_SERVER, AZURE_SQL_DATABASE, AZURE_SQL_USERNAME, AZURE_SQL_PASSWORD'
+        })
+    
     try:
-        import pyodbc
-        
-        # Test direct connection to Azure SQL
-        print("🔄 Testing direct Azure SQL connection...")
-        print(f"Connection string: {AZURE_CONNECTION_STRING[:50]}...")
-        
-        # Try direct pyodbc connection
-        conn = pyodbc.connect(AZURE_CONNECTION_STRING)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Test basic query
@@ -820,16 +819,15 @@ def test_azure_connection():
             'connection_test': 'OK',
             'basic_query': result[0],
             'total_tables': table_count,
-            'message': 'Direct Azure SQL connection successful'
+            'message': 'Azure SQL connection successful using environment variables'
         })
         
     except Exception as e:
         import traceback
         return jsonify({
-            'error': f'Direct Azure SQL connection failed: {str(e)}',
+            'error': f'Azure SQL connection failed: {str(e)}',
             'traceback': traceback.format_exc(),
-            'error_type': type(e).__name__,
-            'connection_string_present': bool(AZURE_CONNECTION_STRING)
+            'error_type': type(e).__name__
         })
 
 @app.route('/fix-azure-connection-and-create-tables')
@@ -889,7 +887,7 @@ def fix_azure_connection_and_create_tables():
             'table_existed': table_exists,
             'records_count': count,
             'connection_method': 'environment_password',
-            'next_step': 'Update AZURE_SQL_CONNECTION_STRING environment variable in Azure App Service'
+            'next_step': 'Azure SQL tables initialized successfully'
         })
             
     except Exception as e:
@@ -898,65 +896,6 @@ def fix_azure_connection_and_create_tables():
             'error': f'Table creation failed: {str(e)}',
             'traceback': traceback.format_exc(),
             'error_type': type(e).__name__
-        })
-
-@app.route('/create-tables-azure')
-def create_tables_azure():
-    """Create missing tables in Azure SQL using direct connection"""
-    try:
-        import pyodbc
-        
-        # Use direct connection to avoid wrapper fallback
-        conn = pyodbc.connect(AZURE_CONNECTION_STRING)
-        cursor = conn.cursor()
-        
-        # Check if user_sessions table exists
-        cursor.execute("""
-            SELECT COUNT(*) 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_NAME = 'user_sessions'
-        """)
-        table_exists = cursor.fetchone()[0] > 0
-        
-        # Create table if it doesn't exist
-        if not table_exists:
-            cursor.execute("""
-                CREATE TABLE user_sessions (
-                    id INT IDENTITY(1,1) PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    session_token NVARCHAR(255) NOT NULL UNIQUE,
-                    created_at DATETIME DEFAULT GETDATE(),
-                    expires_at DATETIME NOT NULL,
-                    is_active BIT DEFAULT 1,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-            """)
-            conn.commit()
-            message = '✅ user_sessions table created successfully'
-        else:
-            message = '✅ user_sessions table already exists'
-        
-        # Test table access
-        cursor.execute('SELECT COUNT(*) FROM user_sessions')
-        count = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'message': message,
-            'table_existed': table_exists,
-            'records_count': count,
-            'connection_method': 'direct_pyodbc'
-        })
-            
-    except Exception as e:
-        import traceback
-        return jsonify({
-            'error': f'Table creation failed: {str(e)}',
-            'traceback': traceback.format_exc(),
-            'error_type': type(e).__name__,
-            'connection_string_present': bool(AZURE_CONNECTION_STRING)
         })
 
 @app.route('/test-admin-login-direct')
