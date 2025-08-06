@@ -1,0 +1,42 @@
+[
+  {
+    "test": "Environment Connection",
+    "success": true,
+    "message": "All environment variables are set and connection successful",
+    "timestamp": "2025-08-05T22:07:02.604526",
+    "details": {
+      "AZURE_SQL_DATABASE": "Set",
+      "AZURE_SQL_PASSWORD": "Set",
+      "AZURE_SQL_SERVER": "Set",
+      "AZURE_SQL_USERNAME": "Set"
+    }
+  },
+  {
+    "test": "Admin User Exists",
+    "success": true,
+    "message": "Admin user already exists in database",
+    "timestamp": "2025-08-05T22:07:02.946685",
+    "details": null
+  },
+  {
+    "test": "Login Page Access",
+    "success": true,
+    "message": "Login page is accessible and contains login form",
+    "timestamp": "2025-08-05T22:07:03.244541",
+    "details": null
+  },
+  {
+    "test": "Admin Login Submission",
+    "success": false,
+    "message": "HTTP 500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Error</title>\n<h1>Internal Server Error</h1>\n<p>The server encountered an internal error and was unable to complete your request. Either the s",
+    "timestamp": "2025-08-05T22:07:03.903610",
+    "details": null
+  },
+  {
+    "test": "Admin Dashboard Access",
+    "success": false,
+    "message": "Dashboard accessible but missing expected content",
+    "timestamp": "2025-08-05T22:07:04.454338",
+    "details": null
+  }
+]
