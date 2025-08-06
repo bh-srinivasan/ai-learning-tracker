@@ -1,0 +1,49 @@
+{
+  "timestamp": "20250806_105514",
+  "base_url": "https://ai-learning-tracker-bharath.azurewebsites.net",
+  "environment": "Azure Production",
+  "results": [
+    {
+      "test": "Homepage Accessibility",
+      "passed": true,
+      "details": "Status: 200",
+      "timestamp": "2025-08-06T10:55:07.475767"
+    },
+    {
+      "test": "Database Connection (Login Page)",
+      "passed": true,
+      "details": "Status: 200",
+      "timestamp": "2025-08-06T10:55:08.285699"
+    },
+    {
+      "test": "Environment Variables",
+      "passed": false,
+      "details": "Missing vars: ['AZURE_SQL_SERVER', 'AZURE_SQL_DATABASE', 'AZURE_SQL_USERNAME', 'AZURE_SQL_PASSWORD']",
+      "timestamp": "2025-08-06T10:55:08.792375"
+    },
+    {
+      "test": "Security Check",
+      "passed": false,
+      "details": "Issues: ['Potential password exposure']",
+      "timestamp": "2025-08-06T10:55:09.860179"
+    },
+    {
+      "test": "API Endpoints",
+      "passed": false,
+      "details": "2/4 endpoints responding correctly",
+      "timestamp": "2025-08-06T10:55:11.742474"
+    },
+    {
+      "test": "User Registration",
+      "passed": false,
+      "details": "Registration page not accessible: 404",
+      "timestamp": "2025-08-06T10:55:12.526338"
+    },
+    {
+      "test": "Admin Login",
+      "passed": false,
+      "details": "Status: 500, URL: https://ai-learning-tracker-bharath.azurewebsites.net/login",
+      "timestamp": "2025-08-06T10:55:13.692867"
+    }
+  ]
+}
