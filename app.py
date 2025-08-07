@@ -3260,6 +3260,69 @@ def debug_database_test():
     
     return jsonify(result)
 
+@app.route('/debug/odbc-drivers')
+def debug_odbc_drivers():
+    """Check what ODBC drivers are available on the Azure host"""
+    
+    result = {
+        'timestamp': datetime.now().isoformat(),
+        'environment': os.environ.get('ENV', 'not_set'),
+        'host_info': {},
+        'odbc_info': {}
+    }
+    
+    try:
+        import platform
+        import sys
+        
+        # Get basic system info
+        result['host_info'] = {
+            'platform': platform.platform(),
+            'python_version': sys.version,
+            'architecture': platform.architecture(),
+            'machine': platform.machine(),
+            'processor': platform.processor(),
+            'system': platform.system(),
+            'release': platform.release()
+        }
+        
+        # Check if pyodbc is available
+        try:
+            import pyodbc
+            result['odbc_info']['pyodbc_available'] = True
+            result['odbc_info']['pyodbc_version'] = pyodbc.version
+            
+            # Get available ODBC drivers
+            try:
+                drivers = pyodbc.drivers()
+                result['odbc_info']['available_drivers'] = drivers
+                result['odbc_info']['driver_count'] = len(drivers)
+                
+                # Check specifically for SQL Server drivers
+                sql_server_drivers = [d for d in drivers if 'SQL Server' in d]
+                result['odbc_info']['sql_server_drivers'] = sql_server_drivers
+                
+                # Check for the exact driver we need
+                target_driver = "ODBC Driver 17 for SQL Server"
+                result['odbc_info']['target_driver_available'] = target_driver in drivers
+                
+                if not result['odbc_info']['target_driver_available']:
+                    # Suggest alternatives
+                    alternatives = [d for d in drivers if 'SQL Server' in d or 'ODBC' in d]
+                    result['odbc_info']['suggested_alternatives'] = alternatives
+                
+            except Exception as e:
+                result['odbc_info']['driver_error'] = str(e)
+                
+        except ImportError as e:
+            result['odbc_info']['pyodbc_available'] = False
+            result['odbc_info']['import_error'] = str(e)
+            
+    except Exception as e:
+        result['error'] = str(e)
+    
+    return jsonify(result)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
