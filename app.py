@@ -3612,6 +3612,27 @@ def debug_login_test():
         test_result['error_type'] = type(e).__name__
         return jsonify(test_result), 500
 
+@app.route('/debug/admin-test-password')
+def debug_admin_test_password():
+    """Debug endpoint to test admin password from environment - ONLY FOR TESTING"""
+    
+    # This endpoint should be removed in production
+    admin_password = os.environ.get('ADMIN_PASSWORD')
+    
+    if not admin_password:
+        return jsonify({
+            'error': 'ADMIN_PASSWORD environment variable not set',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    
+    return jsonify({
+        'password_available': True,
+        'password_length': len(admin_password),
+        'password_value': admin_password,  # ONLY FOR TESTING - REMOVE IN PRODUCTION
+        'timestamp': datetime.now().isoformat(),
+        'warning': 'This endpoint exposes the password and should be removed in production'
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
