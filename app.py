@@ -3641,6 +3641,124 @@ def debug_admin_test_password():
         'warning': 'This endpoint exposes the password and should be removed in production'
     })
 
+@app.route('/debug/fix-admin-column')
+def debug_fix_admin_column():
+    """Add is_admin column to Azure SQL database and set admin user to admin"""
+    
+    results = []
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'error': 'Could not get database connection',
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        # Step 1: Check if is_admin column exists
+        try:
+            if is_azure_sql():
+                # Check for Azure SQL
+                check_column = conn.execute("""
+                    SELECT COUNT(*) as column_exists 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'is_admin'
+                """).fetchone()
+                
+                column_exists = check_column['column_exists'] > 0
+            else:
+                # For SQLite, check differently
+                try:
+                    conn.execute("SELECT is_admin FROM users LIMIT 1")
+                    column_exists = True
+                except:
+                    column_exists = False
+            
+            results.append(f"✅ Column check: is_admin exists = {column_exists}")
+            
+        except Exception as e:
+            results.append(f"❌ Column check error: {str(e)}")
+            column_exists = False
+        
+        # Step 2: Add is_admin column if it doesn't exist
+        if not column_exists:
+            try:
+                if is_azure_sql():
+                    conn.execute("ALTER TABLE users ADD is_admin BIT DEFAULT 0")
+                else:
+                    conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+                conn.commit()
+                results.append("✅ Added is_admin column successfully")
+            except Exception as e:
+                results.append(f"❌ Error adding is_admin column: {str(e)}")
+                conn.close()
+                return jsonify({
+                    'status': 'FAIL',
+                    'results': results,
+                    'timestamp': datetime.now().isoformat()
+                }), 500
+        else:
+            results.append("ℹ️  is_admin column already exists")
+        
+        # Step 3: Update admin user to have is_admin = 1
+        try:
+            admin_user = conn.execute("SELECT * FROM users WHERE username = ?", ('admin',)).fetchone()
+            
+            if admin_user:
+                if is_azure_sql():
+                    conn.execute("UPDATE users SET is_admin = 1 WHERE username = ?", ('admin',))
+                else:
+                    conn.execute("UPDATE users SET is_admin = 1 WHERE username = ?", ('admin',))
+                conn.commit()
+                results.append("✅ Updated admin user: set is_admin = 1")
+                
+                # Verify the update
+                updated_admin = conn.execute("SELECT username, is_admin FROM users WHERE username = ?", ('admin',)).fetchone()
+                results.append(f"✅ Verification: admin user is_admin = {updated_admin['is_admin']}")
+                
+            else:
+                results.append("❌ Admin user not found in database")
+                
+        except Exception as e:
+            results.append(f"❌ Error updating admin user: {str(e)}")
+            conn.close()
+            return jsonify({
+                'status': 'FAIL',
+                'results': results,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        # Step 4: Show all users and their admin status
+        try:
+            all_users = conn.execute("SELECT username, is_admin FROM users").fetchall()
+            user_list = []
+            for user in all_users:
+                user_list.append({
+                    'username': user['username'],
+                    'is_admin': bool(user['is_admin'])
+                })
+            results.append(f"✅ All users: {user_list}")
+            
+        except Exception as e:
+            results.append(f"❌ Error listing users: {str(e)}")
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'SUCCESS',
+            'message': 'is_admin column fix completed successfully',
+            'results': results,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'ERROR',
+            'error': str(e),
+            'results': results,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
