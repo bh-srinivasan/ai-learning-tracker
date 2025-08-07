@@ -3388,6 +3388,226 @@ def debug_env_detailed():
         }
     })
 
+@app.route('/debug/routes')
+def debug_routes():
+    """List all registered routes in the Flask application"""
+    routes_info = []
+    
+    for rule in app.url_map.iter_rules():
+        route_info = {
+            'rule': rule.rule,
+            'methods': list(rule.methods),
+            'endpoint': rule.endpoint
+        }
+        routes_info.append(route_info)
+    
+    # Group routes by category for better organization
+    admin_routes = [r for r in routes_info if 'admin' in r['rule']]
+    auth_routes = [r for r in routes_info if any(path in r['rule'] for path in ['/login', '/logout', '/register'])]
+    user_routes = [r for r in routes_info if any(path in r['rule'] for path in ['/dashboard', '/learnings', '/my-courses', '/profile'])]
+    debug_routes = [r for r in routes_info if '/debug' in r['rule']]
+    other_routes = [r for r in routes_info if r not in admin_routes + auth_routes + user_routes + debug_routes]
+    
+    return jsonify({
+        'timestamp': datetime.now().isoformat(),
+        'total_routes': len(routes_info),
+        'categories': {
+            'admin_routes': {
+                'count': len(admin_routes),
+                'routes': admin_routes
+            },
+            'auth_routes': {
+                'count': len(auth_routes),
+                'routes': auth_routes
+            },
+            'user_routes': {
+                'count': len(user_routes), 
+                'routes': user_routes
+            },
+            'debug_routes': {
+                'count': len(debug_routes),
+                'routes': debug_routes
+            },
+            'other_routes': {
+                'count': len(other_routes),
+                'routes': other_routes
+            }
+        }
+    })
+
+@app.route('/debug/login-test', methods=['GET', 'POST'])
+def debug_login_test():
+    """Comprehensive login testing endpoint for Azure debugging"""
+    
+    if request.method == 'GET':
+        # Return a simple form for testing login
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Azure Login Test</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .form-group { margin: 15px 0; }
+                input[type="text"], input[type="password"] { 
+                    padding: 8px; margin: 5px; width: 200px; 
+                }
+                button { padding: 10px 20px; background: #007bff; color: white; border: none; }
+                .result { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+            </style>
+        </head>
+        <body>
+            <h1>Azure Login Test</h1>
+            <form method="POST" action="/debug/login-test">
+                <div class="form-group">
+                    <label>Username:</label><br>
+                    <input type="text" name="username" value="admin" required>
+                </div>
+                <div class="form-group">
+                    <label>Password:</label><br>
+                    <input type="password" name="password" required>
+                </div>
+                <button type="submit">Test Login</button>
+            </form>
+            <p><a href="/debug/routes">View All Routes</a> | <a href="/debug/env">Check Environment</a></p>
+        </body>
+        </html>
+        '''
+    
+    # POST request - process the login test
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '').strip()
+    
+    test_result = {
+        'timestamp': datetime.now().isoformat(),
+        'test_type': 'azure_login_comprehensive',
+        'username_provided': username,
+        'password_length': len(password) if password else 0,
+        'steps': []
+    }
+    
+    try:
+        # Step 1: Validate inputs
+        step1 = {'step': 1, 'description': 'Input validation'}
+        if not username or not password:
+            step1['status'] = 'FAIL'
+            step1['error'] = 'Username or password missing'
+            test_result['steps'].append(step1)
+            return jsonify(test_result), 400
+        step1['status'] = 'PASS'
+        test_result['steps'].append(step1)
+        
+        # Step 2: Check database connection
+        step2 = {'step': 2, 'description': 'Database connection test'}
+        try:
+            conn = get_db_connection()
+            if conn:
+                step2['status'] = 'PASS'
+                step2['details'] = 'Database connection successful'
+            else:
+                step2['status'] = 'FAIL'
+                step2['error'] = 'Failed to get database connection'
+                test_result['steps'].append(step2)
+                return jsonify(test_result), 500
+        except Exception as e:
+            step2['status'] = 'FAIL'
+            step2['error'] = f'Database connection error: {str(e)}'
+            test_result['steps'].append(step2)
+            return jsonify(test_result), 500
+        test_result['steps'].append(step2)
+        
+        # Step 3: Check if user exists
+        step3 = {'step': 3, 'description': 'User lookup in database'}
+        try:
+            user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+            if user:
+                step3['status'] = 'PASS'
+                step3['details'] = f'User found: {user["username"]}, is_admin: {user["is_admin"]}'
+            else:
+                step3['status'] = 'FAIL'
+                step3['error'] = f'User "{username}" not found in database'
+                conn.close()
+                test_result['steps'].append(step3)
+                return jsonify(test_result), 404
+        except Exception as e:
+            step3['status'] = 'FAIL'
+            step3['error'] = f'User lookup error: {str(e)}'
+            conn.close()
+            test_result['steps'].append(step3)
+            return jsonify(test_result), 500
+        test_result['steps'].append(step3)
+        
+        # Step 4: Password verification
+        step4 = {'step': 4, 'description': 'Password verification'}
+        try:
+            from werkzeug.security import check_password_hash
+            if check_password_hash(user['password_hash'], password):
+                step4['status'] = 'PASS'
+                step4['details'] = 'Password verification successful'
+            else:
+                step4['status'] = 'FAIL'
+                step4['error'] = 'Password verification failed'
+                conn.close()
+                test_result['steps'].append(step4)
+                return jsonify(test_result), 401
+        except Exception as e:
+            step4['status'] = 'FAIL'
+            step4['error'] = f'Password verification error: {str(e)}'
+            conn.close()
+            test_result['steps'].append(step4)
+            return jsonify(test_result), 500
+        test_result['steps'].append(step4)
+        
+        # Step 5: Session creation
+        step5 = {'step': 5, 'description': 'Session creation'}
+        try:
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['is_admin'] = bool(user['is_admin'])
+            step5['status'] = 'PASS'
+            step5['details'] = 'Session created successfully'
+        except Exception as e:
+            step5['status'] = 'FAIL'
+            step5['error'] = f'Session creation error: {str(e)}'
+            conn.close()
+            test_result['steps'].append(step5)
+            return jsonify(test_result), 500
+        test_result['steps'].append(step5)
+        
+        # Step 6: Route determination
+        step6 = {'step': 6, 'description': 'Route determination'}
+        try:
+            if user['is_admin']:
+                redirect_route = 'admin_dashboard'
+                step6['details'] = 'Admin user - should redirect to admin dashboard'
+            else:
+                redirect_route = 'dashboard'
+                step6['details'] = 'Regular user - should redirect to user dashboard'
+            step6['status'] = 'PASS'
+            step6['redirect_route'] = redirect_route
+        except Exception as e:
+            step6['status'] = 'FAIL'
+            step6['error'] = f'Route determination error: {str(e)}'
+            conn.close()
+            test_result['steps'].append(step6)
+            return jsonify(test_result), 500
+        test_result['steps'].append(step6)
+        
+        conn.close()
+        
+        # Final result
+        test_result['overall_status'] = 'SUCCESS'
+        test_result['message'] = 'Login test completed successfully'
+        test_result['next_step'] = f'User should be redirected to {redirect_route}'
+        
+        return jsonify(test_result), 200
+        
+    except Exception as e:
+        test_result['overall_status'] = 'ERROR'
+        test_result['unexpected_error'] = str(e)
+        test_result['error_type'] = type(e).__name__
+        return jsonify(test_result), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
