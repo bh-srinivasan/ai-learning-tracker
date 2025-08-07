@@ -3331,6 +3331,63 @@ def debug_odbc_simple():
     
     return jsonify(result)
 
+@app.route('/debug/env-detailed')
+def debug_env_detailed():
+    """Detailed environment variable check for runtime verification"""
+    
+    # Check each Azure SQL variable individually with actual values (for debugging)
+    azure_server = os.environ.get('AZURE_SQL_SERVER')
+    azure_database = os.environ.get('AZURE_SQL_DATABASE')
+    azure_username = os.environ.get('AZURE_SQL_USERNAME')
+    azure_password = os.environ.get('AZURE_SQL_PASSWORD')
+    admin_password = os.environ.get('ADMIN_PASSWORD')
+    
+    return jsonify({
+        'timestamp': datetime.now().isoformat(),
+        'process_id': os.getpid(),
+        'runtime_verification': {
+            'azure_sql_server': {
+                'set': azure_server is not None,
+                'length': len(azure_server) if azure_server else 0,
+                'preview': azure_server[:20] + '...' if azure_server and len(azure_server) > 20 else azure_server
+            },
+            'azure_sql_database': {
+                'set': azure_database is not None,
+                'value': azure_database  # Safe to show database name
+            },
+            'azure_sql_username': {
+                'set': azure_username is not None,
+                'value': azure_username  # Safe to show username
+            },
+            'azure_sql_password': {
+                'set': azure_password is not None,
+                'length': len(azure_password) if azure_password else 0
+            },
+            'admin_password': {
+                'set': admin_password is not None,
+                'length': len(admin_password) if admin_password else 0
+            }
+        },
+        'connection_test': {
+            'is_azure_sql_environment': is_azure_sql(),
+            'can_build_connection_string': azure_server and azure_database and azure_username and azure_password
+        },
+        'system_info': {
+            'platform': os.environ.get('WEBSITE_OS_ARCH', 'Unknown'),
+            'site_name': os.environ.get('WEBSITE_SITE_NAME', 'Unknown'),
+            'python_version': os.environ.get('PYTHON_VERSION', 'Unknown'),
+            'total_env_vars': len(os.environ),
+            'current_working_dir': os.getcwd(),
+            'python_executable': os.environ.get('PYTHON_EXECUTABLE', 'Unknown')
+        },
+        'process_environment': {
+            'environment_type': os.environ.get('ENV', 'development'),
+            'flask_env': os.environ.get('FLASK_ENV', 'Not set'),
+            'website_hostname': os.environ.get('WEBSITE_HOSTNAME', 'Not set'),
+            'runtime_accessible': True  # If this endpoint works, runtime access is confirmed
+        }
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
