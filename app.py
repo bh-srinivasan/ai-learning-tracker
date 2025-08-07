@@ -3189,6 +3189,77 @@ def debug_environment():
     
     return jsonify(env_info)
 
+@app.route('/debug/db-test')
+def debug_database_test():
+    """Test database connection and return detailed error information"""
+    
+    result = {
+        'timestamp': datetime.now().isoformat(),
+        'environment': os.environ.get('ENV', 'not_set'),
+        'tests': []
+    }
+    
+    # Test 1: Check if Azure SQL variables are set
+    test1 = {
+        'name': 'Environment Variables',
+        'status': 'unknown',
+        'details': {}
+    }
+    
+    if is_azure_sql():
+        test1['status'] = 'PASS'
+        test1['details'] = {'message': 'All Azure SQL environment variables are set'}
+    else:
+        test1['status'] = 'FAIL'
+        test1['details'] = {'message': 'Missing Azure SQL environment variables'}
+    
+    result['tests'].append(test1)
+    
+    # Test 2: Try to get database connection
+    test2 = {
+        'name': 'Database Connection',
+        'status': 'unknown',
+        'details': {}
+    }
+    
+    try:
+        conn = get_db_connection()
+        if conn:
+            test2['status'] = 'PASS'
+            test2['details'] = {'message': 'Database connection successful'}
+            
+            # Test 3: Try a simple query
+            test3 = {
+                'name': 'Database Query',
+                'status': 'unknown',
+                'details': {}
+            }
+            
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM users")
+                user_count = cursor.fetchone()[0]
+                test3['status'] = 'PASS'
+                test3['details'] = {'message': f'Query successful, {user_count} users found'}
+                cursor.close()
+            except Exception as e:
+                test3['status'] = 'FAIL'
+                test3['details'] = {'error': str(e), 'type': type(e).__name__}
+            
+            result['tests'].append(test3)
+            conn.close()
+        else:
+            test2['status'] = 'FAIL'
+            test2['details'] = {'message': 'Failed to get database connection'}
+            
+    except Exception as e:
+        test2['status'] = 'FAIL'
+        test2['details'] = {'error': str(e), 'type': type(e).__name__}
+    
+    result['tests'].append(test2)
+    
+    return jsonify(result)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
