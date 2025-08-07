@@ -3620,26 +3620,65 @@ def debug_login_test():
         test_result['error_type'] = type(e).__name__
         return jsonify(test_result), 500
 
-@app.route('/debug/admin-test-password')
-def debug_admin_test_password():
-    """Debug endpoint to test admin password from environment - ONLY FOR TESTING"""
+# Note: Removed debug endpoint that exposed admin password for security
+
+@app.route('/debug/reset-admin-password', methods=['POST'])
+def debug_reset_admin_password():
+    """Securely reset admin password without exposing it in logs"""
     
-    # This endpoint should be removed in production
-    admin_password = os.environ.get('ADMIN_PASSWORD')
-    
-    if not admin_password:
+    try:
+        # Get the password from the request (not from environment)
+        password = request.form.get('password')
+        
+        if not password:
+            return jsonify({
+                'error': 'Password not provided',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # Hash the new password
+        password_hash = generate_password_hash(password)
+        
+        # Update the admin user password in database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Update admin user password
+        if is_azure_sql():
+            update_query = "UPDATE users SET password_hash = ? WHERE username = ?"
+        else:
+            update_query = "UPDATE users SET password_hash = ? WHERE username = ?"
+            
+        cursor.execute(update_query, (password_hash, 'admin'))
+        conn.commit()
+        
+        # Verify the update
+        verify_query = "SELECT username FROM users WHERE username = ?"
+        cursor.execute(verify_query, ('admin',))
+        admin_user = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        if admin_user:
+            return jsonify({
+                'message': 'Admin password reset successfully',
+                'status': 'SUCCESS',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'error': 'Admin user not found',
+                'status': 'FAIL',
+                'timestamp': datetime.now().isoformat()
+            }), 404
+            
+    except Exception as e:
         return jsonify({
-            'error': 'ADMIN_PASSWORD environment variable not set',
+            'error': 'Password reset failed',
+            'status': 'ERROR',
             'timestamp': datetime.now().isoformat()
         }), 500
-    
-    return jsonify({
-        'password_available': True,
-        'password_length': len(admin_password),
-        'password_value': admin_password,  # ONLY FOR TESTING - REMOVE IN PRODUCTION
-        'timestamp': datetime.now().isoformat(),
-        'warning': 'This endpoint exposes the password and should be removed in production'
-    })
 
 @app.route('/debug/fix-admin-column')
 def debug_fix_admin_column():
