@@ -3581,12 +3581,15 @@ def debug_login_test():
         # Step 6: Route determination
         step6 = {'step': 6, 'description': 'Route determination'}
         try:
-            if user['is_admin']:
+            # Admin status is determined by username, not by is_admin column
+            if user['username'] == 'admin':
                 redirect_route = 'admin_dashboard'
                 step6['details'] = 'Admin user - should redirect to admin dashboard'
+                is_admin = True
             else:
                 redirect_route = 'dashboard'
                 step6['details'] = 'Regular user - should redirect to user dashboard'
+                is_admin = False
             step6['status'] = 'PASS'
             step6['redirect_route'] = redirect_route
         except Exception as e:
@@ -3603,6 +3606,11 @@ def debug_login_test():
         test_result['overall_status'] = 'SUCCESS'
         test_result['message'] = 'Login test completed successfully'
         test_result['next_step'] = f'User should be redirected to {redirect_route}'
+        test_result['user_details'] = {
+            'username': user['username'],
+            'is_admin': is_admin,
+            'user_id': user['id']
+        }
         
         return jsonify(test_result), 200
         
