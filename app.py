@@ -3370,7 +3370,7 @@ def debug_env_detailed():
         },
         'connection_test': {
             'is_azure_sql_environment': is_azure_sql(),
-            'can_build_connection_string': azure_server and azure_database and azure_username and azure_password
+            'can_build_connection_string': bool(azure_server and azure_database and azure_username and azure_password)
         },
         'system_info': {
             'platform': os.environ.get('WEBSITE_OS_ARCH', 'Unknown'),
