@@ -322,6 +322,23 @@ def _wrap_azure_sql_connection(conn):
         def get(self, key, default=None):
             return self._dict.get(key, default)
     
+    # Cursor wrapper that provides fetchone/fetchall with SimpleRow
+    class AzureSQLCursorWrapper:
+        def __init__(self, cursor):
+            self._cursor = cursor
+            
+        def fetchone(self):
+            row = self._cursor.fetchone()
+            return SimpleRow(self._cursor, row) if row else None
+            
+        def fetchall(self):
+            rows = self._cursor.fetchall()
+            return [SimpleRow(self._cursor, row) for row in rows] if rows else []
+            
+        def __getattr__(self, name):
+            # Delegate all other attributes to the original cursor
+            return getattr(self._cursor, name)
+    
     # Create wrapper class instead of modifying read-only attributes
     class AzureSQLConnectionWrapper:
         def __init__(self, connection):
@@ -337,24 +354,11 @@ def _wrap_azure_sql_connection(conn):
             
             cursor.execute(query, params)
             
-            # Wrap fetchone and fetchall
-            original_fetchone = cursor.fetchone
-            original_fetchall = cursor.fetchall
-            
-            def fetchone():
-                row = original_fetchone()
-                return SimpleRow(cursor, row) if row else None
-                
-            def fetchall():
-                rows = original_fetchall()
-                return [SimpleRow(cursor, row) for row in rows] if rows else []
-            
-            cursor.fetchone = fetchone
-            cursor.fetchall = fetchall
-            return cursor
+            # Return wrapped cursor
+            return AzureSQLCursorWrapper(cursor)
         
         def cursor(self):
-            return self._conn.cursor()
+            return AzureSQLCursorWrapper(self._conn.cursor())
         
         def commit(self):
             return self._conn.commit()
