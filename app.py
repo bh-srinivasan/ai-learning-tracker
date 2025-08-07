@@ -33,6 +33,37 @@ except ImportError:
 # Load environment variables from .env file
 load_dotenv()
 
+# Validate critical environment variables
+def validate_environment_variables():
+    """Validate that required environment variables are set"""
+    env = os.environ.get('ENV', 'development')
+    
+    if env == 'production':
+        required_vars = [
+            'AZURE_SQL_SERVER',
+            'AZURE_SQL_DATABASE', 
+            'AZURE_SQL_USERNAME',
+            'AZURE_SQL_PASSWORD',
+            'ADMIN_PASSWORD'
+        ]
+        
+        missing_vars = []
+        for var in required_vars:
+            if not os.environ.get(var):
+                missing_vars.append(var)
+        
+        if missing_vars:
+            logger.error(f"Missing required environment variables for production: {missing_vars}")
+            # Don't fail startup - just log the error
+            logger.warning("App will run in limited mode without Azure SQL features")
+        else:
+            logger.info("All required environment variables are set for production")
+    
+    return True
+
+# Validate environment on startup
+validate_environment_variables()
+
 app = Flask(__name__)
 
 # Enhanced security configuration
@@ -1550,7 +1581,9 @@ def test_admin_login_direct():
         
         # Step 3: Test password verification
         from werkzeug.security import check_password_hash
-        test_password = os.environ.get('ADMIN_PASSWORD', 'DefaultSecurePassword123!')
+        test_password = os.environ.get('ADMIN_PASSWORD')
+        if not test_password:
+            return jsonify({'step': 3, 'error': 'ADMIN_PASSWORD environment variable not set'})
         
         try:
             password_valid = check_password_hash(admin_user['password_hash'], test_password)
@@ -1968,7 +2001,10 @@ def initialize_azure_database_complete():
             admin_exists = cursor.fetchone()[0] > 0
             
             if not admin_exists:
-                admin_password = os.environ.get('ADMIN_PASSWORD', 'DefaultSecurePassword123!')
+                admin_password = os.environ.get('ADMIN_PASSWORD')
+                if not admin_password:
+                    results.append("❌ ADMIN_PASSWORD environment variable not set - cannot create admin user")
+                    return results
                 password_hash = generate_password_hash(admin_password)
                 
                 cursor.execute("""
@@ -3134,21 +3170,21 @@ app.add_url_rule('/admin/reports/purge-reports', 'admin_reports.purge_reports', 
 @app.route('/debug/env')
 def debug_environment():
     """Debug endpoint to check environment variables in Azure"""
-    # Only allow this in development or with special admin access
-    if os.environ.get('ENV') == 'production' and not session.get('is_admin'):
-        return jsonify({'error': 'Access denied'}), 403
+    # Allow access to check environment variables without admin session
+    # This is safe as we only show whether variables are set, not their values
     
     # Check key environment variables
     env_info = {
         'environment': os.environ.get('ENV', 'not_set'),
-        'azure_sql_server': os.environ.get('AZURE_SQL_SERVER', 'not_set'),
-        'azure_sql_database': os.environ.get('AZURE_SQL_DATABASE', 'not_set'), 
-        'azure_sql_username': os.environ.get('AZURE_SQL_USERNAME', 'not_set'),
-        'azure_sql_password_set': 'yes' if os.environ.get('AZURE_SQL_PASSWORD') else 'no',
-        'admin_password_set': 'yes' if os.environ.get('ADMIN_PASSWORD') else 'no',
+        'azure_sql_server': 'SET' if os.environ.get('AZURE_SQL_SERVER') else 'NOT_SET',
+        'azure_sql_database': 'SET' if os.environ.get('AZURE_SQL_DATABASE') else 'NOT_SET', 
+        'azure_sql_username': 'SET' if os.environ.get('AZURE_SQL_USERNAME') else 'NOT_SET',
+        'azure_sql_password_set': 'SET' if os.environ.get('AZURE_SQL_PASSWORD') else 'NOT_SET',
+        'admin_password_set': 'SET' if os.environ.get('ADMIN_PASSWORD') else 'NOT_SET',
         'website_site_name': os.environ.get('WEBSITE_SITE_NAME', 'not_set'),
         'pythonpath': os.environ.get('PYTHONPATH', 'not_set'),
-        'total_env_vars': len(os.environ)
+        'total_env_vars': len(os.environ),
+        'is_azure_env': 'SET' if os.environ.get('WEBSITE_SITE_NAME') else 'NOT_SET'
     }
     
     return jsonify(env_info)

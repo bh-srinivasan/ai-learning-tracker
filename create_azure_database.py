@@ -18,7 +18,9 @@ class AzureSQLSetup:
         self.server_name = "ai-learning-sql-server"
         self.database_name = "ai-learning-db"
         self.admin_username = "ailearningadmin"
-        self.admin_password = os.environ.get('ADMIN_PASSWORD', 'DefaultSecurePassword123!')
+        self.admin_password = os.environ.get('ADMIN_PASSWORD')
+        if not self.admin_password:
+            raise ValueError("ADMIN_PASSWORD environment variable not set")
         
     def run_az_command(self, command):
         """Run Azure CLI command and return result"""
