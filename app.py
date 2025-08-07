@@ -3260,66 +3260,74 @@ def debug_database_test():
     
     return jsonify(result)
 
-@app.route('/debug/odbc-drivers')
-def debug_odbc_drivers():
-    """Check what ODBC drivers are available on the Azure host"""
+@app.route('/debug/odbc-simple')
+def debug_odbc_simple():
+    """Simple ODBC check that won't hang the app"""
     
     result = {
         'timestamp': datetime.now().isoformat(),
         'environment': os.environ.get('ENV', 'not_set'),
-        'host_info': {},
-        'odbc_info': {}
     }
     
     try:
-        import platform
-        import sys
-        
-        # Get basic system info
-        result['host_info'] = {
-            'platform': platform.platform(),
-            'python_version': sys.version,
-            'architecture': platform.architecture(),
-            'machine': platform.machine(),
-            'processor': platform.processor(),
-            'system': platform.system(),
-            'release': platform.release()
-        }
-        
-        # Check if pyodbc is available
+        # Test 1: Can we import pyodbc?
         try:
             import pyodbc
-            result['odbc_info']['pyodbc_available'] = True
-            result['odbc_info']['pyodbc_version'] = pyodbc.version
-            
-            # Get available ODBC drivers
-            try:
-                drivers = pyodbc.drivers()
-                result['odbc_info']['available_drivers'] = drivers
-                result['odbc_info']['driver_count'] = len(drivers)
-                
-                # Check specifically for SQL Server drivers
-                sql_server_drivers = [d for d in drivers if 'SQL Server' in d]
-                result['odbc_info']['sql_server_drivers'] = sql_server_drivers
-                
-                # Check for the exact driver we need
-                target_driver = "ODBC Driver 17 for SQL Server"
-                result['odbc_info']['target_driver_available'] = target_driver in drivers
-                
-                if not result['odbc_info']['target_driver_available']:
-                    # Suggest alternatives
-                    alternatives = [d for d in drivers if 'SQL Server' in d or 'ODBC' in d]
-                    result['odbc_info']['suggested_alternatives'] = alternatives
-                
-            except Exception as e:
-                result['odbc_info']['driver_error'] = str(e)
-                
+            result['pyodbc_import'] = 'SUCCESS'
+            result['pyodbc_version'] = pyodbc.version
         except ImportError as e:
-            result['odbc_info']['pyodbc_available'] = False
-            result['odbc_info']['import_error'] = str(e)
+            result['pyodbc_import'] = 'FAILED'
+            result['import_error'] = str(e)
+            return jsonify(result)
+        
+        # Test 2: Can we create a connection string?
+        try:
+            azure_server = os.environ.get('AZURE_SQL_SERVER')
+            azure_database = os.environ.get('AZURE_SQL_DATABASE')
+            azure_username = os.environ.get('AZURE_SQL_USERNAME')
+            azure_password = os.environ.get('AZURE_SQL_PASSWORD')
             
+            connection_string = (
+                f"Driver={{ODBC Driver 17 for SQL Server}};"
+                f"Server=tcp:{azure_server},1433;"
+                f"Database={azure_database};"
+                f"Uid={azure_username};"
+                f"Pwd=***masked***;"
+                f"Encrypt=yes;"
+                f"TrustServerCertificate=no;"
+                f"Connection Timeout=30;"
+            )
+            result['connection_string_build'] = 'SUCCESS'
+            result['connection_string'] = connection_string
+        except Exception as e:
+            result['connection_string_build'] = 'FAILED'
+            result['connection_string_error'] = str(e)
+        
+        # Test 3: Can we actually connect? (We know this works)
+        try:
+            conn = pyodbc.connect(
+                f"Driver={{ODBC Driver 17 for SQL Server}};"
+                f"Server=tcp:{azure_server},1433;"
+                f"Database={azure_database};"
+                f"Uid={azure_username};"
+                f"Pwd={azure_password};"
+                f"Encrypt=yes;"
+                f"TrustServerCertificate=no;"
+                f"Connection Timeout=30;"
+            )
+            result['direct_connection'] = 'SUCCESS'
+            conn.close()
+        except Exception as e:
+            result['direct_connection'] = 'FAILED'
+            result['connection_error'] = str(e)
+            result['error_type'] = type(e).__name__
+            
+            # If connection fails, it might be due to wrong driver name
+            if 'driver' in str(e).lower():
+                result['likely_issue'] = 'ODBC Driver not available or wrong name'
+    
     except Exception as e:
-        result['error'] = str(e)
+        result['general_error'] = str(e)
     
     return jsonify(result)
 
