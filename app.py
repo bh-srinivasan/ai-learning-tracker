@@ -66,15 +66,6 @@ validate_environment_variables()
 
 app = Flask(__name__)
 
-# Enhanced security configuration
-app.config.update({
-    'SECRET_KEY': os.environ.get('SECRET_KEY', secrets.token_hex(32)),
-    'SESSION_COOKIE_SECURE': False,  # Set to False for local development (HTTP)
-    'SESSION_COOKIE_HTTPONLY': True,
-    'SESSION_COOKIE_SAMESITE': 'Lax',
-    'PERMANENT_SESSION_LIFETIME': timedelta(hours=24)
-})
-
 # Database configuration
 DATABASE_PATH = os.environ.get('DATABASE_PATH', 'ai_learning.db')
 
@@ -96,14 +87,14 @@ def is_azure_sql():
     
     return all([azure_server, azure_database, azure_username, azure_password])
 
-def is_azure_sql():
-    """Check if all Azure SQL environment variables are set"""
-    azure_server = os.environ.get('AZURE_SQL_SERVER')
-    azure_database = os.environ.get('AZURE_SQL_DATABASE')
-    azure_username = os.environ.get('AZURE_SQL_USERNAME')
-    azure_password = os.environ.get('AZURE_SQL_PASSWORD')
-    
-    return all([azure_server, azure_database, azure_username, azure_password])
+# Enhanced security configuration (after function definition)
+app.config.update({
+    'SECRET_KEY': os.environ.get('SECRET_KEY', 'ai-learning-tracker-secret-key-2025'),  # Fixed fallback key
+    'SESSION_COOKIE_SECURE': is_azure_sql(),  # True for Azure (HTTPS), False for local (HTTP)
+    'SESSION_COOKIE_HTTPONLY': True,
+    'SESSION_COOKIE_SAMESITE': 'Lax',
+    'PERMANENT_SESSION_LIFETIME': timedelta(hours=24)
+})
 
 def get_session_table():
     """Get the appropriate session table name based on database backend"""
@@ -472,15 +463,13 @@ def get_current_user():
     if not session_token:
         return None
     
-    # Check memory first
+    # Check memory first for performance
     with session_lock:
         if session_token in active_sessions:
             session_data = active_sessions[session_token]
             session_data['last_activity'] = datetime.now()
-        else:
-            return None
-    
-    # Get user from database
+
+    # Get user from database (always check database for reliability)
     conn = get_db_connection()
     session_table = get_session_table()  # Use centralized session table detection
     
@@ -725,7 +714,11 @@ def login():
             session['session_token'] = session_token
             session['user_id'] = user['id']
             session['username'] = username
-            session['is_admin'] = bool(user.get('is_admin', False))  # Set admin status from database
+            # Check is_admin column exists and set admin status
+            try:
+                session['is_admin'] = bool(user['is_admin'])
+            except (KeyError, IndexError):
+                session['is_admin'] = False  # Default to False if column doesn't exist
             session.permanent = True
             
             flash(f'Welcome back, {username}!', 'success')
