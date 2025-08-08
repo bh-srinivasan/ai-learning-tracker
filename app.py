@@ -1743,17 +1743,11 @@ def admin_test():
 def admin_dashboard():
     """Admin dashboard"""
     try:
-        # Simple session check first
-        session_token = session.get('session_token')
-        if not session_token:
+        # Use the centralized admin validation
+        admin_user = validate_admin_access()
+        if not admin_user:
             flash('Please log in to access the admin panel.', 'error')
             return redirect(url_for('login'))
-        
-        # Check memory session first (faster)
-        with session_lock:
-            if session_token not in active_sessions:
-                flash('Session expired. Please log in again.', 'error')
-                return redirect(url_for('login'))
         
         # Get database connection
         conn = get_db_connection()
@@ -1762,48 +1756,6 @@ def admin_dashboard():
             return redirect(url_for('login'))
         
         try:
-            # Check if user exists in database - use centralized session table detection
-            user_data = None
-            session_table = get_session_table()
-            
-            try:
-                user_session = conn.execute(f'''
-                    SELECT s.user_id, u.username, u.level, u.points 
-                    FROM {session_table} s 
-                    JOIN users u ON s.user_id = u.id 
-                    WHERE s.session_token = ? AND s.is_active = ?
-                ''', (session_token, True)).fetchone()
-                
-                if user_session:
-                    user_data = {
-                        'id': user_session[0],
-                        'username': user_session[1],
-                        'level': user_session[2],
-                        'points': user_session[3]
-                    }
-            except Exception as db_error:
-                logger.error(f"Database lookup error: {db_error}")
-                # Fallback: check if username is admin based on session memory
-                session_data = active_sessions.get(session_token, {})
-                if session_data:
-                    # Try direct user lookup
-                    try:
-                        user_record = conn.execute('SELECT id, username, level, points FROM users WHERE username = ?', ('admin',)).fetchone()
-                        if user_record:
-                            user_data = {
-                                'id': user_record[0],
-                                'username': user_record[1],
-                                'level': user_record[2],
-                                'points': user_record[3]
-                            }
-                    except Exception as user_error:
-                        logger.error(f"User lookup error: {user_error}")
-            
-            # Check if user is admin
-            if not user_data or user_data.get('username') != 'admin':
-                flash('Admin privileges required.', 'error')
-                return redirect(url_for('login'))
-            
             # Get basic statistics for admin dashboard
             try:
                 result = conn.execute('SELECT COUNT(*) as count FROM users').fetchone()
@@ -3644,6 +3596,20 @@ def debug_login_test():
         return jsonify(test_result), 500
 
 # Note: Removed debug endpoint that exposed admin password for security
+
+@app.route('/debug/session-info')
+def debug_session_info():
+    """Debug endpoint to check session information"""
+    
+    return jsonify({
+        'session_token': session.get('session_token'),
+        'user_id': session.get('user_id'),
+        'username': session.get('username'),
+        'is_admin': session.get('is_admin'),
+        'session_permanent': session.permanent,
+        'session_keys': list(session.keys()),
+        'timestamp': datetime.now().isoformat()
+    })
 
 @app.route('/debug/fix-admin-column')
 def debug_fix_admin_column():
