@@ -563,8 +563,16 @@ def require_admin(f):
     
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        user = get_current_user()
-        if not user or user['username'] != 'admin':
+        # Check if user is logged in and has admin privileges
+        if not session.get('session_token'):
+            flash('Please log in to access admin features.', 'error')
+            return redirect(url_for('login'))
+        
+        # Check admin status from session
+        is_admin = session.get('is_admin', False)
+        username = session.get('username', '')
+        
+        if not is_admin and username != 'admin':
             flash('Admin privileges required.', 'error')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
@@ -573,11 +581,25 @@ def require_admin(f):
 # Admin utility functions
 def validate_admin_access():
     """Common admin access validation - returns user or redirects"""
-    user = get_current_user()
-    if not user or user['username'] != 'admin':
+    # Check if user is logged in
+    if not session.get('session_token'):
+        flash('Please log in to access admin features.', 'error')
+        return None
+    
+    # Check admin status from session
+    is_admin = session.get('is_admin', False)
+    username = session.get('username', '')
+    
+    if not is_admin and username != 'admin':
         flash('Admin privileges required.', 'error')
         return None
-    return user
+    
+    # Return basic user info from session
+    return {
+        'id': session.get('user_id'),
+        'username': username,
+        'is_admin': is_admin
+    }
 
 def handle_db_operation(operation_func, success_message=None, error_message=None, redirect_route='admin_dashboard'):
     """Generic database operation handler with error management"""
@@ -703,10 +725,11 @@ def login():
             session['session_token'] = session_token
             session['user_id'] = user['id']
             session['username'] = username
+            session['is_admin'] = bool(user.get('is_admin', False))  # Set admin status from database
             session.permanent = True
             
             flash(f'Welcome back, {username}!', 'success')
-            if username == 'admin':
+            if session['is_admin'] or username == 'admin':  # Check both admin flag and username
                 return redirect('/admin')
             else:
                 return redirect(url_for('dashboard'))
@@ -3621,64 +3644,6 @@ def debug_login_test():
         return jsonify(test_result), 500
 
 # Note: Removed debug endpoint that exposed admin password for security
-
-@app.route('/debug/reset-admin-password', methods=['POST'])
-def debug_reset_admin_password():
-    """Securely reset admin password without exposing it in logs"""
-    
-    try:
-        # Get the password from the request (not from environment)
-        password = request.form.get('password')
-        
-        if not password:
-            return jsonify({
-                'error': 'Password not provided',
-                'timestamp': datetime.now().isoformat()
-            }), 400
-        
-        # Hash the new password
-        password_hash = generate_password_hash(password)
-        
-        # Update the admin user password in database
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Update admin user password
-        if is_azure_sql():
-            update_query = "UPDATE users SET password_hash = ? WHERE username = ?"
-        else:
-            update_query = "UPDATE users SET password_hash = ? WHERE username = ?"
-            
-        cursor.execute(update_query, (password_hash, 'admin'))
-        conn.commit()
-        
-        # Verify the update
-        verify_query = "SELECT username FROM users WHERE username = ?"
-        cursor.execute(verify_query, ('admin',))
-        admin_user = cursor.fetchone()
-        
-        cursor.close()
-        conn.close()
-        
-        if admin_user:
-            return jsonify({
-                'message': 'Admin password reset successfully',
-                'status': 'SUCCESS',
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'error': 'Admin user not found',
-                'status': 'FAIL',
-                'timestamp': datetime.now().isoformat()
-            }), 404
-            
-    except Exception as e:
-        return jsonify({
-            'error': 'Password reset failed',
-            'status': 'ERROR',
-            'timestamp': datetime.now().isoformat()
-        }), 500
 
 @app.route('/debug/fix-admin-column')
 def debug_fix_admin_column():
