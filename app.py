@@ -713,6 +713,12 @@ def login():
                 request.remote_addr, 
                 request.headers.get('User-Agent')
             )
+            
+            if not session_token:
+                logger.error(f"Failed to create session for user {username}")
+                flash('Login error. Please try again.', 'error')
+                return render_template('auth/login.html')
+            
             session['session_token'] = session_token
             session['user_id'] = user['id']
             session['username'] = username
