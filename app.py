@@ -66,6 +66,26 @@ validate_environment_variables()
 
 app = Flask(__name__)
 
+# Basic logging to stdout for Azure diagnostics
+import sys
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+app.logger.setLevel(logging.INFO)
+
+# Log each request line + user info (avoid logging cookies/tokens)
+@app.before_request
+def _log_request():
+    app.logger.info("REQ %s %s from %s UA=%s",
+                    request.method, request.path,
+                    request.headers.get('X-Forwarded-For', request.remote_addr),
+                    request.headers.get('User-Agent', 'Unknown'))
+
+# Catch unhandled errors and print a full traceback
+@app.errorhandler(500)
+def _internal_error(e):
+    app.logger.error("Unhandled 500 on %s: %s\n%s",
+                     request.path, e, traceback.format_exc())
+    return ("Internal Server Error", 500)
+
 # Database configuration
 DATABASE_PATH = os.environ.get('DATABASE_PATH', 'ai_learning.db')
 
