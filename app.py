@@ -427,12 +427,12 @@ def create_user_session(user_id, ip_address, user_agent):
             WHERE user_id = ? AND is_active = 1
         ''', (user_id,))
         
-        # Create new session - Azure SQL has additional last_activity column
+        # Create new session - Azure SQL has different schema than local SQLite
         if is_azure_sql():
             conn.execute(f'''
-                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at, last_activity)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (session_token, user_id, ip_address, user_agent, expires_at, datetime.now()))
+                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session_token, user_id, ip_address, user_agent, expires_at))
         else:
             conn.execute(f'''
                 INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at)
