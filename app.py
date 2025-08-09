@@ -93,6 +93,8 @@ app.config.update({
     'SESSION_COOKIE_SECURE': is_azure_sql(),  # True for Azure (HTTPS), False for local (HTTP)
     'SESSION_COOKIE_HTTPONLY': True,
     'SESSION_COOKIE_SAMESITE': 'Lax',
+    'SESSION_COOKIE_DOMAIN': None,  # Let Flask handle domain automatically
+    'SESSION_COOKIE_NAME': 'ai_learning_session',  # Custom session name
     'PERMANENT_SESSION_LIFETIME': timedelta(hours=24)
 })
 
@@ -720,6 +722,9 @@ def login():
             except (KeyError, IndexError):
                 session['is_admin'] = False  # Default to False if column doesn't exist
             session.permanent = True
+            
+            # Debug logging for session creation
+            logger.info(f"Session created for user {username}: token={session_token[:10]}..., is_admin={session.get('is_admin')}")
             
             flash(f'Welcome back, {username}!', 'success')
             if session['is_admin'] or username == 'admin':  # Check both admin flag and username
