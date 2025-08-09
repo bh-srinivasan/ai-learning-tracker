@@ -574,14 +574,18 @@ def require_admin(f):
     
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check if user is logged in and has admin privileges
-        if not session.get('session_token'):
+        # Check if user is logged in (either session_token OR valid session data)
+        session_token = session.get('session_token')
+        username = session.get('username', '')
+        user_id = session.get('user_id')
+        
+        # For Azure compatibility: accept valid session data even without token
+        if not session_token and not (username and user_id):
             flash('Please log in to access admin features.', 'error')
             return redirect(url_for('login'))
         
         # Check admin status from session
         is_admin = session.get('is_admin', False)
-        username = session.get('username', '')
         
         if not is_admin and username != 'admin':
             flash('Admin privileges required.', 'error')
@@ -592,14 +596,18 @@ def require_admin(f):
 # Admin utility functions
 def validate_admin_access():
     """Common admin access validation - returns user or redirects"""
-    # Check if user is logged in
-    if not session.get('session_token'):
+    # Check if user is logged in (either session_token OR valid session data)
+    session_token = session.get('session_token')
+    username = session.get('username', '')
+    user_id = session.get('user_id')
+    
+    # For Azure compatibility: accept valid session data even without token
+    if not session_token and not (username and user_id):
         flash('Please log in to access admin features.', 'error')
         return None
     
     # Check admin status from session
     is_admin = session.get('is_admin', False)
-    username = session.get('username', '')
     
     if not is_admin and username != 'admin':
         flash('Admin privileges required.', 'error')
@@ -607,7 +615,7 @@ def validate_admin_access():
     
     # Return basic user info from session
     return {
-        'id': session.get('user_id'),
+        'id': user_id,
         'username': username,
         'is_admin': is_admin
     }
