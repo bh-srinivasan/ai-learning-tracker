@@ -156,10 +156,10 @@ Tracker{% endblock %} {% block content %}
               {% endif %}
             </td>
             <td>
-              <small>{{ session.created_at }}</small>
+              <small>{{ session.created_at_formatted if session.created_at_formatted else session.created_at }}</small>
             </td>
             <td>
-              <small>{{ session.expires_at }}</small>
+              <small>{{ session.expires_at_formatted if session.expires_at_formatted else session.expires_at }}</small>
             </td>
             <td>
               <small class="text-muted"
