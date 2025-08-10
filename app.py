@@ -2502,6 +2502,10 @@ def admin_courses():
                              current_level=level_filter,
                              current_url_status=url_status_filter,
                              current_points=points_filter)
+    except Exception as e:
+        app.logger.exception("Error in admin_courses route")
+        flash(f'Error loading courses: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
     finally:
         conn.close()
 
@@ -2547,10 +2551,22 @@ def admin_settings():
                 # Update level settings
                 for level_data in levels_data:
                     setting_key = f"level_{level_data['level_name'].lower()}_points"
-                    conn.execute('''
-                        INSERT OR REPLACE INTO app_settings (setting_key, setting_value, updated_at)
-                        VALUES (?, ?, datetime('now'))
-                    ''', (setting_key, str(level_data['points_required'])))
+                    if is_azure_sql():
+                        conn.execute('''
+                            MERGE app_settings AS target
+                            USING (VALUES (?, ?)) AS source (setting_key, setting_value)
+                            ON target.setting_key = source.setting_key
+                            WHEN MATCHED THEN
+                                UPDATE SET setting_value = source.setting_value, updated_at = GETDATE()
+                            WHEN NOT MATCHED THEN
+                                INSERT (setting_key, setting_value, updated_at)
+                                VALUES (source.setting_key, source.setting_value, GETDATE());
+                        ''', (setting_key, str(level_data['points_required'])))
+                    else:
+                        conn.execute('''
+                            INSERT OR REPLACE INTO app_settings (setting_key, setting_value, updated_at)
+                            VALUES (?, ?, datetime('now'))
+                        ''', (setting_key, str(level_data['points_required'])))
                 
                 conn.commit()
                 flash('Settings updated successfully!', 'success')
@@ -2696,10 +2712,16 @@ def admin_add_user():
             
             # Create new user
             password_hash = generate_password_hash(password)
-            conn.execute('''
-                INSERT INTO users (username, password_hash, level, status, created_at)
-                VALUES (?, ?, ?, ?, datetime('now'))
-            ''', (username, password_hash, level, status))
+            if is_azure_sql():
+                conn.execute('''
+                    INSERT INTO users (username, password_hash, level, status, created_at)
+                    VALUES (?, ?, ?, ?, GETDATE())
+                ''', (username, password_hash, level, status))
+            else:
+                conn.execute('''
+                    INSERT INTO users (username, password_hash, level, status, created_at)
+                    VALUES (?, ?, ?, ?, datetime('now'))
+                ''', (username, password_hash, level, status))
             conn.commit()
             
             flash(f'User "{username}" created successfully!', 'success')
@@ -2756,11 +2778,18 @@ def admin_add_course():
                 return render_template('admin/add_course.html')
             
             # Insert the course
-            conn.execute('''
-                INSERT INTO courses 
-                (title, description, url, link, source, level, points, category, created_at, url_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
-            ''', (title, description, url, url, source, level, points, category, 'Pending'))
+            if is_azure_sql():
+                conn.execute('''
+                    INSERT INTO courses 
+                    (title, description, url, link, source, level, points, category, created_at, url_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), ?)
+                ''', (title, description, url, url, source, level, points, category, 'Pending'))
+            else:
+                conn.execute('''
+                    INSERT INTO courses 
+                    (title, description, url, link, source, level, points, category, created_at, url_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                ''', (title, description, url, url, source, level, points, category, 'Pending'))
             conn.commit()
             
             flash(f'Course "{title}" added successfully!', 'success')
@@ -3135,11 +3164,18 @@ def admin_populate_ai_courses():
                 # Check if course already exists
                 existing = conn.execute('SELECT id FROM courses WHERE title = ?', (course['title'],)).fetchone()
                 if not existing:
-                    conn.execute('''
-                        INSERT INTO courses (title, description, points, difficulty, category, url, status, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                    ''', (course['title'], course['description'], course['points'], 
-                          course['difficulty'], course['category'], course['url'], course['status']))
+                    if is_azure_sql():
+                        conn.execute('''
+                            INSERT INTO courses (title, description, points, difficulty, category, url, status, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE())
+                        ''', (course['title'], course['description'], course['points'], 
+                              course['difficulty'], course['category'], course['url'], course['status']))
+                    else:
+                        conn.execute('''
+                            INSERT INTO courses (title, description, points, difficulty, category, url, status, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                        ''', (course['title'], course['description'], course['points'], 
+                              course['difficulty'], course['category'], course['url'], course['status']))
                     count += 1
             
             return count
@@ -3260,20 +3296,36 @@ def admin_edit_course(course_id):
                 
                 if 'source' in columns and 'level' in columns and 'link' in columns:
                     # Use template field names if they exist in database
-                    conn.execute('''
-                        UPDATE courses 
-                        SET title = ?, description = ?, points = ?, source = ?, 
-                            level = ?, link = ?, updated_at = datetime('now')
-                        WHERE id = ?
-                    ''', (title, description, points, source, level, link, course_id))
+                    if is_azure_sql():
+                        conn.execute('''
+                            UPDATE courses 
+                            SET title = ?, description = ?, points = ?, source = ?, 
+                                level = ?, link = ?, updated_at = GETDATE()
+                            WHERE id = ?
+                        ''', (title, description, points, source, level, link, course_id))
+                    else:
+                        conn.execute('''
+                            UPDATE courses 
+                            SET title = ?, description = ?, points = ?, source = ?, 
+                                level = ?, link = ?, updated_at = datetime('now')
+                            WHERE id = ?
+                        ''', (title, description, points, source, level, link, course_id))
                 else:
                     # Fallback to our field names, mapping template fields
-                    conn.execute('''
-                        UPDATE courses 
-                        SET title = ?, description = ?, points = ?, difficulty = ?, 
-                            category = ?, url = ?, updated_at = datetime('now')
-                        WHERE id = ?
-                    ''', (title, description, points, level, source, link, course_id))
+                    if is_azure_sql():
+                        conn.execute('''
+                            UPDATE courses 
+                            SET title = ?, description = ?, points = ?, difficulty = ?, 
+                                category = ?, url = ?, updated_at = GETDATE()
+                            WHERE id = ?
+                        ''', (title, description, points, level, source, link, course_id))
+                    else:
+                        conn.execute('''
+                            UPDATE courses 
+                            SET title = ?, description = ?, points = ?, difficulty = ?, 
+                                category = ?, url = ?, updated_at = datetime('now')
+                            WHERE id = ?
+                        ''', (title, description, points, level, source, link, course_id))
                 return True
             
             result = handle_db_operation(
@@ -3334,42 +3386,51 @@ def admin_reports():
     conn = get_db_connection()
     try:
         # Generate comprehensive reports
-        reports = {
-            'user_stats': conn.execute('''
+        reports = {}
+        
+        if is_azure_sql():
+            reports['user_stats'] = conn.execute('''
+                SELECT 
+                    COUNT(*) as total_users,
+                    COUNT(CASE WHEN last_login_at > DATEADD(day, -30, GETDATE()) THEN 1 END) as active_users,
+                    COUNT(CASE WHEN created_at > DATEADD(day, -7, GETDATE()) THEN 1 END) as new_users
+                FROM users
+            ''').fetchone()
+        else:
+            reports['user_stats'] = conn.execute('''
                 SELECT 
                     COUNT(*) as total_users,
                     COUNT(CASE WHEN last_login_at > datetime('now', '-30 days') THEN 1 END) as active_users,
                     COUNT(CASE WHEN created_at > datetime('now', '-7 days') THEN 1 END) as new_users
                 FROM users
-            ''').fetchone(),
+            ''').fetchone()
             
-            'learning_stats': conn.execute('''
-                SELECT 
-                    COUNT(*) as total_entries,
-                    COUNT(DISTINCT user_id) as users_with_entries,
-                    AVG(CAST(rating as FLOAT)) as avg_rating,
-                    SUM(time_spent) as total_time_spent
-                FROM learning_entries
-            ''').fetchone(),
-            
-            'course_stats': conn.execute('''
-                SELECT 
-                    COUNT(*) as total_courses,
-                    COUNT(CASE WHEN status = 'published' THEN 1 END) as published_courses,
-                    AVG(points) as avg_points
-                FROM courses
-            ''').fetchone(),
-            
-            'top_learners': conn.execute('''
-                SELECT u.username, u.level, COUNT(le.id) as entry_count, SUM(le.time_spent) as total_time
-                FROM users u
-                LEFT JOIN learning_entries le ON u.id = le.user_id
-                WHERE u.username != 'admin'
-                GROUP BY u.id
-                ORDER BY entry_count DESC, total_time DESC
-                LIMIT 10
-            ''').fetchall()
-        }
+        reports['learning_stats'] = conn.execute('''
+            SELECT 
+                COUNT(*) as total_entries,
+                COUNT(DISTINCT user_id) as users_with_entries,
+                AVG(CAST(rating as FLOAT)) as avg_rating,
+                SUM(time_spent) as total_time_spent
+            FROM learning_entries
+        ''').fetchone()
+        
+        reports['course_stats'] = conn.execute('''
+            SELECT 
+                COUNT(*) as total_courses,
+                COUNT(CASE WHEN status = 'published' THEN 1 END) as published_courses,
+                AVG(points) as avg_points
+            FROM courses
+        ''').fetchone()
+        
+        reports['top_learners'] = conn.execute('''
+            SELECT u.username, u.level, COUNT(le.id) as entry_count, SUM(le.time_spent) as total_time
+            FROM users u
+            LEFT JOIN learning_entries le ON u.id = le.user_id
+            WHERE u.username != 'admin'
+            GROUP BY u.id
+            ORDER BY entry_count DESC, total_time DESC
+            LIMIT 10
+        ''').fetchall()
         
         return render_template('admin/reports.html', reports=reports)
     except Exception as e:
@@ -3878,47 +3939,99 @@ def debug_session_info():
 def debug_sql_dialect():
     """Debug endpoint to check SQL dialect and run simple test query"""
     try:
-        using_azure = is_azure_sql()
+        azure = is_azure_sql()
         conn = get_db_connection()
         
-        if using_azure:
-            # Test Azure SQL connection with simple query
-            test_result = conn.execute("SELECT GETDATE() as current_time, @@VERSION as version").fetchone()
-            dialect_info = {
-                "azure_sql": True,
-                "current_time": str(test_result[0]) if test_result else None,
-                "version": str(test_result[1])[:100] + "..." if test_result and len(str(test_result[1])) > 100 else str(test_result[1]) if test_result else None
-            }
+        dialect_info = {"azure_sql": bool(azure)}  # Ensure boolean
+        
+        if azure:
+            # Azure SQL Server syntax
+            test_result = conn.execute("SELECT CONVERT(date, GETDATE()) AS today, CONVERT(time, GETDATE()) AS now_time").fetchone()
+            dialect_info.update({
+                "today": str(test_result[0]) if test_result else None,
+                "now_time": str(test_result[1]) if test_result else None
+            })
         else:
-            # Test SQLite connection
-            test_result = conn.execute("SELECT datetime('now') as current_time, sqlite_version() as version").fetchone()
-            dialect_info = {
-                "azure_sql": False,
-                "current_time": str(test_result[0]) if test_result else None,
-                "version": str(test_result[1]) if test_result else None
-            }
+            # SQLite syntax
+            test_result = conn.execute("SELECT DATE('now') AS today, TIME('now') AS now_time").fetchone()
+            dialect_info.update({
+                "today": str(test_result[0]) if test_result else None,
+                "now_time": str(test_result[1]) if test_result else None
+            })
         
         # Add simple count queries
         try:
             user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             dialect_info["user_count"] = user_count
-        except:
-            dialect_info["user_count"] = "error"
+        except Exception as count_e:
+            dialect_info["user_count"] = f"error: {str(count_e)}"
         
         try:
             course_count = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
             dialect_info["course_count"] = course_count
-        except:
-            dialect_info["course_count"] = "error"
+        except Exception as count_e:
+            dialect_info["course_count"] = f"error: {str(count_e)}"
             
         conn.close()
         return jsonify(dialect_info)
         
     except Exception as e:
+        import traceback
         app.logger.exception("Error in debug_sql_dialect")
         return jsonify({
+            "azure_sql": bool(is_azure_sql()) if 'is_azure_sql' in globals() else None,
             "error": str(e),
-            "azure_sql": None
+            "trace": traceback.format_exc()
+        }), 500
+
+@app.route('/debug/check-courses-table')
+def debug_check_courses_table():
+    """Debug endpoint to check courses table structure"""
+    try:
+        azure = is_azure_sql()
+        conn = get_db_connection()
+        
+        info = {"azure_sql": bool(azure)}
+        
+        if azure:
+            # Check Azure SQL table structure
+            schema_query = """
+                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = 'courses'
+                ORDER BY ORDINAL_POSITION
+            """
+            columns = conn.execute(schema_query).fetchall()
+            info["columns"] = [{"name": row[0], "type": row[1], "nullable": row[2]} for row in columns]
+        else:
+            # Check SQLite table structure
+            schema_query = "PRAGMA table_info(courses)"
+            columns = conn.execute(schema_query).fetchall()
+            info["columns"] = [{"name": row[1], "type": row[2], "nullable": not row[3]} for row in columns]
+        
+        # Try a simple select to see what data exists
+        try:
+            sample_query = "SELECT TOP 1 * FROM courses" if azure else "SELECT * FROM courses LIMIT 1"
+            sample = conn.execute(sample_query).fetchone()
+            if sample:
+                info["sample_columns"] = list(sample.keys()) if hasattr(sample, 'keys') else [f"col_{i}" for i in range(len(sample))]
+                info["sample_data"] = dict(sample) if hasattr(sample, 'keys') else list(sample)
+            else:
+                info["sample_columns"] = []
+                info["sample_data"] = "No data found"
+        except Exception as sample_e:
+            info["sample_error"] = str(sample_e)
+        
+        conn.close()
+        return jsonify(info)
+        
+    except Exception as e:
+        import traceback
+        app.logger.exception("Error in debug_check_courses_table")
+        return jsonify({
+            "azure_sql": bool(is_azure_sql()) if 'is_azure_sql' in globals() else None,
+            "error": str(e),
+            "trace": traceback.format_exc()
         }), 500
 
 @app.route('/debug/fix-admin-column')
