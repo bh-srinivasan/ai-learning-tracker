@@ -2442,8 +2442,11 @@ def admin_courses():
         # Get courses for current page with dialect-specific pagination
         if using_azure:
             # Azure SQL Server pagination with OFFSET/FETCH
+            # Use explicit column list to avoid missing column errors
             query = f'''
-                SELECT * FROM courses 
+                SELECT id, title, description, difficulty, duration_hours, 
+                       url, category, level, created_at
+                FROM courses 
                 {where_clause}
                 ORDER BY created_at DESC 
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -2461,9 +2464,33 @@ def admin_courses():
         
         courses = conn.execute(query, params).fetchall()
         
-        # Get available sources and levels for filters
-        sources = conn.execute('SELECT DISTINCT source FROM courses WHERE source IS NOT NULL ORDER BY source').fetchall()
-        levels = conn.execute('SELECT DISTINCT level FROM courses WHERE level IS NOT NULL ORDER BY level').fetchall()
+        # Convert courses to dictionaries to handle Azure SQL datetime issues
+        courses_list = []
+        for course in courses:
+            if hasattr(course, 'keys'):
+                course_dict = {}
+                for key in course.keys():
+                    value = course[key]
+                    # Convert datetime objects to strings for template compatibility
+                    if hasattr(value, 'isoformat'):
+                        course_dict[key] = value.isoformat()
+                    else:
+                        course_dict[key] = value
+                courses_list.append(course_dict)
+            else:
+                # Fallback for tuple-like results
+                courses_list.append(course)
+        
+        # Get available sources and levels for filters (handle missing columns gracefully)
+        try:
+            sources = conn.execute('SELECT DISTINCT source FROM courses WHERE source IS NOT NULL ORDER BY source').fetchall()
+        except:
+            sources = []
+            
+        try:
+            levels = conn.execute('SELECT DISTINCT level FROM courses WHERE level IS NOT NULL ORDER BY level').fetchall()
+        except:
+            levels = [{'level': 'Beginner'}, {'level': 'Intermediate'}, {'level': 'Advanced'}]
         
         # Calculate statistics for the dashboard (from entire database, not just current page)
         stats_query = '''
@@ -2474,7 +2501,17 @@ def admin_courses():
                 COUNT(CASE WHEN url_status = 'Not Working' OR url_status = 'Broken' THEN 1 END) as broken_urls
             FROM courses
         '''
-        stats = conn.execute(stats_query).fetchone()
+        try:
+            stats = conn.execute(stats_query).fetchone()
+        except:
+            # Fallback stats if columns don't exist
+            basic_count = conn.execute('SELECT COUNT(*) as total_courses FROM courses').fetchone()
+            stats = {
+                'total_courses': basic_count[0] if basic_count else 0,
+                'manual_entries': 0,
+                'working_urls': 0,
+                'broken_urls': 0
+            }
         
         pagination_info = {
             'page': page,
@@ -2489,14 +2526,14 @@ def admin_courses():
             'end_course': min(offset + per_page, total_courses)
         }
         
-        app.logger.info("admin_courses: returning %d courses on page %d", len(courses), page)
+        app.logger.info("admin_courses: returning %d courses on page %d", len(courses_list), page)
         
         return render_template('admin/courses.html', 
-                             courses=courses, 
+                             courses=courses_list, 
                              pagination=pagination_info,
                              stats=stats,
-                             sources=[row['source'] for row in sources],
-                             levels=[row['level'] for row in levels],
+                             sources=[row.get('source', '') if hasattr(row, 'get') else row[0] for row in sources],
+                             levels=[row.get('level', '') if hasattr(row, 'get') else row[0] for row in levels],
                              current_search=search,
                              current_source=source_filter,
                              current_level=level_filter,
