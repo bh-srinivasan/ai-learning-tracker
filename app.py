@@ -24,18 +24,6 @@ import traceback
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configure logging for production
-import sys
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-
-# Bind to gunicorn logger in production
-if __name__ != "__main__":
-    gunicorn_logger = logging.getLogger("gunicorn.error")
-    app.logger.handlers = gunicorn_logger.handlers
-    app.logger.setLevel(gunicorn_logger.level)
-else:
-    logging.basicConfig(level=logging.INFO)
-
 try:
     import pyodbc
 except ImportError:
@@ -78,11 +66,19 @@ validate_environment_variables()
 
 app = Flask(__name__)
 
-# Basic logging to stdout for Azure diagnostics
+# Configure production logging for Azure
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 app.logger.setLevel(logging.INFO)
 
+# Bind to gunicorn logger in production for proper Azure Log Stream output
+if __name__ != "__main__":
+    gunicorn_logger = logging.getLogger("gunicorn.error")
+    if gunicorn_logger.handlers:
+        app.logger.handlers = gunicorn_logger.handlers
+        app.logger.setLevel(gunicorn_logger.level)
+
+# Basic logging to stdout for Azure diagnostics
 # Log each request line + user info (avoid logging cookies/tokens)
 @app.before_request
 def _log_request():
