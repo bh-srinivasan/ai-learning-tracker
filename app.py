@@ -2440,15 +2440,40 @@ def update_all_user_levels(conn, levels_data):
     except Exception as e:
         logger.error(f"Error updating user levels: {e}")
 
-@app.route('/admin/change-password')
+@app.route('/admin/change-password', methods=['GET', 'POST'])
 def admin_change_password():
-    """Admin password change page"""
+    """Admin change password"""
     user = get_current_user()
     if not user or user['username'] != 'admin':
         flash('Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
-    # Password change page (placeholder implementation)
+    if request.method == 'POST':
+        # Handle password change
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'error')
+            return render_template('admin/change_password.html')
+        
+        # Verify current password
+        conn = get_db_connection()
+        try:
+            admin_user = conn.execute('SELECT * FROM users WHERE username = ?', ('admin',)).fetchone()
+            if admin_user and check_password_hash(admin_user['password_hash'], current_password):
+                # Update password
+                new_hash = generate_password_hash(new_password)
+                conn.execute('UPDATE users SET password_hash = ? WHERE username = ?', (new_hash, 'admin'))
+                conn.commit()
+                flash('Password changed successfully!', 'success')
+                return redirect(url_for('admin_dashboard'))
+            else:
+                flash('Current password is incorrect.', 'error')
+        finally:
+            conn.close()
+    
     return render_template('admin/change_password.html')
 
 @app.route('/admin/add-user', methods=['GET', 'POST'])
