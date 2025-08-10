@@ -181,6 +181,108 @@ def _initialize_azure_sql_schema(conn):
         else:
             logger.info("user_sessions table already exists in Azure SQL")
         
+        # Check if courses table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'courses'
+        """)
+        courses_table_exists = cursor.fetchone()[0] > 0
+        
+        # Create courses table if it doesn't exist
+        if not courses_table_exists:
+            logger.info("Creating courses table in Azure SQL")
+            cursor.execute("""
+                CREATE TABLE courses (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    title NVARCHAR(500) NOT NULL,
+                    description NVARCHAR(MAX),
+                    url NVARCHAR(1000),
+                    level NVARCHAR(50),
+                    points NVARCHAR(50),
+                    duration NVARCHAR(100),
+                    source NVARCHAR(100) DEFAULT 'Manual',
+                    created_at DATETIME2 DEFAULT GETDATE(),
+                    updated_at DATETIME2 DEFAULT GETDATE(),
+                    url_status NVARCHAR(50) DEFAULT 'Unknown',
+                    url_checked_at DATETIME2,
+                    difficulty NVARCHAR(50),
+                    prerequisites NVARCHAR(MAX),
+                    learning_objectives NVARCHAR(MAX),
+                    modules NVARCHAR(MAX),
+                    certification NVARCHAR(100),
+                    instructor NVARCHAR(200),
+                    rating DECIMAL(3,2),
+                    enrollment_count INT,
+                    last_updated DATETIME2,
+                    language NVARCHAR(50) DEFAULT 'English',
+                    price NVARCHAR(50) DEFAULT 'Free',
+                    category NVARCHAR(100),
+                    tags NVARCHAR(500),
+                    thumbnail_url NVARCHAR(1000)
+                )
+            """)
+            conn.commit()
+            logger.info("courses table created successfully in Azure SQL")
+        else:
+            logger.info("courses table already exists in Azure SQL")
+        
+        # Check if learning_entries table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'learning_entries'
+        """)
+        learning_entries_exists = cursor.fetchone()[0] > 0
+        
+        # Create learning_entries table if it doesn't exist
+        if not learning_entries_exists:
+            logger.info("Creating learning_entries table in Azure SQL")
+            cursor.execute("""
+                CREATE TABLE learning_entries (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    title NVARCHAR(500) NOT NULL,
+                    description NVARCHAR(MAX),
+                    difficulty NVARCHAR(50),
+                    hours_spent DECIMAL(5,2),
+                    completed_date DATE,
+                    created_at DATETIME DEFAULT GETDATE(),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            conn.commit()
+            logger.info("learning_entries table created successfully in Azure SQL")
+        else:
+            logger.info("learning_entries table already exists in Azure SQL")
+        
+        # Check if security_logs table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'security_logs'
+        """)
+        security_logs_exists = cursor.fetchone()[0] > 0
+        
+        # Create security_logs table if it doesn't exist
+        if not security_logs_exists:
+            logger.info("Creating security_logs table in Azure SQL")
+            cursor.execute("""
+                CREATE TABLE security_logs (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    ip_address NVARCHAR(45),
+                    username NVARCHAR(50),
+                    action NVARCHAR(100),
+                    success BIT,
+                    user_agent NVARCHAR(MAX),
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            """)
+            conn.commit()
+            logger.info("security_logs table created successfully in Azure SQL")
+        else:
+            logger.info("security_logs table already exists in Azure SQL")
+        
     except Exception as e:
         logger.error(f"Error with Azure SQL schema initialization: {e}")
         raise
