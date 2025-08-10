@@ -24,6 +24,18 @@ import traceback
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Configure logging for production
+import sys
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
+# Bind to gunicorn logger in production
+if __name__ != "__main__":
+    gunicorn_logger = logging.getLogger("gunicorn.error")
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
+else:
+    logging.basicConfig(level=logging.INFO)
+
 try:
     import pyodbc
 except ImportError:
@@ -82,8 +94,7 @@ def _log_request():
 # Catch unhandled errors and print a full traceback
 @app.errorhandler(500)
 def _internal_error(e):
-    app.logger.error("Unhandled 500 on %s: %s\n%s",
-                     request.path, e, traceback.format_exc())
+    app.logger.exception("Unhandled 500 on %s: %s", request.path, e)
     return ("Internal Server Error", 500)
 
 # Database configuration
@@ -2214,50 +2225,100 @@ def admin_sessions():
     
     conn = get_db_connection()
     try:
-        # Get active sessions
-        active_sessions = conn.execute('''
-            SELECT 
-                us.*,
-                u.username,
-                u.level,
-                'Active' as session_status,
-                datetime(us.created_at, 'localtime') as created_at_formatted,
-                datetime(us.expires_at, 'localtime') as expires_at_formatted
-            FROM user_sessions us 
-            JOIN users u ON us.user_id = u.id 
-            WHERE us.is_active = 1 
-            ORDER BY us.created_at DESC
-        ''').fetchall()
+        # Log which SQL dialect we're using
+        using_azure = is_azure_sql()
+        app.logger.info("admin_sessions: using Azure SQL = %s", using_azure)
+        
+        # Get active sessions - use raw datetime columns, formatting in template
+        if using_azure:
+            # Azure SQL Server syntax
+            active_sessions = conn.execute('''
+                SELECT 
+                    us.*,
+                    u.username,
+                    u.level,
+                    'Active' as session_status
+                FROM user_sessions us 
+                JOIN users u ON us.user_id = u.id 
+                WHERE us.is_active = 1 
+                ORDER BY us.created_at DESC
+            ''').fetchall()
+        else:
+            # SQLite syntax with localtime conversion
+            active_sessions = conn.execute('''
+                SELECT 
+                    us.*,
+                    u.username,
+                    u.level,
+                    'Active' as session_status,
+                    datetime(us.created_at, 'localtime') as created_at_formatted,
+                    datetime(us.expires_at, 'localtime') as expires_at_formatted
+                FROM user_sessions us 
+                JOIN users u ON us.user_id = u.id 
+                WHERE us.is_active = 1 
+                ORDER BY us.created_at DESC
+            ''').fetchall()
         
         # Get activity statistics (last 7 days) - handle missing table gracefully
         activity_stats = []
         try:
-            activity_stats = conn.execute('''
-                SELECT activity_type, COUNT(*) as count
-                FROM session_activity 
-                WHERE datetime(timestamp) >= datetime('now', '-7 days')
-                GROUP BY activity_type
-                ORDER BY count DESC
-            ''').fetchall()
+            if using_azure:
+                # Azure SQL Server syntax
+                activity_stats = conn.execute('''
+                    SELECT activity_type, COUNT(*) as count
+                    FROM session_activity 
+                    WHERE timestamp >= DATEADD(day, -7, GETDATE())
+                    GROUP BY activity_type
+                    ORDER BY count DESC
+                ''').fetchall()
+            else:
+                # SQLite syntax
+                activity_stats = conn.execute('''
+                    SELECT activity_type, COUNT(*) as count
+                    FROM session_activity 
+                    WHERE datetime(timestamp) >= datetime('now', '-7 days')
+                    GROUP BY activity_type
+                    ORDER BY count DESC
+                ''').fetchall()
         except:
+            app.logger.info("session_activity table not found, skipping activity stats")
             pass  # session_activity table might not exist
         
         # Get daily login statistics (last 7 days)
-        login_stats = conn.execute('''
-            SELECT DATE(created_at) as login_date, COUNT(*) as login_count
-            FROM user_sessions 
-            WHERE datetime(created_at) >= datetime('now', '-7 days')
-            GROUP BY DATE(created_at)
-            ORDER BY login_date DESC
-        ''').fetchall()
+        if using_azure:
+            # Azure SQL Server syntax
+            login_stats = conn.execute('''
+                SELECT CONVERT(date, created_at) as login_date, COUNT(*) as login_count
+                FROM user_sessions 
+                WHERE created_at >= DATEADD(day, -7, GETDATE())
+                GROUP BY CONVERT(date, created_at)
+                ORDER BY login_date DESC
+            ''').fetchall()
+            
+            # Calculate today's login count
+            today_login_count = 0
+            today_date = conn.execute("SELECT CONVERT(date, GETDATE())").fetchone()[0]
+        else:
+            # SQLite syntax
+            login_stats = conn.execute('''
+                SELECT DATE(created_at) as login_date, COUNT(*) as login_count
+                FROM user_sessions 
+                WHERE datetime(created_at) >= datetime('now', '-7 days')
+                GROUP BY DATE(created_at)
+                ORDER BY login_date DESC
+            ''').fetchall()
+            
+            # Calculate today's login count
+            today_login_count = 0
+            today_date = conn.execute("SELECT DATE('now')").fetchone()[0]
         
-        # Calculate today's login count
-        today_login_count = 0
-        today_date = conn.execute("SELECT DATE('now')").fetchone()[0]
         for stat in login_stats:
             if stat['login_date'] == today_date:
                 today_login_count = stat['login_count']
                 break
+        
+        app.logger.info("admin_sessions: found %d active sessions, %d login stats", 
+                       len(active_sessions), len(login_stats))
         
         return render_template('admin/sessions.html', 
                              active_sessions=active_sessions,
@@ -2311,6 +2372,11 @@ def admin_courses():
     # Ensure per_page is within reasonable bounds
     per_page = max(10, min(100, per_page))
     
+    # Log which SQL dialect we're using and pagination params
+    using_azure = is_azure_sql()
+    app.logger.info("admin_courses: using Azure SQL = %s, page = %d, per_page = %d", 
+                    using_azure, page, per_page)
+    
     # Get courses with pagination
     conn = get_db_connection()
     try:
@@ -2335,20 +2401,36 @@ def admin_courses():
             params.append(url_status_filter)
             
         if points_filter:
-            if points_filter == "0-100":
-                where_conditions.append("CAST(points as INTEGER) BETWEEN 0 AND 100")
-            elif points_filter == "100-200":
-                where_conditions.append("CAST(points as INTEGER) BETWEEN 100 AND 200")
-            elif points_filter == "200-300":
-                where_conditions.append("CAST(points as INTEGER) BETWEEN 200 AND 300")
-            elif points_filter == "300-400":
-                where_conditions.append("CAST(points as INTEGER) BETWEEN 300 AND 400")
-            elif points_filter == "400+":
-                where_conditions.append("CAST(points as INTEGER) > 400")
+            if using_azure:
+                # Azure SQL Server with TRY_CONVERT for NVARCHAR points
+                if points_filter == "0-100":
+                    where_conditions.append("TRY_CONVERT(int, points) BETWEEN 0 AND 100")
+                elif points_filter == "100-200":
+                    where_conditions.append("TRY_CONVERT(int, points) BETWEEN 100 AND 200")
+                elif points_filter == "200-300":
+                    where_conditions.append("TRY_CONVERT(int, points) BETWEEN 200 AND 300")
+                elif points_filter == "300-400":
+                    where_conditions.append("TRY_CONVERT(int, points) BETWEEN 300 AND 400")
+                elif points_filter == "400+":
+                    where_conditions.append("TRY_CONVERT(int, points) > 400")
+            else:
+                # SQLite with CAST
+                if points_filter == "0-100":
+                    where_conditions.append("CAST(points as INTEGER) BETWEEN 0 AND 100")
+                elif points_filter == "100-200":
+                    where_conditions.append("CAST(points as INTEGER) BETWEEN 100 AND 200")
+                elif points_filter == "200-300":
+                    where_conditions.append("CAST(points as INTEGER) BETWEEN 200 AND 300")
+                elif points_filter == "300-400":
+                    where_conditions.append("CAST(points as INTEGER) BETWEEN 300 AND 400")
+                elif points_filter == "400+":
+                    where_conditions.append("CAST(points as INTEGER) > 400")
         
         where_clause = ""
         if where_conditions:
             where_clause = "WHERE " + " AND ".join(where_conditions)
+        
+        app.logger.info("admin_courses: WHERE clause = '%s'", where_clause)
         
         # Get total count for pagination
         count_query = f'SELECT COUNT(*) as count FROM courses {where_clause}'
@@ -2359,14 +2441,28 @@ def admin_courses():
         page = max(1, min(page, total_pages))  # Ensure page is within bounds
         offset = (page - 1) * per_page
         
-        # Get courses for current page
-        query = f'''
-            SELECT * FROM courses 
-            {where_clause}
-            ORDER BY created_at DESC 
-            LIMIT ? OFFSET ?
-        '''
-        params.extend([per_page, offset])
+        app.logger.info("admin_courses: total_courses = %d, offset = %d", total_courses, offset)
+        
+        # Get courses for current page with dialect-specific pagination
+        if using_azure:
+            # Azure SQL Server pagination with OFFSET/FETCH
+            query = f'''
+                SELECT * FROM courses 
+                {where_clause}
+                ORDER BY created_at DESC 
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            '''
+            params.extend([offset, per_page])
+        else:
+            # SQLite pagination with LIMIT/OFFSET
+            query = f'''
+                SELECT * FROM courses 
+                {where_clause}
+                ORDER BY created_at DESC 
+                LIMIT ? OFFSET ?
+            '''
+            params.extend([per_page, offset])
+        
         courses = conn.execute(query, params).fetchall()
         
         # Get available sources and levels for filters
@@ -2396,6 +2492,8 @@ def admin_courses():
             'start_course': offset + 1,
             'end_course': min(offset + per_page, total_courses)
         }
+        
+        app.logger.info("admin_courses: returning %d courses on page %d", len(courses), page)
         
         return render_template('admin/courses.html', 
                              courses=courses, 
@@ -3152,7 +3250,17 @@ def admin_edit_course(course_id):
             
             def update_course(conn):
                 # Check if courses table has the expected columns
-                columns = [col[1] for col in conn.execute('PRAGMA table_info(courses)').fetchall()]
+                if is_azure_sql():
+                    # Azure SQL Server - use INFORMATION_SCHEMA
+                    columns_result = conn.execute('''
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_NAME = 'courses'
+                    ''').fetchall()
+                    columns = [row[0] for row in columns_result]
+                else:
+                    # SQLite - use PRAGMA
+                    columns = [col[1] for col in conn.execute('PRAGMA table_info(courses)').fetchall()]
                 
                 if 'source' in columns and 'level' in columns and 'link' in columns:
                     # Use template field names if they exist in database
@@ -3769,6 +3877,53 @@ def debug_session_info():
         'session_keys': list(session.keys()),
         'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/debug/sql-dialect')
+def debug_sql_dialect():
+    """Debug endpoint to check SQL dialect and run simple test query"""
+    try:
+        using_azure = is_azure_sql()
+        conn = get_db_connection()
+        
+        if using_azure:
+            # Test Azure SQL connection with simple query
+            test_result = conn.execute("SELECT GETDATE() as current_time, @@VERSION as version").fetchone()
+            dialect_info = {
+                "azure_sql": True,
+                "current_time": str(test_result[0]) if test_result else None,
+                "version": str(test_result[1])[:100] + "..." if test_result and len(str(test_result[1])) > 100 else str(test_result[1]) if test_result else None
+            }
+        else:
+            # Test SQLite connection
+            test_result = conn.execute("SELECT datetime('now') as current_time, sqlite_version() as version").fetchone()
+            dialect_info = {
+                "azure_sql": False,
+                "current_time": str(test_result[0]) if test_result else None,
+                "version": str(test_result[1]) if test_result else None
+            }
+        
+        # Add simple count queries
+        try:
+            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            dialect_info["user_count"] = user_count
+        except:
+            dialect_info["user_count"] = "error"
+        
+        try:
+            course_count = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+            dialect_info["course_count"] = course_count
+        except:
+            dialect_info["course_count"] = "error"
+            
+        conn.close()
+        return jsonify(dialect_info)
+        
+    except Exception as e:
+        app.logger.exception("Error in debug_sql_dialect")
+        return jsonify({
+            "error": str(e),
+            "azure_sql": None
+        }), 500
 
 @app.route('/debug/fix-admin-column')
 def debug_fix_admin_column():
