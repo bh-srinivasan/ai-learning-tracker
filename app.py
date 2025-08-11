@@ -114,6 +114,32 @@ def is_azure_sql():
     
     return all([azure_server, azure_database, azure_username, azure_password])
 
+def detect_db_kind(conn=None):
+    """
+    Detect database kind for compatibility handling.
+    Returns 'sqlserver' for Azure SQL or 'sqlite' for SQLite.
+    Can be overridden with DB_KIND environment variable.
+    """
+    # Allow environment override for testing
+    override = os.environ.get('DB_KIND', '').lower()
+    if override in ['sqlserver', 'sqlite']:
+        return override
+    
+    # Auto-detect based on environment or connection
+    if is_azure_sql():
+        return 'sqlserver'
+    
+    # If connection provided, detect by type
+    if conn:
+        conn_type = str(type(conn))
+        if 'pyodbc' in conn_type or 'odbc' in conn_type.lower():
+            return 'sqlserver'
+        elif 'sqlite' in conn_type.lower():
+            return 'sqlite'
+    
+    # Default fallback
+    return 'sqlite'
+
 # Enhanced security configuration (after function definition)
 app.config.update({
     'SECRET_KEY': os.environ.get('SECRET_KEY', 'ai-learning-tracker-secret-key-2025'),  # Fixed fallback key
@@ -2376,7 +2402,12 @@ def admin_courses():
     # Get courses with pagination
     conn = get_db_connection()
     try:
-        # Build WHERE clause for filters
+        # Detect database kind for compatibility
+        db_kind = detect_db_kind(conn)
+        app.logger.info("admin_courses: db_kind = %s, page = %d, per_page = %d", 
+                        db_kind, page, per_page)
+        
+        # Build WHERE clause for filters (use compatible column names)
         where_conditions = []
         params = []
         
@@ -2384,20 +2415,24 @@ def admin_courses():
             where_conditions.append("(title LIKE ? OR description LIKE ?)")
             params.extend([f'%{search}%', f'%{search}%'])
             
-        if source_filter:
-            where_conditions.append("source = ?")
-            params.append(source_filter)
-            
         if level_filter:
             where_conditions.append("level = ?")
             params.append(level_filter)
-            
-        if url_status_filter:
-            where_conditions.append("url_status = ?")
-            params.append(url_status_filter)
-            
+        
+        # Apply source and url_status filters only for SQLite or if columns exist
+        if db_kind == 'sqlite':
+            if source_filter:
+                where_conditions.append("source = ?")
+                params.append(source_filter)
+                
+            if url_status_filter:
+                where_conditions.append("url_status = ?")
+                params.append(url_status_filter)
+        # For sqlserver, skip source/url_status filters (not in compatibility view)
+        
+        # Points filter handling
         if points_filter:
-            if using_azure:
+            if db_kind == 'sqlserver':
                 # Azure SQL Server with TRY_CONVERT for NVARCHAR points
                 if points_filter == "0-100":
                     where_conditions.append("TRY_CONVERT(int, points) BETWEEN 0 AND 100")
@@ -2428,8 +2463,14 @@ def admin_courses():
         
         app.logger.info("admin_courses: WHERE clause = '%s'", where_clause)
         
+        # Choose table/view based on database kind
+        if db_kind == 'sqlserver':
+            table_name = "dbo.courses_app"  # Use compatibility view
+        else:
+            table_name = "courses"  # Use direct table for SQLite
+        
         # Get total count for pagination
-        count_query = f'SELECT COUNT(*) as count FROM courses {where_clause}'
+        count_query = f'SELECT COUNT(*) as count FROM {table_name} {where_clause}'
         total_courses = conn.execute(count_query, params).fetchone()['count']
         
         # Calculate pagination info
@@ -2439,29 +2480,31 @@ def admin_courses():
         
         app.logger.info("admin_courses: total_courses = %d, offset = %d", total_courses, offset)
         
-        # Get courses for current page with dialect-specific pagination
-        if using_azure:
-            # Azure SQL Server pagination with OFFSET/FETCH
-            # Use explicit column list to avoid missing column errors
+        # Build query with consistent column order for both backends
+        if db_kind == 'sqlserver':
+            # Azure SQL Server - select from compatibility view with OFFSET/FETCH
             query = f'''
                 SELECT id, title, description, difficulty, duration_hours, 
                        url, category, level, created_at
-                FROM courses 
+                FROM {table_name}
                 {where_clause}
                 ORDER BY created_at DESC 
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
             '''
             params.extend([offset, per_page])
         else:
-            # SQLite pagination with LIMIT/OFFSET
+            # SQLite - select from courses table with LIMIT/OFFSET
             query = f'''
-                SELECT * FROM courses 
+                SELECT id, title, description, difficulty, duration_hours, 
+                       url, category, level, created_at
+                FROM {table_name}
                 {where_clause}
                 ORDER BY created_at DESC 
                 LIMIT ? OFFSET ?
             '''
             params.extend([per_page, offset])
         
+        app.logger.info("admin_courses: executing query on %s", table_name)
         courses = conn.execute(query, params).fetchall()
         
         # Convert courses to dictionaries to handle Azure SQL datetime issues
@@ -2477,41 +2520,72 @@ def admin_courses():
                     else:
                         course_dict[key] = value
                 courses_list.append(course_dict)
+                
+                # Defensive logging for SQL Server duration conversion failures
+                if db_kind == 'sqlserver':
+                    if course_dict.get('duration_hours') is None and course_dict.get('id'):
+                        # Log potential TRY_CONVERT failure (duration_hours is NULL but might have duration data)
+                        app.logger.warning("Duration conversion failed for course ID %s - duration_hours is NULL", 
+                                          course_dict['id'])
             else:
                 # Fallback for tuple-like results
                 courses_list.append(course)
         
-        # Get available sources and levels for filters (handle missing columns gracefully)
-        try:
-            sources = conn.execute('SELECT DISTINCT source FROM courses WHERE source IS NOT NULL ORDER BY source').fetchall()
-        except:
-            sources = []
-            
-        try:
-            levels = conn.execute('SELECT DISTINCT level FROM courses WHERE level IS NOT NULL ORDER BY level').fetchall()
-        except:
-            levels = [{'level': 'Beginner'}, {'level': 'Intermediate'}, {'level': 'Advanced'}]
+        # Get available sources and levels for filters - adapt to database kind
+        if db_kind == 'sqlserver':
+            # For SQL Server, use the view and skip source since it's not in the view
+            try:
+                levels = conn.execute('SELECT DISTINCT level FROM dbo.courses_app WHERE level IS NOT NULL ORDER BY level').fetchall()
+            except:
+                levels = [{'level': 'Beginner'}, {'level': 'Intermediate'}, {'level': 'Advanced'}]
+            sources = []  # Source not available in compatibility view
+        else:
+            # For SQLite, use the original table
+            try:
+                sources = conn.execute('SELECT DISTINCT source FROM courses WHERE source IS NOT NULL ORDER BY source').fetchall()
+            except:
+                sources = []
+                
+            try:
+                levels = conn.execute('SELECT DISTINCT level FROM courses WHERE level IS NOT NULL ORDER BY level').fetchall()
+            except:
+                levels = [{'level': 'Beginner'}, {'level': 'Intermediate'}, {'level': 'Advanced'}]
         
-        # Calculate statistics for the dashboard (from entire database, not just current page)
-        stats_query = '''
-            SELECT 
-                COUNT(*) as total_courses,
-                COUNT(CASE WHEN source = 'Manual' THEN 1 END) as manual_entries,
-                COUNT(CASE WHEN url_status = 'Working' THEN 1 END) as working_urls,
-                COUNT(CASE WHEN url_status = 'Not Working' OR url_status = 'Broken' THEN 1 END) as broken_urls
-            FROM courses
-        '''
-        try:
-            stats = conn.execute(stats_query).fetchone()
-        except:
-            # Fallback stats if columns don't exist
-            basic_count = conn.execute('SELECT COUNT(*) as total_courses FROM courses').fetchone()
-            stats = {
-                'total_courses': basic_count[0] if basic_count else 0,
-                'manual_entries': 0,
-                'working_urls': 0,
-                'broken_urls': 0
-            }
+        # Calculate statistics for the dashboard - adapt to database kind
+        if db_kind == 'sqlserver':
+            # Simplified stats for SQL Server (no source/url_status in view)
+            stats_query = f'SELECT COUNT(*) as total_courses FROM {table_name}'
+            try:
+                result = conn.execute(stats_query).fetchone()
+                stats = {
+                    'total_courses': result[0] if result else 0,
+                    'manual_entries': 0,  # Not available in view
+                    'working_urls': 0,    # Not available in view
+                    'broken_urls': 0      # Not available in view
+                }
+            except:
+                stats = {'total_courses': 0, 'manual_entries': 0, 'working_urls': 0, 'broken_urls': 0}
+        else:
+            # Full stats for SQLite
+            stats_query = '''
+                SELECT 
+                    COUNT(*) as total_courses,
+                    COUNT(CASE WHEN source = 'Manual' THEN 1 END) as manual_entries,
+                    COUNT(CASE WHEN url_status = 'Working' THEN 1 END) as working_urls,
+                    COUNT(CASE WHEN url_status = 'Not Working' OR url_status = 'Broken' THEN 1 END) as broken_urls
+                FROM courses
+            '''
+            try:
+                stats = conn.execute(stats_query).fetchone()
+            except:
+                # Fallback stats if columns don't exist
+                basic_count = conn.execute('SELECT COUNT(*) as total_courses FROM courses').fetchone()
+                stats = {
+                    'total_courses': basic_count[0] if basic_count else 0,
+                    'manual_entries': 0,
+                    'working_urls': 0,
+                    'broken_urls': 0
+                }
         
         pagination_info = {
             'page': page,

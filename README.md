@@ -150,6 +150,51 @@ A personal productivity web application for tracking and recommending AI learnin
 
 ## Development
 
+### Database Compatibility
+This application supports dual database backends:
+- **Local Development**: SQLite database (`ai_learning.db`)
+- **Production**: Azure SQL Database
+
+#### Database Kind Detection
+The app automatically detects the database type, but can be overridden:
+```bash
+# Force specific database type for testing
+export DB_KIND=sqlite     # Use SQLite
+export DB_KIND=sqlserver  # Use SQL Server/Azure SQL
+```
+
+### Azure SQL Database Deployment
+
+#### Prerequisites
+- Azure SQL Database provisioned
+- Environment variables configured (see Production Deployment)
+
+#### Deploy Compatibility View
+Run the following SQL script in Azure SQL Database via Azure Portal Query Editor, Azure Data Studio, or sqlcmd:
+
+```bash
+# Using Azure Portal Query Editor:
+1. Navigate to your Azure SQL Database in Azure Portal
+2. Go to Query Editor
+3. Execute: db/migrations/azure/001_create_view_courses_app.sql
+
+# Using Azure Data Studio:
+1. Connect to your Azure SQL Database
+2. Open: db/migrations/azure/001_create_view_courses_app.sql
+3. Execute the script
+
+# Using sqlcmd:
+sqlcmd -S your-server.database.windows.net -d your-database -U your-username -P your-password -i db/migrations/azure/001_create_view_courses_app.sql
+```
+
+The compatibility view (`dbo.courses_app`) provides a uniform interface between Azure SQL schema and application expectations, mapping:
+- `duration` (NVARCHAR) → `duration_hours` (FLOAT)
+- `difficulty` or `level` → `difficulty`
+- Missing `category` → NULL placeholder
+
+#### Optional: Migrate to Real Columns
+For future schema evolution, see `db/migrations/azure/002_optional_real_columns.sql` (do not run until ready to migrate from view-based approach).
+
 ### Running in Development Mode
 ```bash
 python app.py
@@ -161,7 +206,8 @@ python app.py
 ### Database Management
 - Database auto-initializes on first run
 - Default users created automatically
-- SQLite file: `ai_learning.db`
+- SQLite file: `ai_learning.db` (local development)
+- Azure SQL: Uses `dbo.courses_app` view for compatibility
 
 ### Adding New Features
 1. Create new modules in appropriate folders
