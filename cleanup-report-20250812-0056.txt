@@ -1,0 +1,229 @@
+Flask Repository Cleanup Report
+Generated: 2025-08-12 00:56:30
+Repository: C:\Users\bhsrinivasan\Downloads\Learning\Vibe Coding\AI_Learning
+================================================================================
+
+Route Scanning Results:
+  Routes scanned: 17
+  Templates found: 2
+  Static files found: 1
+  Files opened: 2
+  Upload dirs (static): 2
+  Upload dirs (dynamic): 0
+  POST routes simulated: 0
+
+Tracked (454 files):
+----------------------------------------
+  .env.azure
+  .env.azure.template
+  .env.database
+  .env.database.azure
+  .env.database.template
+  .env.template
+  .github/copilot-instructions.md
+  .gitignore
+  .vscode/tasks.json
+  ADD_COURSES_BUG_FIX_COMPLETE.md
+  ADD_COURSES_ENHANCEMENT_COMPLETE.md
+  ADMIN_COURSES_FIX_RESOLVED.md
+  ADMIN_COURSES_UI_CLEANUP_COMPLETE.md
+  ADMIN_COURSES_UI_ENHANCEMENT_COMPLETE.md
+  ADMIN_MENU_COURSE_SEARCH_REMOVAL_COMPLETE.md
+  ADMIN_NAVIGATION_RESTORATION_COMPLETE.md
+  ADMIN_PASSWORD_CHANGE_ANALYSIS.md
+  ADMIN_ROUTES_RESTORATION_SUCCESS.md
+  AI_COPILOT_COURSE_FOCUS_IMPLEMENTATION.md
+  APPLICATION_ERROR_RESOLUTION_REPORT.md
+  ARCHITECTURE_ANALYSIS.md
+  ASYNC_ADD_COURSES_IMPLEMENTATION_COMPLETE.md
+  AZURE_500_ERROR_RESOLUTION_SUCCESS.md
+  AZURE_ADMIN_FIX_DEPLOYMENT_GUIDE.md
+  AZURE_APPLICATION_ERROR_RESOLVED.md
+  AZURE_DATA_LOSS_RESOLUTION_FINAL_REPORT.md
+  AZURE_DEPLOYMENT_AUDIT_REPORT.md
+  AZURE_DEPLOYMENT_AUTOMATION_COMPLETE.md
+  AZURE_DEPLOYMENT_CHECKLIST.md
+  AZURE_DEPLOYMENT_CONFIG.md
+  AZURE_DEPLOYMENT_FINAL.md
+  AZURE_DEPLOYMENT_SUCCESS_REPORT.md
+  AZURE_INTERNAL_SERVER_ERROR_FIX_COMPLETE.md
+  AZURE_MIGRATION_GUIDE.md
+  AZURE_MIGRATION_IMPLEMENTATION_COMPLETE.md
+  AZURE_SQL_COLUMN_MISMATCH_ANALYSIS.md
+  AZURE_SQL_CONNECTION_GUIDE.md
+  AZURE_SQL_DIALECT_FIX_COMPLETE.md
+  AZURE_STORAGE_SETUP.md
+  AZURE_UPLOAD_DEBUG_GUIDE.md
+  BACKEND_SPECIFIC_COMMENTS_IMPLEMENTATION_COMPLETE.md
+  BULK_DELETE_ENHANCEMENT_SUMMARY.md
+  CLEANUP_COMPLETE_REPORT.md
+  CODEBASE_BEST_PRACTICES.md
+  CODEBASE_ORGANIZATION.md
+  COMPREHENSIVE_CLEANUP_FINAL_REPORT.md
+  COMPREHENSIVE_REFACTORING_PLAN.md
+  CONTROLLED_PASSWORD_RESET_DOCS.md
+  COURSE_COUNT_DASHBOARD_FIX_COMPLETE.md
+  COURSE_MANAGEMENT_ENHANCEMENT_COMPLETE.md
+  ... and 404 more files
+
+In Use Routes (10818 files):
+----------------------------------------
+  .env
+  .env.azure
+  .env.azure.template
+  .env.database
+  .env.database.azure
+  .env.database.template
+  .env.template
+  .git\COMMIT_EDITMSG
+  .git\FETCH_HEAD
+  .git\HEAD
+  .git\ORIG_HEAD
+  .git\config
+  .git\description
+  .git\hooks\applypatch-msg.sample
+  .git\hooks\commit-msg.sample
+  .git\hooks\fsmonitor-watchman.sample
+  .git\hooks\post-update.sample
+  .git\hooks\pre-applypatch.sample
+  .git\hooks\pre-commit.sample
+  .git\hooks\pre-merge-commit.sample
+  .git\hooks\pre-push.sample
+  .git\hooks\pre-rebase.sample
+  .git\hooks\pre-receive.sample
+  .git\hooks\prepare-commit-msg.sample
+  .git\hooks\push-to-checkout.sample
+  .git\hooks\sendemail-validate.sample
+  .git\hooks\update.sample
+  .git\index
+  .git\info\exclude
+  .git\logs\HEAD
+  .git\logs\refs\heads\backup-before-rollback-20250718-230325
+  .git\logs\refs\heads\master
+  .git\logs\refs\heads\working-azure-version
+  .git\logs\refs\remotes\azure\HEAD
+  .git\logs\refs\remotes\azure\master
+  .git\logs\refs\remotes\origin\HEAD
+  .git\logs\refs\remotes\origin\master
+  .git\logs\refs\stash
+  .git\objects\00\2dbe18c1f95bd91efbefe6409f3d31f11f1842
+  .git\objects\00\3085b4713e6990dc65e16a359160f0f5f3ec5f
+  .git\objects\00\499096fc03aa620f7517b64aae21a211def789
+  .git\objects\00\4ad732cfe48dd3966214ed823f9b6def478913
+  .git\objects\00\519471b95937f96c9fe85bae1cdff18c571422
+  .git\objects\00\55ee53c617351b0f2a3c7c02b5b863e0356e05
+  .git\objects\00\5b9bc213aaf04ff0c02d2b82733d022cd695c6
+  .git\objects\00\f5b58d0ef46cf8bc811e3b25985cd6d012d323
+  .git\objects\01\05d4daca02a4de7c5c0fdd4f6b6fa8c998cc7c
+  .git\objects\01\1c6bcfa6ee39ac9c9d4d9aa614e4d04090841b
+  .git\objects\01\2b7d542619010fcf541a90737fa02d3daa4d2c
+  .git\objects\01\4e03ffe1f00e716a26332b6d79fb97fe1b7c90
+  ... and 10768 more files
+
+Critical Paths (122 files):
+----------------------------------------
+  .env
+  .env.azure
+  .env.azure.template
+  .env.database
+  .env.database.azure
+  .env.database.template
+  .env.template
+  .github\copilot-instructions.md
+  .vscode\tasks.json
+  app.py
+  azure-pipelines.yml
+  config.py
+  db\migrations\azure\001_create_view_courses_app.sql
+  db\migrations\azure\002_optional_real_columns.sql
+  docs\ADMIN_PASSWORD_RESET_COMPLETE.md
+  docs\ARCHITECTURE_ANALYSIS.md
+  docs\AZURE_DEPLOYMENT_SUCCESS.md
+  docs\AZURE_DEPLOYMENT_SUCCESS_REPORT.md
+  docs\COMPLETE_FIX_IMPLEMENTATION_SUMMARY.md
+  docs\DATABASE_FIXES_COMPLETE.md
+  docs\DEPLOYMENT_COMPLETE_SUMMARY.md
+  docs\DEPLOYMENT_GUIDE.md
+  docs\DEPLOYMENT_SUCCESS.md
+  docs\ENHANCED_SORTING_IMPLEMENTATION_REPORT.md
+  docs\ENV_SETUP_DOCS.md
+  docs\FINAL_DEPLOYMENT_SUMMARY.md
+  docs\FINAL_FIX_SUMMARY.md
+  docs\FINAL_MIGRATION_STEPS.md
+  docs\GITHUB_AUTHENTICATION_GUIDE.md
+  docs\GITHUB_AZURE_DEPLOYMENT_GUIDE.md
+  docs\LEVEL_MANAGEMENT_IMPLEMENTATION_REPORT.md
+  docs\MY_PROFILE_FIX_REPORT.md
+  docs\PASSWORD_CORRECTION_SUMMARY.md
+  docs\PROFESSIONAL_BLACK_HEADER_STYLING_REPORT.md
+  docs\PROFILE_PAGE_FIX_SUMMARY.md
+  docs\ROUTING_ERROR_FIX_REPORT.md
+  docs\TECH_STACK_GUIDE.md
+  docs\UI_STYLING_ENHANCEMENT_REPORT.md
+  docs\WORKSPACE_ERROR_RESOLUTION_REPORT.md
+  docs\data-governance.md
+  docs\deployment_log.txt
+  main.py
+  requirements.txt
+  scripts\__pycache__\analyze_global_learnings.cpython-310.pyc
+  scripts\__pycache__\azure_status_summary.cpython-310.pyc
+  scripts\__pycache__\cleanup_database.cpython-310.pyc
+  scripts\__pycache__\cleanup_project.cpython-310.pyc
+  scripts\__pycache__\debug_login.cpython-310.pyc
+  scripts\__pycache__\env_manager.cpython-310.pyc
+  scripts\__pycache__\fix_admin_entries.cpython-310.pyc
+  ... and 72 more files
+
+Candidates (102 files):
+----------------------------------------
+  __pycache__/admin_minimal_fix.cpython-310.pyc
+  __pycache__/analyze_global_learnings.cpython-310.pyc
+  __pycache__/app_clean.cpython-310.pyc
+  __pycache__/app_debug.cpython-310.pyc
+  __pycache__/app_simple.cpython-310.pyc
+  __pycache__/azure_backup_governance.cpython-310.pyc
+  __pycache__/azure_env_setup_instructions.cpython-310.pyc
+  __pycache__/azure_status_summary.cpython-310.pyc
+  __pycache__/check_azure_status.cpython-310.pyc
+  __pycache__/check_bharath_user.cpython-310.pyc
+  __pycache__/check_env_status.cpython-310.pyc
+  __pycache__/check_level_status.cpython-310.pyc
+  __pycache__/check_passwords.cpython-310.pyc
+  __pycache__/check_schema.cpython-310.pyc
+  __pycache__/check_tables.cpython-310.pyc
+  __pycache__/check_users.cpython-310.pyc
+  __pycache__/cleanup_database.cpython-310.pyc
+  __pycache__/cleanup_project.cpython-310.pyc
+  __pycache__/cleanup_temp_files.cpython-310.pyc
+  __pycache__/comprehensive_test.cpython-310.pyc
+  __pycache__/create_test_user.cpython-310.pyc
+  __pycache__/database_monitor.cpython-310.pyc
+  __pycache__/debug_login.cpython-310.pyc
+  __pycache__/deep_investigation.cpython-310.pyc
+  __pycache__/detailed_login_test.cpython-310.pyc
+  __pycache__/diagnostic.cpython-310.pyc
+  __pycache__/env_manager.cpython-310.pyc
+  __pycache__/final_cleanup.cpython-310.pyc
+  __pycache__/final_comprehensive_error_check.cpython-310.pyc
+  __pycache__/final_error_check.cpython-310.pyc
+  __pycache__/final_validation.cpython-310.pyc
+  __pycache__/final_verification.cpython-310.pyc
+  __pycache__/fix_admin_entries.cpython-310.pyc
+  __pycache__/fix_bharath_login.cpython-310.pyc
+  __pycache__/fix_bharath_password.cpython-310.pyc
+  __pycache__/fix_database_issues.cpython-310.pyc
+  __pycache__/fix_summary.cpython-310.pyc
+  __pycache__/fix_user_levels.cpython-310.pyc
+  __pycache__/inspect_database.cpython-310.pyc
+  __pycache__/inspect_schema.cpython-310.pyc
+  __pycache__/investigate_db.cpython-310.pyc
+  __pycache__/migrate_database.cpython-310.pyc
+  __pycache__/migrate_url_validation.cpython-310.pyc
+  __pycache__/native_sorting_success.cpython-310.pyc
+  __pycache__/password_monitor.cpython-310.pyc
+  __pycache__/persistence_verification_final.cpython-310.pyc
+  __pycache__/prepare_deployment.cpython-310.pyc
+  __pycache__/production_health_check.cpython-310.pyc
+  __pycache__/professional_styling_test.cpython-310.pyc
+  __pycache__/refactoring_summary.cpython-310.pyc
+  ... and 52 more files

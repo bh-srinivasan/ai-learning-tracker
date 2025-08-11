@@ -215,6 +215,115 @@ python app.py
 3. Add templates in `templates/` folder
 4. Update navigation in `base.html`
 
+## Safe Repository Cleanup
+
+The `tools/safe_clean.py` script provides intelligent repository cleanup with Flask route-aware in-use detection.
+
+### Features
+- **Route-aware scanning**: Loads Flask app in testing mode and crawls GET routes to detect in-use templates, static files, and opened files
+- **Upload directory protection**: Static analysis of POST/PUT routes and config keys to identify upload/document directories
+- **Safe simulation**: Optional POST route simulation with dummy data to discover dynamic file usage
+- **Git-aware**: Never deletes Git-tracked files, works with ignored/untracked files only
+- **Age-gated deletion**: Only removes files older than specified days (default: 30)
+- **Comprehensive reporting**: Detailed dry-run reports before any deletions
+- **Backup creation**: Creates zip backups before applying deletions
+
+### Usage
+
+#### Basic Dry-Run (Safe)
+```bash
+python tools/safe_clean.py
+```
+Performs static analysis only, generates report without deletions.
+
+#### Route-Aware Dry-Run
+```bash
+python tools/safe_clean.py --route-scan
+```
+Loads Flask app, crawls GET routes, and analyzes in-use assets.
+
+#### Apply with Route Analysis
+```bash
+python tools/safe_clean.py --route-scan --apply
+```
+Performs route analysis and applies deletions after confirmation.
+
+#### POST Route Simulation
+```bash
+python tools/safe_clean.py --route-scan --simulate-post --post-allow "^/test-upload$" --apply
+```
+Includes safe simulation of allowed POST routes to detect upload patterns.
+
+### Flags
+
+#### Main Operation
+- `--apply`: Apply deletions (default: dry-run only)
+- `--age-days N`: Only delete files older than N days (default: 30)
+- `--report FILE`: Custom report filename
+
+#### Route Scanning
+- `--route-scan`: Enable Flask route scanning for in-use detection
+- `--follow-redirects`: Follow redirects during route crawling
+- `--include-routes REGEX`: Pattern for routes to include
+- `--exclude-routes REGEX`: Pattern for routes to exclude (default: admin/debug/internal)
+
+#### POST Simulation
+- `--simulate-post`: Enable safe POST route simulation (requires --post-allow)
+- `--post-allow REGEX`: Regex pattern for POST routes allowed for simulation
+
+#### Pruning Options
+- `--prune-uploads {none,artifacts,all}`: Upload directory pruning mode (default: none)
+- `--prune-tests {none,artifacts,orphaned,all}`: Test directory pruning mode (default: none)
+
+#### Patterns
+- `--include-pattern PATTERN`: Additional patterns to include for deletion
+- `--exclude-pattern PATTERN`: Additional patterns to exclude from deletion
+
+### Safety Features
+
+1. **Protected Paths**: Never deletes critical files like `app.py`, `templates/`, `static/`, `.env`, etc.
+2. **Git Integration**: Only considers Git ignored and untracked files as deletion candidates
+3. **In-Use Detection**: Protects files discovered through route crawling and static analysis
+4. **Confirmations**: Requires typed confirmations ("DELETE", "DELETE UPLOADS", "DELETE TESTS")
+5. **Backups**: Creates zip backups before any destructive operations
+6. **Large File Handling**: Skips files >100MB from backups, lists them separately
+
+### Manual Git Cleanup (Alternative)
+
+For manual cleanup without the tool:
+
+```bash
+# Preview ignored files only (safer)
+git clean -ndX
+
+# Preview ignored + untracked files (more aggressive)
+git clean -ndx
+
+# Apply ignored files cleanup (after review)
+git clean -fdX
+
+# Apply ignored + untracked cleanup (after careful review)
+git clean -fdx
+```
+
+⚠️ **WARNING**: Manual `git clean` commands can be destructive. Always use `-n` (dry-run) first and create backups. The `safe_clean.py` tool is recommended for intelligent cleanup.
+
+### Examples
+
+```bash
+# Safe dry-run with route analysis
+python tools/safe_clean.py --route-scan
+
+# Apply cleanup with 7-day age limit
+python tools/safe_clean.py --route-scan --age-days 7 --apply
+
+# Include specific patterns
+python tools/safe_clean.py --include-pattern "*.tmp" --include-pattern "*.cache" --apply
+
+# Exclude specific patterns  
+python tools/safe_clean.py --exclude-pattern "important_temp/*" --apply
+```
+
 ## Security Notes
 
 - Session-based authentication

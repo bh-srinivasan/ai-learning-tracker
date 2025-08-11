@@ -11,6 +11,68 @@
 			"group": "build",
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "Safe Clean (dry-run)",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/Scripts/python.exe",
+			"args": [
+				"tools/safe_clean.py",
+				"--route-scan"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared",
+				"showReuseMessage": true,
+				"clear": false
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Safe Clean (apply)",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/Scripts/python.exe",
+			"args": [
+				"tools/safe_clean.py",
+				"--route-scan",
+				"--apply"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared",
+				"showReuseMessage": true,
+				"clear": false
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Safe Clean (apply + POST sim)",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/Scripts/python.exe",
+			"args": [
+				"tools/safe_clean.py",
+				"--route-scan",
+				"--simulate-post",
+				"--post-allow",
+				"^/test-upload$",
+				"--apply"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared",
+				"showReuseMessage": true,
+				"clear": false
+			},
+			"problemMatcher": []
 		}
 	]
 }
