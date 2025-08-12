@@ -1,10 +1,22 @@
 import pyodbc
+import os
+from dotenv import load_dotenv
+import sys
+
+# Load environment variables
+load_dotenv()
 
 # Check admin user password in Azure SQL
-server = 'ai-learning-sql-centralus.database.windows.net'
-database = 'ai-learning-db'
-username = 'ailearningadmin'
-password = 'AiAzurepass!2025'
+server = os.environ.get('AZURE_SQL_SERVER', 'ai-learning-sql-centralus.database.windows.net')
+database = os.environ.get('AZURE_SQL_DATABASE', 'ai-learning-db')
+username = os.environ.get('AZURE_SQL_USERNAME', 'ailearningadmin')
+password = os.environ.get('AZURE_SQL_PASSWORD')
+
+# Validate required environment variables
+if not password:
+    print("❌ ERROR: AZURE_SQL_PASSWORD environment variable is required!")
+    print("Please set it in your .env file or environment variables.")
+    sys.exit(1)
 
 connection_string = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}'
 

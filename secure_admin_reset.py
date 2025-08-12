@@ -48,7 +48,7 @@ def reset_admin_password_azure():
         server = 'ai-learning-sql-centralus.database.windows.net'
         database = 'ai-learning-db'
         username = 'ailearningadmin'
-        password = 'AiAzurepass!2025'
+        password = os.environ.get('AZURE_SQL_PASSWORD', 'AiAzurepass!2025')
         
         # Build connection string
         connection_string = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}'

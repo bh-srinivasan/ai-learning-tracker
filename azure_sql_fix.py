@@ -1,11 +1,23 @@
 import pyodbc
 import sys
+import os
+from dotenv import load_dotenv
 
-# Azure SQL Database connection details
-server = 'ai-learning-sql-centralus.database.windows.net'
-database = 'ai-learning-db'
-username = 'ailearningadmin'
-password = 'AiAzurepass!2025'
+# Load environment variables
+load_dotenv()
+
+# Azure SQL Database connection details from environment variables
+server = os.environ.get('AZURE_SQL_SERVER', 'ai-learning-sql-centralus.database.windows.net')
+database = os.environ.get('AZURE_SQL_DATABASE', 'ai-learning-db')
+username = os.environ.get('AZURE_SQL_USERNAME', 'ailearningadmin')
+password = os.environ.get('AZURE_SQL_PASSWORD')
+
+# Validate required environment variables
+if not password:
+    print("❌ ERROR: AZURE_SQL_PASSWORD environment variable is required!")
+    print("Please set it in your .env file or environment variables.")
+    print("Example: AZURE_SQL_PASSWORD=your_secure_password")
+    sys.exit(1)
 
 # Connection string
 connection_string = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}'
@@ -16,6 +28,7 @@ print("=================================")
 print(f"Server: {server}")
 print(f"Database: {database}")
 print(f"Username: {username}")
+print("Password: [PROTECTED]")
 print()
 
 try:

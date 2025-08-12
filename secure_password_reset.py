@@ -38,7 +38,7 @@ Optional env vars:
 
 Usage:
   # bash
-  export NEW_ADMIN_PASSWORD="Strong@Password123"
+  export NEW_ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Strong@Password123')
   export AZURE_SQL_SERVER="ai-learning-sql-centralus.database.windows.net"
   export AZURE_SQL_DATABASE="ai-learning-db"
   export AZURE_SQL_USER="your-sql-user"

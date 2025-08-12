@@ -4,6 +4,7 @@
 import sqlite3
 import hashlib
 import uuid
+import os
 from datetime import datetime
 
 def create_admin_user():
@@ -26,7 +27,7 @@ def create_admin_user():
         
         # Create admin user
         username = 'admin'
-        password = 'admin123'  # Simple password for testing
+        password = os.environ.get('ADMIN_PASSWORD', 'admin123')  # Get from environment or use default for testing
         password_hash = hashlib.sha256(password.encode()).hexdigest()
         user_id = str(uuid.uuid4())
         

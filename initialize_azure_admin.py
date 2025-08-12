@@ -25,7 +25,7 @@ def create_admin_user():
     # Get admin password from environment
     admin_password = os.environ.get('ADMIN_PASSWORD')
     if not admin_password:
-        admin_password = 'YourSecureAdminPassword1223!'  # Fallback
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'YourSecureAdminPassword1223!')  # Fallback
         print("⚠️ Using fallback admin password")
     else:
         print("✅ Using admin password from environment variable")
