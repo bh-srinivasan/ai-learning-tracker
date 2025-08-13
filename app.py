@@ -632,7 +632,7 @@ def get_current_user():
     
     try:
         user_session = conn.execute(f'''
-            SELECT s.*, u.username, u.level, u.points 
+            SELECT s.*, u.username, u.level, u.points, u.is_admin 
             FROM {session_table} s 
             JOIN users u ON s.user_id = u.id 
             WHERE s.session_token = ? AND s.is_active = ?
@@ -655,7 +655,8 @@ def get_current_user():
                 'id': user_session['user_id'],
                 'username': user_session['username'],
                 'level': user_session['level'],
-                'points': user_session['points']
+                'points': user_session['points'],
+                'is_admin': bool(user_session['is_admin']) if user_session['is_admin'] is not None else False
             }
             return user_result
         
