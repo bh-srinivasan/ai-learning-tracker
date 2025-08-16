@@ -948,9 +948,12 @@ def dashboard():
         ''', (user['id'],)).fetchall()
         
         # Get courses for current level
-        all_courses = conn.execute('''
+        # Use correct table name based on environment (courses vs courses_app)
+        courses_table = 'courses_app' if is_azure_sql() else 'courses'
+        
+        all_courses = conn.execute(f'''
             SELECT c.*, COALESCE(uc.completed, 0) as completed 
-            FROM courses c 
+            FROM {courses_table} c 
             LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
             WHERE c.level = ? 
             ORDER BY c.created_at DESC 
