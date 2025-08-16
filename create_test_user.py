@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Create a regular user for testing"""
+#!/usr/bin/env python3
+"""Quick script to create a test user for testing"""
+
+import sqlite3
+import hashlib
+import uuid
+import os
+from datetime import datetime
 
 import sqlite3
 import hashlib

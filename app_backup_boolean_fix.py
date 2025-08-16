@@ -585,14 +585,14 @@ def create_user_session(user_id, ip_address, user_agent):
         # Create new session - Azure SQL has different schema than local SQLite
         if is_azure_sql():
             conn.execute(f'''
-                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at, is_active)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (session_token, user_id, ip_address, user_agent, expires_at, 1))
+                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session_token, user_id, ip_address, user_agent, expires_at))
         else:
             conn.execute(f'''
-                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at, is_active)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (session_token, user_id, ip_address, user_agent, expires_at, 1))
+                INSERT INTO {session_table} (session_token, user_id, ip_address, user_agent, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session_token, user_id, ip_address, user_agent, expires_at))
         
         conn.commit()
         
@@ -635,8 +635,8 @@ def get_current_user():
             SELECT s.*, u.username, u.level, u.points, u.is_admin 
             FROM {session_table} s 
             JOIN users u ON s.user_id = u.id 
-            WHERE s.session_token = ? AND s.is_active = 1
-        ''', (session_token,)).fetchone()
+            WHERE s.session_token = ? AND s.is_active = ?
+        ''', (session_token, True)).fetchone()
         
         if user_session:
             # Update last activity if column exists (Azure SQL only)
@@ -871,58 +871,36 @@ def login():
         conn.close()
         
         if user and check_password_hash(user['password_hash'], password):
-            try:
-                logger.debug(f"Password validation successful for user: {username}")
-                logger.debug(f"User data: id={user['id']}, is_admin={user.get('is_admin', 'MISSING')}")
-                
-                # Valid login - create session
-                session_token = create_user_session(
-                    user['id'], 
-                    request.remote_addr, 
-                    request.headers.get('User-Agent')
-                )
-                
-                if not session_token:
-                    logger.error(f"Failed to create session for user {username}")
-                    flash('Login error. Please try again.', 'error')
-                    return render_template('auth/login.html')
-                
-                logger.debug(f"Session token created successfully: {session_token[:10]}...")
-                
-                session['session_token'] = session_token
-                session['user_id'] = user['id']
-                session['username'] = username
-                
-                # Check is_admin column exists and set admin status
-                try:
-                    is_admin = bool(user['is_admin'])
-                    session['is_admin'] = is_admin
-                    logger.debug(f"Admin status set: {is_admin}")
-                except (KeyError, IndexError) as e:
-                    logger.warning(f"is_admin field issue for user {username}: {e}")
-                    session['is_admin'] = False  # Default to False if column doesn't exist
-                
-                session.permanent = True
-                
-                # Debug logging for session creation
-                logger.info(f"Session created for user {username}: token={session_token[:10]}..., is_admin={session.get('is_admin')}")
-                
-                flash(f'Welcome back, {username}!', 'success')
-                
-                # Determine redirect destination
-                if session['is_admin'] or username == 'admin':  # Check both admin flag and username
-                    logger.debug(f"Redirecting admin user {username} to /admin")
-                    return redirect('/admin')
-                else:
-                    logger.debug(f"Redirecting non-admin user {username} to dashboard")
-                    return redirect(url_for('dashboard'))
-                    
-            except Exception as e:
-                logger.error(f"Critical login error for user {username}: {e}")
-                import traceback
-                logger.error(f"Login traceback: {traceback.format_exc()}")
-                flash('Login failed. Please contact support.', 'error')
+            # Valid login - create session
+            session_token = create_user_session(
+                user['id'], 
+                request.remote_addr, 
+                request.headers.get('User-Agent')
+            )
+            
+            if not session_token:
+                logger.error(f"Failed to create session for user {username}")
+                flash('Login error. Please try again.', 'error')
                 return render_template('auth/login.html')
+            
+            session['session_token'] = session_token
+            session['user_id'] = user['id']
+            session['username'] = username
+            # Check is_admin column exists and set admin status
+            try:
+                session['is_admin'] = bool(user['is_admin'])
+            except (KeyError, IndexError):
+                session['is_admin'] = False  # Default to False if column doesn't exist
+            session.permanent = True
+            
+            # Debug logging for session creation
+            logger.info(f"Session created for user {username}: token={session_token[:10]}..., is_admin={session.get('is_admin')}")
+            
+            flash(f'Welcome back, {username}!', 'success')
+            if session['is_admin'] or username == 'admin':  # Check both admin flag and username
+                return redirect('/admin')
+            else:
+                return redirect(url_for('dashboard'))
         else:
             # Invalid login
             record_failed_attempt(client_ip, username)
