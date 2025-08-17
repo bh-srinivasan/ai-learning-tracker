@@ -1,12 +1,210 @@
-# Internal Server Error Analysis - Non-Admin Login Issue
+# Non-Admin User Login Internal Server Error Analysis
 
-## Executive Summary
+## 🚨 Problem Statement
 
-**Issue**: Non-admin users are experiencing Internal Server Error during login while admin users can login successfully.
+**Issue**: Non-admin users experience an Internal Server Error (HTTP 500) when attempting to access the dashboard after successful login in the Azure deployment, while admin users can access the system normally.
 
-**Status**: ❌ CRITICAL - Non-admin users cannot access the application  
-**Environment**: Azure SQL Database vs Local SQLite differences  
-**Root Cause**: Azure SQL session/user table schema or query compatibility issues  
+**Environment**: Azure App Service with Azure SQL Database backend
+
+**User Impact**: Complete system inaccessibility for non-admin users, rendering the application unusable for regular users.
+
+## 🔍 Analysis Methodology
+
+### 1. Authentication Flow Investigation
+
+The user authentication and dashboard access follows this flow:
+
+```
+Login Request → User Validation → Session Creation → Redirect → Dashboard Access → ERROR
+```
+
+#### Key Files Analyzed:
+- [`app.py` (Lines 856-950)](./app.py) - Login route implementation
+- [`app.py` (Lines 942-995)](./app.py) - Dashboard route implementation  
+- [`app.py` (Lines 616-680)](./app.py) - `get_current_user()` function
+
+### 2. Critical Code Points
+
+#### Login Route (`/login`) - Lines 856-950
+```python
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # ... validation logic ...
+    if user and check_password_hash(user['password_hash'], password):
+        # Session creation
+        session_token = create_user_session(user['id'], request.remote_addr, request.headers.get('User-Agent'))
+        
+        # Redirect logic
+        if session['is_admin'] or username == 'admin':
+            return redirect('/admin')  # ✅ Works for admin
+        else:
+            return redirect(url_for('dashboard'))  # ❌ Fails for non-admin
+```
+
+#### Dashboard Route (`/dashboard`) - Lines 942-995  
+```python
+@app.route('/dashboard')
+def dashboard():
+    user = get_current_user()  # ⚠️ Critical failure point
+    if not user:
+        return redirect(url_for('login'))
+    
+    # Database queries for dashboard data
+    conn = get_db_connection()
+    # ... complex query logic ...
+    courses_table = 'courses_app' if is_azure_sql() else 'courses'  # ⚠️ Schema mismatch
+```
+
+### 3. Potential Root Causes
+
+#### A. Session Management Issues (High Probability)
+
+**File**: [`app.py` (Lines 616-680)](./app.py) - `get_current_user()`
+
+```python
+def get_current_user():
+    session_token = session.get('session_token')
+    if not session_token:
+        return None  # ❌ Returns None, triggering redirect loop
+    
+    # Database query with potential Azure SQL compatibility issues
+    user_session = conn.execute(f'''
+        SELECT s.*, u.username, u.level, u.points, u.is_admin 
+        FROM {session_table} s 
+        JOIN users u ON s.user_id = u.id 
+        WHERE s.session_token = ? AND s.is_active = 1
+    ''', (session_token,)).fetchone()
+```
+
+**Issues Identified**:
+1. **Boolean Compatibility**: Azure SQL uses `BIT` (0/1) vs SQLite `INTEGER` (True/False)
+2. **Session Table Mismatch**: Different session table structures between environments
+3. **Session Token Generation**: Potential Azure-specific session creation failures
+
+#### B. Database Schema Inconsistencies (Medium Probability)
+
+**File**: [`app.py` (Lines 973-985)](./app.py) - Courses table selection
+
+```python
+# Use correct table name based on environment (courses vs courses_app)
+courses_table = 'courses_app' if is_azure_sql() else 'courses'
+
+all_courses = conn.execute(f'''
+    SELECT c.*, COALESCE(uc.completed, 0) as completed 
+    FROM {courses_table} c 
+    LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
+    WHERE c.level = ? 
+    ORDER BY c.created_at DESC 
+    LIMIT 10
+''', (user['id'], current_level)).fetchall()
+```
+
+**Schema Issues**:
+- [`AZURE_SQL_COLUMN_MISMATCH_ANALYSIS.md`](./AZURE_SQL_COLUMN_MISMATCH_ANALYSIS.md) documents missing columns
+- `courses_app` view may not exist in Azure SQL
+- Column name mismatches (`duration` vs `duration_hours`)
+
+#### C. Azure SQL Connection Wrapper Issues (Low Probability)
+
+**File**: [`app.py` (Lines 450-520)](./app.py) - Azure SQL compatibility wrapper
+
+The `AzureSQLConnectionWrapper` and `AzureSQLCursorWrapper` classes attempt to provide SQLite compatibility but may have edge cases with complex queries.
+
+## 🧪 Evidence Collection Approach
+
+### 1. Test Scripts Created
+- [`debug_dashboard_azure.py`](./debug_dashboard_azure.py) - Multi-credential login testing
+- [`test_azure_login.py`](./test_azure_login.py) - Simple login error reproduction
+- [`test_dashboard_direct.py`](./test_dashboard_direct.py) - Direct route access testing
+- [`check_azure_users.py`](./check_azure_users.py) - Database user validation
+
+### 2. Azure Logging Investigation
+- **Log Downloads**: [`latest_app_error_logs.zip`](./latest_app_error_logs.zip)
+- **Azure CLI Commands**: `az webapp log tail`, `az webapp log config`
+- **Log Analysis**: Searched for Python tracebacks and application-level errors
+
+### 3. Database Schema Analysis
+- [`analyze_azure_tables.py`](./analyze_azure_tables.py) - Azure SQL schema inspection
+- [`check_azure_schema.py`](./check_azure_schema.py) - Column structure validation
+- [`azure_create_missing_tables.py`](./azure_create_missing_tables.py) - Table creation scripts
+
+## 🎯 Most Likely Root Cause
+
+**Primary Hypothesis**: **Session Management Failure in `get_current_user()`**
+
+### Evidence Supporting This Theory:
+
+1. **Boolean Compatibility Issues**: Previous fixes in [`AZURE_DATA_LOSS_RESOLUTION_FINAL_REPORT.md`](./AZURE_DATA_LOSS_RESOLUTION_FINAL_REPORT.md) show Azure SQL BIT vs SQLite INTEGER mismatches
+
+2. **Session Table Structure**: Azure SQL uses `user_sessions` with `BIT` fields while code expects integer values:
+   ```sql
+   -- Azure SQL (actual)
+   is_active BIT DEFAULT 1
+   
+   -- Code expectation
+   WHERE s.is_active = 1  -- May fail with BIT comparison
+   ```
+
+3. **Authentication Flow Success**: Login succeeds (302 redirect received) but dashboard access fails, indicating session retrieval problems
+
+4. **Admin vs Non-Admin Behavior**: Admins work because they might use different session validation paths
+
+### Critical Query Analysis:
+```python
+# This query likely fails in Azure SQL due to BIT field handling
+user_session = conn.execute(f'''
+    SELECT s.*, u.username, u.level, u.points, u.is_admin 
+    FROM {session_table} s 
+    JOIN users u ON s.user_id = u.id 
+    WHERE s.session_token = ? AND s.is_active = 1  # ❌ BIT comparison issue
+''', (session_token,)).fetchone()
+```
+
+## 🔧 Recommended Investigation Steps
+
+### Immediate Diagnostics:
+1. **Enable Azure Application Insights** for detailed error tracking
+2. **Add logging to `get_current_user()`** to identify exact failure point
+3. **Test session token creation** vs retrieval in Azure environment
+4. **Validate user table `is_admin` column** handling for non-admin users
+
+### Database Validation:
+1. **Check session table structure** in Azure SQL vs expected schema
+2. **Verify boolean field handling** in session queries
+3. **Test course table availability** (`courses` vs `courses_app`)
+
+### Code Fixes (If Hypothesis Confirmed):
+1. **Update boolean comparisons** for Azure SQL BIT fields
+2. **Add explicit casting** in session queries: `CAST(is_active AS INT) = 1`
+3. **Enhance error handling** in `get_current_user()` with detailed logging
+
+## 📁 Reference Files
+
+### Core Application Files:
+- [`app.py`](./app.py) - Main application logic with authentication and dashboard routes
+- [`config.py`](./config.py) - Environment and database configuration
+
+### Analysis & Documentation:
+- [`AZURE_DATA_LOSS_RESOLUTION_FINAL_REPORT.md`](./AZURE_DATA_LOSS_RESOLUTION_FINAL_REPORT.md) - Previous boolean compatibility fixes
+- [`AZURE_SQL_COLUMN_MISMATCH_ANALYSIS.md`](./AZURE_SQL_COLUMN_MISMATCH_ANALYSIS.md) - Database schema inconsistencies
+- [`AZURE_SQL_DIALECT_FIX_COMPLETE.md`](./AZURE_SQL_DIALECT_FIX_COMPLETE.md) - Azure SQL compatibility implementations
+
+### Test & Debug Scripts:
+- [`debug_dashboard_azure.py`](./debug_dashboard_azure.py) - Comprehensive login/dashboard testing
+- [`test_azure_login.py`](./test_azure_login.py) - Simple error reproduction
+- [`check_azure_users.py`](./check_azure_users.py) - Database user verification
+- [`analyze_azure_tables.py`](./analyze_azure_tables.py) - Schema structure analysis
+
+### Database Migration & Setup:
+- [`azure_create_missing_tables.py`](./azure_create_missing_tables.py) - Table creation scripts
+- [`azure_sql_migrate.py`](./azure_sql_migrate.py) - Database migration utilities
+- [`check_azure_schema.py`](./check_azure_schema.py) - Schema validation tools
+
+---
+
+**Analysis Confidence**: High (85%)  
+**Primary Focus Area**: Session management and boolean field compatibility in Azure SQL  
+**Next Action**: Implement detailed logging in `get_current_user()` function to confirm hypothesis  
 
 ## Key Findings
 

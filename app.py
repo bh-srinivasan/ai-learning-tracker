@@ -114,6 +114,13 @@ def is_azure_sql():
     
     return all([azure_server, azure_database, azure_username, azure_password])
 
+def is_azure_non_admin(user):
+    """True only for Azure SQL + signed-in non-admin (excluding username=='admin')."""
+    try:
+        return is_azure_sql() and user and not bool(user.get('is_admin')) and user.get('username') != 'admin'
+    except Exception:
+        return False
+
 def detect_db_kind(conn=None):
     """
     Detect database kind for compatibility handling.
@@ -1007,11 +1014,20 @@ def learnings():
     # Get user's learning entries
     conn = get_db_connection()
     try:
-        entries = conn.execute('''
-            SELECT * FROM learning_entries 
-            WHERE user_id = ? 
-            ORDER BY date_added DESC
-        ''', (user['id'],)).fetchall()
+        # Use created_at ordering specifically for Azure non-admin users
+        if is_azure_non_admin(user):
+            entries = conn.execute('''
+                SELECT * FROM learning_entries 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC
+            ''', (user['id'],)).fetchall()
+        else:
+            # Preserve original ordering for local/admin users
+            entries = conn.execute('''
+                SELECT * FROM learning_entries 
+                WHERE user_id = ? 
+                ORDER BY date_added DESC
+            ''', (user['id'],)).fetchall()
         return render_template('learnings/index.html', entries=entries)
     finally:
         conn.close()
@@ -1062,48 +1078,99 @@ def my_courses():
     
     conn = get_db_connection()
     try:
-        # Base query for completed courses
-        completed_query = '''
-            SELECT c.*, uc.completed, uc.completion_date, 'system' as course_type
-            FROM courses c 
-            INNER JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ? AND uc.completed = 1
-        '''
-        completed_params = [user['id']]
-        
-        # Apply filters to completed courses
-        if search_query:
-            completed_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
-            completed_params.extend([f'%{search_query}%', f'%{search_query}%'])
-        
-        # Date filtering for completed courses
-        if date_filter:
-            if date_filter == 'today':
-                completed_query += ' AND DATE(uc.completion_date) = DATE("now")'
-            elif date_filter == 'week':
-                completed_query += ' AND DATE(uc.completion_date) >= DATE("now", "-7 days")'
-            elif date_filter == 'month':
-                completed_query += ' AND DATE(uc.completion_date) >= DATE("now", "-30 days")'
-        
-        completed_query += ' ORDER BY uc.completion_date DESC'
-        completed_courses = conn.execute(completed_query, completed_params).fetchall()
-        
-        # Base query for recommended courses
-        user_level = user.get('level', 'Beginner')
-        recommended_query = '''
-            SELECT c.*, COALESCE(uc.completed, 0) as completed, 'recommended' as course_type
-            FROM courses c 
-            LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
-            WHERE (uc.completed IS NULL OR uc.completed = 0)
-        '''
-        recommended_params = [user['id']]
-        
-        # Apply search filter to recommended courses
-        if search_query:
-            recommended_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
-            recommended_params.extend([f'%{search_query}%', f'%{search_query}%'])
-        
-        recommended_query += ' ORDER BY c.created_at DESC'
-        recommended_courses = conn.execute(recommended_query, recommended_params).fetchall()
+        if is_azure_non_admin(user):
+            # Azure non-admin users: Use optimized UNION ALL query
+            user_level = user.get('level', 'Beginner')
+            
+            # Build UNION ALL query
+            union_query = '''
+                SELECT c.*, uc.completed, uc.completion_date, 'completed' as course_type
+                FROM courses c 
+                INNER JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ? AND uc.completed = 1
+            '''
+            union_params = [user['id']]
+            
+            # Apply search filter to completed courses
+            if search_query:
+                union_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
+                union_params.extend([f'%{search_query}%', f'%{search_query}%'])
+            
+            # Date filtering for completed courses
+            if date_filter:
+                if date_filter == 'today':
+                    union_query += ' AND CONVERT(date, uc.completion_date) = CONVERT(date, GETDATE())' if is_azure_sql() else ' AND DATE(uc.completion_date) = DATE("now")'
+                elif date_filter == 'week':
+                    union_query += ' AND uc.completion_date >= DATEADD(day, -7, GETDATE())' if is_azure_sql() else ' AND DATE(uc.completion_date) >= DATE("now", "-7 days")'
+                elif date_filter == 'month':
+                    union_query += ' AND uc.completion_date >= DATEADD(day, -30, GETDATE())' if is_azure_sql() else ' AND DATE(uc.completion_date) >= DATE("now", "-30 days")'
+            
+            union_query += '''
+                UNION ALL
+                SELECT c.*, COALESCE(uc.completed, 0) as completed, NULL as completion_date, 'recommended' as course_type
+                FROM courses c 
+                LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
+                WHERE (uc.completed IS NULL OR uc.completed = 0)
+            '''
+            union_params.append(user['id'])
+            
+            # Apply search filter to recommended courses
+            if search_query:
+                union_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
+                union_params.extend([f'%{search_query}%', f'%{search_query}%'])
+            
+            union_query += ' ORDER BY course_type, completion_date DESC, created_at DESC'
+            
+            # Execute unified query
+            all_courses = conn.execute(union_query, union_params).fetchall()
+            
+            # Separate results by course_type
+            completed_courses = [course for course in all_courses if course['course_type'] == 'completed']
+            recommended_courses = [course for course in all_courses if course['course_type'] == 'recommended']
+            
+        else:
+            # Preserve original code path for local/admin users
+            # Base query for completed courses
+            completed_query = '''
+                SELECT c.*, uc.completed, uc.completion_date, 'system' as course_type
+                FROM courses c 
+                INNER JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ? AND uc.completed = 1
+            '''
+            completed_params = [user['id']]
+            
+            # Apply filters to completed courses
+            if search_query:
+                completed_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
+                completed_params.extend([f'%{search_query}%', f'%{search_query}%'])
+            
+            # Date filtering for completed courses
+            if date_filter:
+                if date_filter == 'today':
+                    completed_query += ' AND DATE(uc.completion_date) = DATE("now")'
+                elif date_filter == 'week':
+                    completed_query += ' AND DATE(uc.completion_date) >= DATE("now", "-7 days")'
+                elif date_filter == 'month':
+                    completed_query += ' AND DATE(uc.completion_date) >= DATE("now", "-30 days")'
+            
+            completed_query += ' ORDER BY uc.completion_date DESC'
+            completed_courses = conn.execute(completed_query, completed_params).fetchall()
+            
+            # Base query for recommended courses
+            user_level = user.get('level', 'Beginner')
+            recommended_query = '''
+                SELECT c.*, COALESCE(uc.completed, 0) as completed, 'recommended' as course_type
+                FROM courses c 
+                LEFT JOIN user_courses uc ON c.id = uc.course_id AND uc.user_id = ?
+                WHERE (uc.completed IS NULL OR uc.completed = 0)
+            '''
+            recommended_params = [user['id']]
+            
+            # Apply search filter to recommended courses
+            if search_query:
+                recommended_query += ' AND (c.title LIKE ? OR c.description LIKE ?)'
+                recommended_params.extend([f'%{search_query}%', f'%{search_query}%'])
+            
+            recommended_query += ' ORDER BY c.created_at DESC'
+            recommended_courses = conn.execute(recommended_query, recommended_params).fetchall()
         
         # Get available filter options
         providers = []
