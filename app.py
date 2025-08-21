@@ -638,11 +638,12 @@ def get_current_user():
     session_table = get_session_table()  # Use centralized session table detection
     
     try:
+        where_is_active = "CAST(s.is_active AS INT) = 1" if is_azure_sql() else "s.is_active = 1"
         user_session = conn.execute(f'''
             SELECT s.*, u.username, u.level, u.points, u.is_admin 
             FROM {session_table} s 
             JOIN users u ON s.user_id = u.id 
-            WHERE s.session_token = ? AND s.is_active = 1
+            WHERE s.session_token = ? AND {where_is_active}
         ''', (session_token,)).fetchone()
         
         if user_session:
@@ -685,7 +686,7 @@ def invalidate_session(session_token):
             UPDATE {session_table} 
             SET is_active = ? 
             WHERE session_token = ?
-        ''', (False, session_token))
+        ''', (0, session_token))
         conn.commit()
         
         # Remove from memory
@@ -977,8 +978,28 @@ def dashboard():
         ''', (user['id'],)).fetchall()
         
         # Get courses for current level
-        # Use correct table name based on environment (courses vs courses_app)
-        courses_table = 'courses_app' if is_azure_sql() else 'courses'
+        # Safe fallback: prefer 'courses'; only use 'courses_app' if it exists
+        def _has_table(c, table_name):
+            try:
+                if is_azure_sql():
+                    row = c.execute("""
+                        SELECT COUNT(*)
+                        FROM INFORMATION_SCHEMA.TABLES
+                        WHERE TABLE_NAME = ?
+                    """, (table_name,)).fetchone()
+                    return bool(row[0]) if row else False
+                else:
+                    row = c.execute("""
+                        SELECT name FROM sqlite_master
+                        WHERE type='table' AND name=?
+                    """, (table_name,)).fetchone()
+                    return row is not None
+            except Exception:
+                return False
+
+        courses_table = 'courses'
+        if is_azure_sql() and _has_table(conn, 'courses_app'):
+            courses_table = 'courses_app'
         
         all_courses = conn.execute(f'''
             SELECT c.*, COALESCE(uc.completed, 0) as completed 
@@ -1900,7 +1921,7 @@ def test_admin_login_direct():
                 FROM {session_table} s 
                 JOIN users u ON s.user_id = u.id 
                 WHERE s.session_token = ? AND s.is_active = ?
-            ''', (session_token, True)).fetchone()
+            ''', (session_token, 1)).fetchone()
             
             if not user_session:
                 return jsonify({'step': 5, 'error': f'Session not found in {session_table}'})
@@ -1980,7 +2001,7 @@ def admin_test():
                 FROM {session_table} s 
                 JOIN users u ON s.user_id = u.id 
                 WHERE s.session_token = ? AND s.is_active = ?
-            ''', (session_token, True)).fetchone()
+            ''', (session_token, 1)).fetchone()
             
             if not user_session:
                 return f"❌ No user session found in {session_table}"
